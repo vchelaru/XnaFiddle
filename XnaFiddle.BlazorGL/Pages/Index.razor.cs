@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Microsoft.Xna.Framework;
 
@@ -20,7 +24,9 @@ namespace XnaFiddle.Pages
         bool _pendingCompile;
         bool _monacoReady;
         bool _assetsOpen;
+        bool _gistOpen;
         bool _runLocallyOpen;
+        string _gistInput = "";
         int _compileProgress;
         int _compileTotal;
         DateTime _compileStartTime;
@@ -90,6 +96,11 @@ namespace XnaFiddle.Pages
                 {
                     await LoadFromCode(hash.Substring(6));
                     autoCompile = true;
+                }
+                else if (hash.StartsWith("#gist="))
+                {
+                    bool loaded = await LoadFromGistId(hash.Substring(6));
+                    autoCompile = loaded;
                 }
 
                 if (autoCompile)
@@ -352,6 +363,103 @@ namespace XnaFiddle.Pages
             }
 
             StateHasChanged();
+        }
+
+        private async Task OnGistInputKeyDown(KeyboardEventArgs e)
+        {
+            if (e.Key == "Enter")
+                await LoadGistFromInput();
+        }
+
+        private async Task LoadGistFromInput()
+        {
+            string input = _gistInput?.Trim() ?? "";
+            if (string.IsNullOrEmpty(input)) return;
+            bool loaded = await LoadFromGistId(input);
+            if (loaded)
+            {
+                _gistOpen = false;
+                CompileAndRun();
+            }
+        }
+
+        private async Task<bool> LoadFromGistId(string input)
+        {
+            try
+            {
+                // Accept full URL (https://gist.github.com/user/ID or /ID) or bare ID
+                string gistId = input.Trim();
+                if (gistId.Contains("gist.github.com/"))
+                {
+                    var parts = gistId.TrimEnd('/').Split('/');
+                    gistId = parts[^1];
+                }
+
+                _statusMessage = "Loading gist...";
+                _statusColor = "#dcdcaa";
+                StateHasChanged();
+
+                var request = new HttpRequestMessage(HttpMethod.Get,
+                    $"https://api.github.com/gists/{gistId}");
+                request.Headers.Add("Accept", "application/vnd.github+json");
+                request.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
+
+                var response = await Http.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _statusMessage = $"Gist not found ({(int)response.StatusCode}).";
+                    _statusColor = "#f48771";
+                    StateHasChanged();
+                    return false;
+                }
+
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var files = doc.RootElement.GetProperty("files");
+
+                // Find first .cs file, fall back to first .txt file
+                string code = null;
+                string txtFallback = null;
+                foreach (var file in files.EnumerateObject())
+                {
+                    string content = file.Value.GetProperty("content").GetString();
+                    if (file.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        code = content;
+                        break;
+                    }
+                    if (txtFallback == null && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                        txtFallback = content;
+                }
+                code ??= txtFallback;
+
+                if (code == null)
+                {
+                    _statusMessage = "No .cs or .txt file found in gist.";
+                    _statusColor = "#f48771";
+                    StateHasChanged();
+                    return false;
+                }
+
+                if (_monacoReady)
+                    await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
+
+                await JsRuntime.InvokeVoidAsync("eval",
+                    $"history.replaceState(null,'','#gist={Uri.EscapeDataString(gistId)}')");
+
+                _statusMessage = "Gist loaded.";
+                _statusColor = "#4ec9b0";
+                _selectedExample = "";
+                StateHasChanged();
+                return true;
+            }
+            catch (Exception e)
+            {
+                _statusMessage = "Failed to load gist.";
+                _statusColor = "#f48771";
+                _diagnosticsOutput = e.Message;
+                StateHasChanged();
+                return false;
+            }
         }
 
         private async Task ToggleRunLocally()

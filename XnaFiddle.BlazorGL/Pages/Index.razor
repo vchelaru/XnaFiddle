@@ -1,5 +1,6 @@
 @page "/"
 @inject IJSRuntime JsRuntime
+@inject HttpClient Http
 
 <PageTitle>XnaFiddle</PageTitle>
 
@@ -38,6 +39,11 @@
                 style="padding: 4px 10px; background: @(_assets.Count > 0 ? "#2d5a2d" : "#3c3c3c"); color: #d4d4d4;
                        border: 1px solid #555; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
             <i class="codicon codicon-file-media"></i> Assets@(_assets.Count > 0 ? $" ({_assets.Count})" : "")
+        </button>
+        <button @onclick="() => _gistOpen = !_gistOpen"
+                style="padding: 4px 10px; background: @(_gistOpen ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
+                       border: 1px solid #555; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
+            <i class="codicon codicon-github"></i> Gist
         </button>
         <button @onclick="ToggleRunLocally"
                 style="padding: 4px 10px; background: #3c3c3c; color: #d4d4d4;
@@ -113,6 +119,26 @@
                     </span>
                 }
             }
+        </div>
+    }
+
+    @if (_gistOpen)
+    {
+        <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0;">
+            <div style="padding: 4px 12px 2px; color: #888; font-size: 12px;">
+                Paste a Gist URL or ID below, or link directly to XnaFiddle with
+                <span @onclick='() => CopyToClipboard("https://xnafiddle.net/#gist=<gist-id>")'
+                      title="Click to copy"
+                      style="color: #9cdcfe; font-family: Consolas, monospace; cursor: pointer; user-select: text;">https://xnafiddle.net/#gist=&lt;gist-id&gt;</span>
+            </div>
+            <div style="padding: 3px 12px 5px; display: flex; align-items: center; gap: 6px;">
+                <input @bind="_gistInput" @onkeydown="OnGistInputKeyDown" placeholder="https://gist.github.com/user/abc123  or  abc123"
+                       style="flex: 1; padding: 3px 8px; background: #3c3c3c; color: #d4d4d4;
+                              border: 1px solid #555; font-size: 13px; font-family: Consolas, monospace;" />
+                <button @onclick="LoadGistFromInput" disabled="@_isCompiling"
+                        style="padding: 3px 12px; background: #0e639c; color: white; border: none;
+                               cursor: pointer; font-size: 13px;">Load &amp; Run</button>
+            </div>
         </div>
     }
 

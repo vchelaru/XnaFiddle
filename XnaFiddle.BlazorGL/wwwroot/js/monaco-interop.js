@@ -122,6 +122,41 @@ window.monacoInterop = {
             'ShapeBatch':        { kind: Kind.Class, members: ['Begin', 'End', 'DrawCircle', 'FillCircle', 'DrawRectangle', 'FillRectangle', 'BorderCircle', 'BorderRectangle', 'BorderLine', 'DrawLine', 'FillLine'] },
         };
 
+        // Known namespaces (for 'using' directive completions)
+        var knownNamespaces = [
+            // XNA/KNI
+            'Microsoft.Xna.Framework',
+            'Microsoft.Xna.Framework.Graphics',
+            'Microsoft.Xna.Framework.Input',
+            'Microsoft.Xna.Framework.Input.Touch',
+            'Microsoft.Xna.Framework.Audio',
+            'Microsoft.Xna.Framework.Content',
+            'Microsoft.Xna.Framework.Media',
+            // MonoGameGum / Gum
+            'MonoGameGum',
+            'Gum.Forms',
+            'Gum.Forms.Controls',
+            'Gum.DataTypes',
+            // Apos.Shapes
+            'Apos.Shapes',
+            // MonoGame.Extended
+            'MonoGame.Extended',
+            'MonoGame.Extended.Sprites',
+            'MonoGame.Extended.Content',
+            'MonoGame.Extended.Input',
+            'MonoGame.Extended.Tiled',
+            // System
+            'System',
+            'System.Collections.Generic',
+            'System.Collections',
+            'System.Linq',
+            'System.Text',
+            'System.IO',
+            'System.Numerics',
+            'System.Threading.Tasks',
+            'System.Threading',
+        ];
+
         // Snippet templates
         var snippets = [
             { label: 'game class', detail: 'XNA Game class template', text: 'public class ${1:MyGame} : Game\n{\n\tGraphicsDeviceManager _graphics;\n\tSpriteBatch _spriteBatch;\n\n\tpublic ${1:MyGame}()\n\t{\n\t\t_graphics = new GraphicsDeviceManager(this);\n\t\tIsMouseVisible = true;\n\t}\n\n\tprotected override void LoadContent()\n\t{\n\t\t_spriteBatch = new SpriteBatch(GraphicsDevice);\n\t\t$0\n\t}\n\n\tprotected override void Update(GameTime gameTime)\n\t{\n\t\tbase.Update(gameTime);\n\t}\n\n\tprotected override void Draw(GameTime gameTime)\n\t{\n\t\tGraphicsDevice.Clear(Color.CornflowerBlue);\n\t\tbase.Draw(gameTime);\n\t}\n}' },
@@ -167,6 +202,38 @@ window.monacoInterop = {
                 // Check if this is dot-completion
                 var lineContent = model.getLineContent(position.lineNumber);
                 var textBefore = lineContent.substring(0, position.column - 1);
+
+                // 'using' directive: complete namespaces
+                var usingPrefixMatch = textBefore.match(/^\s*using\s+/);
+                if (usingPrefixMatch && /^[\w.]*$/.test(textBefore.substring(usingPrefixMatch[0].length))) {
+                    var nsTyped = textBefore.substring(usingPrefixMatch[0].length);
+                    var nsStartColumn = usingPrefixMatch[0].length + 1; // 1-based column where namespace starts
+                    var nsRange = {
+                        startLineNumber: position.lineNumber,
+                        startColumn: nsStartColumn,
+                        endLineNumber: position.lineNumber,
+                        endColumn: position.column
+                    };
+                    // filterText = only the segment after the last dot, so Monaco's prefix
+                    // filter matches the word at cursor (e.g. "Fr" matches "Framework")
+                    var lastDot = nsTyped.lastIndexOf('.');
+                    var nsPrefix = lastDot >= 0 ? nsTyped.substring(0, lastDot + 1) : '';
+                    var nsSuggestions = knownNamespaces
+                        .filter(function (ns) { return ns.toLowerCase().startsWith(nsTyped.toLowerCase()); })
+                        .map(function (ns) {
+                            return {
+                                label: ns,
+                                kind: Kind.Module,
+                                filterText: ns.substring(nsPrefix.length),
+                                insertText: ns,
+                                range: nsRange,
+                                detail: 'namespace',
+                                sortText: '0' + ns
+                            };
+                        });
+                    return { suggestions: nsSuggestions };
+                }
+
                 var dotMatch = textBefore.match(/(\w+)\.\s*$/);
 
                 if (dotMatch) {
