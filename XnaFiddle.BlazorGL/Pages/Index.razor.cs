@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
 using System.Reflection;
-using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -70,7 +67,7 @@ namespace XnaFiddle.Pages
 
                 // Check ?example= query param first, then #code= hash (hash wins)
                 string search = await JsRuntime.InvokeAsync<string>("eval", "window.location.search");
-                string exampleFromQuery = ParseQueryParam(search, "example");
+                string exampleFromQuery = UrlCodec.ParseQueryParam(search, "example");
                 bool autoCompile = false;
                 if (!string.IsNullOrEmpty(exampleFromQuery))
                 {
@@ -285,16 +282,7 @@ namespace XnaFiddle.Pages
             try
             {
                 string code = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
-
-                using var output = new MemoryStream();
-                using (var gzip = new GZipStream(output, CompressionLevel.Optimal))
-                {
-                    byte[] bytes = Encoding.UTF8.GetBytes(code);
-                    gzip.Write(bytes, 0, bytes.Length);
-                }
-                string encoded = Convert.ToBase64String(output.ToArray())
-                    .Replace('+', '-').Replace('/', '_').TrimEnd('=');
-
+                string encoded = UrlCodec.Encode(code);
                 string shareUrl = "https://xnafiddle.net/#code=" + encoded;
                 _selectedExample = "";
                 await JsRuntime.InvokeVoidAsync("eval", $"history.replaceState(null,'','#code={encoded}')");
@@ -317,15 +305,7 @@ namespace XnaFiddle.Pages
         {
             try
             {
-                // Restore standard base64 padding
-                string base64 = encoded.Replace('-', '+').Replace('_', '/')
-                    + new string('=', (4 - encoded.Length % 4) % 4);
-                byte[] compressed = Convert.FromBase64String(base64);
-
-                using var input = new MemoryStream(compressed);
-                using var gzip = new GZipStream(input, CompressionMode.Decompress);
-                using var reader = new StreamReader(gzip, Encoding.UTF8);
-                string code = reader.ReadToEnd();
+                string code = UrlCodec.Decode(encoded);
 
                 if (_monacoReady)
                     await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
@@ -386,19 +366,7 @@ namespace XnaFiddle.Pages
             }
         }
 
-        private static string ParseQueryParam(string search, string key)
-        {
-            if (string.IsNullOrEmpty(search) || !search.Contains(key + "="))
-                return null;
-            string s = search.StartsWith("?") ? search.Substring(1) : search;
-            foreach (var part in s.Split('&'))
-            {
-                var kv = part.Split('=', 2);
-                if (kv.Length == 2 && kv[0] == key)
-                    return Uri.UnescapeDataString(kv[1]);
-            }
-            return null;
-        }
+
 
         private static void CleanUpGumService()
         {
