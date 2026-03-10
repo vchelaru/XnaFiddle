@@ -44,9 +44,10 @@ namespace XnaFiddle.Pages
 
         static readonly PackageInfo[] KnownPackages =
         [
-            new PackageInfo { Feature = "Gum UI",         KniPackage = "Gum.KNI",          MonoGamePackage = "Gum.MonoGame",   DetectionString = "MonoGameGum" },
-            new PackageInfo { Feature = "Shapes",          KniPackage = "Apos.Shapes.KNI",  MonoGamePackage = "Apos.Shapes",    DetectionString = "Apos.Shapes" },
-            new PackageInfo { Feature = "FontStashSharp",  KniPackage = "FontStashSharp.Kni", MonoGamePackage = "FontStashSharp", DetectionString = "FontStashSharp" },
+            new PackageInfo { Feature = "Gum UI",          KniPackage = "Gum.KNI",            MonoGamePackage = "Gum.MonoGame",    DetectionString = "MonoGameGum" },
+            new PackageInfo { Feature = "Shapes",           KniPackage = "Apos.Shapes.KNI",    MonoGamePackage = "Apos.Shapes",     DetectionString = "Apos.Shapes" },
+            new PackageInfo { Feature = "FontStashSharp",   KniPackage = "FontStashSharp.Kni", MonoGamePackage = "FontStashSharp",  DetectionString = "FontStashSharp" },
+            new PackageInfo { Feature = "MonoGame.Extended", KniPackage = "KNI.Extended",      MonoGamePackage = "MonoGame.Extended", DetectionString = "MonoGame.Extended" },
         ];
 
         List<PackageInfo> _runLocallyPackages = new();
