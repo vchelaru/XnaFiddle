@@ -85,7 +85,8 @@ namespace XnaFiddle
             for (int i = 0; i < loadedAssemblies.Length; i++)
             {
                 string assemblyName = loadedAssemblies[i].GetName().Name;
-                if (!string.IsNullOrEmpty(assemblyName))
+                // Skip our own previously compiled assembly — it's in-memory and has no .dll to fetch
+                if (!string.IsNullOrEmpty(assemblyName) && assemblyName != "UserAssembly")
                     assembliesRequired.Add(assemblyName);
             }
 
@@ -95,7 +96,7 @@ namespace XnaFiddle
 
             // Fetch metadata references
             List<MetadataReference> metadataReferences = [];
-            int failedCount = 0;
+            List<string> failedAssemblies = [];
             int resolved = 0;
             int total = assembliesRequired.Count;
 
@@ -108,16 +109,17 @@ namespace XnaFiddle
                     if (metadataReference != null)
                         metadataReferences.Add(metadataReference);
                     else
-                        failedCount++;
+                        failedAssemblies.Add(assemblyName);
                 }
                 catch
                 {
-                    failedCount++;
+                    failedAssemblies.Add(assemblyName);
                 }
                 onProgress?.Invoke(++resolved, total);
             }
 
-            log += "Resolved " + metadataReferences.Count + "/" + assembliesRequired.Count + " assembly references.\n";
+            if (failedAssemblies.Count > 0)
+                Console.WriteLine($"[XnaFiddle] {failedAssemblies.Count} assembl{(failedAssemblies.Count == 1 ? "y" : "ies")} failed to resolve: {string.Join(", ", failedAssemblies)}");
 
             // Compile
             CSharpCompilationOptions compilationOptions = new(
@@ -125,7 +127,8 @@ namespace XnaFiddle
                 reportSuppressedDiagnostics: true,
                 metadataImportOptions: MetadataImportOptions.Public,
                 allowUnsafe: true,
-                optimizationLevel: OptimizationLevel.Release
+                optimizationLevel: OptimizationLevel.Release,
+                concurrentBuild: false  // WASM is single-threaded; parallel workers deadlock on Monitor.Wait
             );
 
             CSharpCompilation compilation = CSharpCompilation.Create(

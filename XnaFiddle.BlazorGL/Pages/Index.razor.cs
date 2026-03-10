@@ -16,6 +16,7 @@ namespace XnaFiddle.Pages
         Game _game;
 
         string _diagnosticsOutput = "";
+        string _diagnosticsColor = "#888";
         string _statusMessage = "";
         string _statusColor = "#4ec9b0";
         bool _isCompiling;
@@ -27,6 +28,7 @@ namespace XnaFiddle.Pages
         int _compileTotal;
         DateTime _compileStartTime;
         bool _hasCompiledOnce;
+        string _selectedExample = "";
 
         struct AssetInfo
         {
@@ -66,9 +68,30 @@ namespace XnaFiddle.Pages
                 await JsRuntime.InvokeAsync<object>("initRenderJS", dotNetRef);
                 await JsRuntime.InvokeVoidAsync("fileDropInterop.init", dotNetRef);
 
+                // Check ?example= query param first, then #code= hash (hash wins)
+                string search = await JsRuntime.InvokeAsync<string>("eval", "window.location.search");
+                string exampleFromQuery = ParseQueryParam(search, "example");
+                bool autoCompile = false;
+                if (!string.IsNullOrEmpty(exampleFromQuery))
+                {
+                    string exCode = ExampleGallery.Load(exampleFromQuery);
+                    if (exCode != null)
+                    {
+                        await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", exCode);
+                        _selectedExample = exampleFromQuery;
+                        autoCompile = true;
+                    }
+                }
+
                 string hash = await JsRuntime.InvokeAsync<string>("eval", "window.location.hash");
                 if (hash.StartsWith("#code="))
+                {
                     await LoadFromCode(hash.Substring(6));
+                    autoCompile = false;
+                }
+
+                if (autoCompile)
+                    CompileAndRun();
             }
 
         }
@@ -147,6 +170,7 @@ namespace XnaFiddle.Pages
             catch (Exception e)
             {
                 _diagnosticsOutput = "Runtime error: " + e.Message;
+                _diagnosticsColor = "#f48771";
                 _game = null;
                 StateHasChanged();
             }
@@ -181,8 +205,11 @@ namespace XnaFiddle.Pages
                     StateHasChanged();
                 });
                 await JsRuntime.InvokeVoidAsync("compileTimerInterop.stop");
+                double compileSeconds = (DateTime.Now - _compileStartTime).TotalSeconds;
                 _hasCompiledOnce = true;
-                _diagnosticsOutput = result.Log;
+                _diagnosticsOutput = $"Compiled in {compileSeconds:0.0}s" +
+                    (string.IsNullOrEmpty(result.Log) ? "" : "\n" + result.Log);
+                _diagnosticsColor = result.Success ? "#888" : "#f48771";
 
                 // Send diagnostics to Monaco as inline markers
                 if (_monacoReady)
@@ -244,6 +271,7 @@ namespace XnaFiddle.Pages
             catch (Exception e)
             {
                 _diagnosticsOutput = e.ToString();
+                _diagnosticsColor = "#f48771";
                 _statusMessage = "Error.";
                 _statusColor = "#f48771";
             }
@@ -268,6 +296,7 @@ namespace XnaFiddle.Pages
                     .Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
                 string shareUrl = "https://xnafiddle.net/#code=" + encoded;
+                _selectedExample = "";
                 await JsRuntime.InvokeVoidAsync("eval", $"history.replaceState(null,'','#code={encoded}')");
                 await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", shareUrl);
 
@@ -345,13 +374,30 @@ namespace XnaFiddle.Pages
             string code = ExampleGallery.Load(name);
             if (code != null)
             {
+                _selectedExample = name;
                 await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
+                await JsRuntime.InvokeVoidAsync("eval",
+                    $"history.replaceState(null,'','?example={Uri.EscapeDataString(name)}')");
                 if (_runLocallyOpen)
                 {
                     RefreshRunLocallyPackages(code);
                     StateHasChanged();
                 }
             }
+        }
+
+        private static string ParseQueryParam(string search, string key)
+        {
+            if (string.IsNullOrEmpty(search) || !search.Contains(key + "="))
+                return null;
+            string s = search.StartsWith("?") ? search.Substring(1) : search;
+            foreach (var part in s.Split('&'))
+            {
+                var kv = part.Split('=', 2);
+                if (kv.Length == 2 && kv[0] == key)
+                    return Uri.UnescapeDataString(kv[1]);
+            }
+            return null;
         }
 
         private static void CleanUpGumService()

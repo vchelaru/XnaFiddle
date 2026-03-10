@@ -27,8 +27,19 @@ html, body {
 
 #theCanvas {
     -webkit-user-select: none;
+    user-select: none;
     width: 100%;
     height: 100%;
+}
+
+#editorPanel {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+#diagnosticsPanel {
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 @keyframes compileshimmer {

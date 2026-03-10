@@ -20,9 +20,9 @@
             <i class="codicon @(_isCompiling ? "codicon-loading codicon-modifier-spin" : "codicon-play")"></i>
             @(_isCompiling ? "Running..." : "Run")
         </button>
-        <select @onchange="OnExampleSelected"
+        <select @onchange="OnExampleSelected" value="@_selectedExample"
                 style="padding: 3px 8px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555;
-                       font-size: 13px; cursor: pointer;">
+                       font-size: 13px; cursor: pointer; user-select: none; -webkit-user-select: none;">
             <option value="">Examples...</option>
             @foreach (var name in ExampleGallery.Names)
             {
@@ -167,7 +167,7 @@
     @if (!string.IsNullOrEmpty(_diagnosticsOutput))
     {
         <div id="diagnosticsSplitter" style="height: 4px; background: #007acc; cursor: ns-resize; flex-shrink: 0;"></div>
-        <pre id="diagnosticsPanel" style="margin: 0; padding: 8px 12px; background: #1a1a1a; color: #f48771;
+        <pre id="diagnosticsPanel" style="margin: 0; padding: 8px 12px; background: #1a1a1a; color: @_diagnosticsColor;
                     font-size: 12px; font-family: Consolas, monospace; overflow: auto;
                     height: 100px; flex-shrink: 0; white-space: pre-wrap; word-wrap: break-word;">@_diagnosticsOutput</pre>
     }
