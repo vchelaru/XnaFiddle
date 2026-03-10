@@ -10,7 +10,28 @@
     <KniPlatform>BlazorGL</KniPlatform>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SkipAposShapeContent>true</SkipAposShapeContent>
+    <!-- Preserve all public APIs for Roslyn runtime compilation -->
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
+
+  <!-- Assemblies that must not be trimmed (user code compiles against them at runtime) -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Xna.Framework" />
+    <TrimmerRootAssembly Include="Xna.Framework.Graphics" />
+    <TrimmerRootAssembly Include="Xna.Framework.Content" />
+    <TrimmerRootAssembly Include="Xna.Framework.Audio" />
+    <TrimmerRootAssembly Include="Xna.Framework.Media" />
+    <TrimmerRootAssembly Include="Xna.Framework.Input" />
+    <TrimmerRootAssembly Include="Xna.Framework.Game" />
+    <TrimmerRootAssembly Include="Xna.Framework.Devices" />
+    <TrimmerRootAssembly Include="Xna.Framework.Storage" />
+    <TrimmerRootAssembly Include="Xna.Framework.XR" />
+    <TrimmerRootAssembly Include="Kni.Platform" />
+    <TrimmerRootAssembly Include="KniGum" />
+    <TrimmerRootAssembly Include="GumCommon" />
+    <TrimmerRootAssembly Include="Apos.Shapes.KNI" />
+    <TrimmerRootAssembly Include="KNI.Extended" />
+  </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == 'net8.0' ">
     <PackageReference Include="Apos.Shapes.KNI" Version="0.6.8" />

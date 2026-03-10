@@ -148,6 +148,40 @@
             observer.observe(document.body, { childList: true, subtree: true });
         })();
 
+        // Diagnostics panel vertical resize
+        (function () {
+            var dragging = false;
+            var startY = 0;
+            var startH = 0;
+
+            document.addEventListener('mousedown', function (e) {
+                if (e.target && e.target.id === 'diagnosticsSplitter') {
+                    e.preventDefault();
+                    dragging = true;
+                    startY = e.clientY;
+                    var panel = document.getElementById('diagnosticsPanel');
+                    startH = panel ? panel.offsetHeight : 100;
+                    document.body.style.cursor = 'ns-resize';
+                    document.body.style.userSelect = 'none';
+                }
+            });
+
+            document.addEventListener('mousemove', function (e) {
+                if (!dragging) return;
+                var panel = document.getElementById('diagnosticsPanel');
+                if (!panel) return;
+                var delta = startY - e.clientY;
+                panel.style.height = Math.max(40, startH + delta) + 'px';
+            });
+
+            document.addEventListener('mouseup', function () {
+                if (!dragging) return;
+                dragging = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            });
+        })();
+
         window.initRenderJS = (instance) => {
             if (!globalThis.Module)
                 globalThis.Module = Blazor.runtime.Module;

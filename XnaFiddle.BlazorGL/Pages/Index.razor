@@ -75,10 +75,10 @@
 
     @if (!string.IsNullOrEmpty(_diagnosticsOutput))
     {
-        <textarea readonly style="margin: 0; padding: 8px 12px; background: #1a1a1a; color: #f48771;
+        <div id="diagnosticsSplitter" style="height: 4px; background: #007acc; cursor: ns-resize; flex-shrink: 0;"></div>
+        <pre id="diagnosticsPanel" style="margin: 0; padding: 8px 12px; background: #1a1a1a; color: #f48771;
                     font-size: 12px; font-family: Consolas, monospace; overflow: auto;
-                    max-height: 120px; flex-shrink: 0; border-top: 1px solid #333;
-                    border: none; outline: none; resize: none; width: 100%; box-sizing: border-box;">@_diagnosticsOutput</textarea>
+                    height: 100px; flex-shrink: 0; white-space: pre-wrap; word-wrap: break-word;">@_diagnosticsOutput</pre>
     }
 </div>
 
