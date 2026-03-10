@@ -204,7 +204,10 @@ namespace XnaFiddle.Pages
                 await JsRuntime.InvokeVoidAsync("compileTimerInterop.stop");
                 double compileSeconds = (DateTime.Now - _compileStartTime).TotalSeconds;
                 _hasCompiledOnce = true;
-                _diagnosticsOutput = $"Compiled in {compileSeconds:0.0}s" +
+                string failedNote = result.FailedAssemblies.Count > 0
+                    ? $"\n[missing refs: {string.Join(", ", result.FailedAssemblies)}]"
+                    : "";
+                _diagnosticsOutput = $"Compiled in {compileSeconds:0.0}s" + failedNote +
                     (string.IsNullOrEmpty(result.Log) ? "" : "\n" + result.Log);
                 _diagnosticsColor = result.Success ? "#888" : "#f48771";
 

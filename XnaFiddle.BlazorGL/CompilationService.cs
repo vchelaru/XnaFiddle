@@ -64,6 +64,7 @@ namespace XnaFiddle
             public string Log { get; set; }
             public bool Success { get; set; }
             public List<DiagnosticInfo> Diagnostics { get; set; } = [];
+            public List<string> FailedAssemblies { get; set; } = [];
         }
 
         public static async Task<CompilationResult> CompileAsync(string sourceCode, Action<int, int> onProgress = null)
@@ -78,6 +79,15 @@ namespace XnaFiddle
                 .WithPreprocessorSymbols(preprocessorSymbols);
 
             SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
+
+            // Force-load optional assemblies (Gum, Shapes, Extended) into the AppDomain.
+            // Blazor WASM lazy-loads assemblies; without this they may not be present when
+            // a #code= link is opened on a fresh page, causing silent metadata-fetch failures.
+            for (int i = 0; i < KniAssemblyNames.Length; i++)
+            {
+                try { Assembly.Load(KniAssemblyNames[i]); }
+                catch { /* already loaded, or genuinely absent — handled below */ }
+            }
 
             // Collect assembly names from loaded assemblies + known KNI assemblies
             HashSet<string> assembliesRequired = [];
@@ -168,7 +178,8 @@ namespace XnaFiddle
                 ILBytes = ilBytes,
                 Log = log,
                 Success = emitResult.Success,
-                Diagnostics = diagnosticInfos
+                Diagnostics = diagnosticInfos,
+                FailedAssemblies = failedAssemblies
             };
         }
     }
