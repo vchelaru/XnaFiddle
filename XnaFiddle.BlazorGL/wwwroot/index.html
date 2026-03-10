@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>XnaFiddle</title>
+    <base href="./" />
+    <link href="css/app.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+</head>
+
+<body>
+
+    <div id="app">
+        <div style="display: table-cell; margin: auto; width:100vw; height:100vh; vertical-align: middle; background: #000;">
+            <div style="display: block; margin: auto; width: 9em; color: white; font-family: 'Segoe UI', sans-serif;">
+                <div style="text-align: center; font-size: 1.8em;">loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">x</a>
+    </div>
+
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script type="module">
+        import { BrotliDecode } from './js/decode.min.js';
+        window.BrotliDecode = BrotliDecode;
+        var enableBrotliDecompression = false;
+        Blazor.start({
+            loadBootResource: function (type, name, defaultUri, integrity) {
+                if (enableBrotliDecompression === true && type !== 'dotnetjs' && location.hostname !== 'localhost') {
+                    return (async function () {
+                        const response = await fetch(defaultUri + '.br', { cache: 'no-cache' });
+                        if (!response.ok)
+                            throw new Error(response.statusText);
+                        const originalResponseBuffer = await response.arrayBuffer();
+                        const originalResponseArray = new Int8Array(originalResponseBuffer);
+                        const contentType = (type === 'dotnetwasm')
+                            ? 'application/wasm'
+                            : 'application/octet-stream';
+                        const decompressedResponseArray = BrotliDecode(originalResponseArray);
+                        return new Response(decompressedResponseArray,
+                            {
+                                headers: { 'content-type': contentType }
+                            });
+                    })();
+                }
+            }
+        });
+    </script>
+
+    <script src="_content/nkast.Wasm.JSInterop/js/JSObject.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Window.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Document.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Navigator.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Gamepad.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Dom/js/Media.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.XHR/js/XHR.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Canvas/js/Canvas.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Canvas/js/CanvasGLContext.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Audio/js/Audio.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.XR/js/XR.8.0.10.js"></script>
+    <script src="_content/nkast.Wasm.Clipboard/js/Clipboard.8.0.10.js"></script>
+
+    <script src="js/monaco-interop.js"></script>
+
+    <script>
+        function tickJS() {
+            // Sync canvas drawing buffer to its container each frame
+            var canvas = document.getElementById('theCanvas');
+            var holder = document.getElementById('canvasHolder');
+            if (canvas && holder) {
+                var w = holder.clientWidth;
+                var h = holder.clientHeight;
+                if (canvas.width !== w || canvas.height !== h) {
+                    canvas.width = w;
+                    canvas.height = h;
+                    // Notify KNI to update back buffer/viewport via GraphicsDeviceManager
+                    window.theInstance.invokeMethod('OnCanvasResized', w, h);
+                }
+            }
+            window.theInstance.invokeMethod('TickDotNet');
+            window.requestAnimationFrame(tickJS);
+        }
+
+        // Splitter + layout logic (left/right, ratio-based)
+        (function () {
+            var splitRatio = 0.45; // fraction of viewport width for editor
+            var dragging = false;
+            var splitterW = 5;
+
+            function applyLayout() {
+                var panel = document.getElementById('editorPanel');
+                var spl = document.getElementById('splitter');
+                var holder = document.getElementById('canvasHolder');
+                if (!panel || !spl || !holder) return;
+
+                var w = window.innerWidth;
+                var x = Math.round(splitRatio * w);
+                panel.style.width = x + 'px';
+                spl.style.left = x + 'px';
+                holder.style.left = (x + splitterW) + 'px';
+            }
+
+            function initSplitter() {
+                var spl = document.getElementById('splitter');
+                if (!spl) return;
+
+                spl.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    dragging = true;
+                    document.body.style.cursor = 'ew-resize';
+                    document.body.style.userSelect = 'none';
+                });
+
+                document.addEventListener('mousemove', function (e) {
+                    if (!dragging) return;
+                    var w = window.innerWidth;
+                    var x = Math.max(200, Math.min(e.clientX, w - 200));
+                    splitRatio = x / w;
+                    applyLayout();
+                });
+
+                document.addEventListener('mouseup', function () {
+                    if (!dragging) return;
+                    dragging = false;
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                });
+
+                window.addEventListener('resize', applyLayout);
+
+                // Apply pixel positions immediately (replaces CSS calc values)
+                applyLayout();
+            }
+
+            var observer = new MutationObserver(function () {
+                if (document.getElementById('splitter')) {
+                    observer.disconnect();
+                    initSplitter();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+
+        window.initRenderJS = (instance) => {
+            if (!globalThis.Module)
+                globalThis.Module = Blazor.runtime.Module;
+
+            if (typeof Blazor.platform.getArrayLength !== "function")
+            {
+                Object.assign(Blazor.platform,
+                {
+                    getArrayLength: function (arr) {
+                        var arrPtr = Blazor.platform.getArrayEntryPtr(arr, 0, 4);
+                        return Module.HEAP32[(arrPtr - 4) >> 2];
+                    }
+                });
+            }
+
+            window.theInstance = instance;
+
+            var canvas = document.getElementById('theCanvas');
+            var holder = document.getElementById('canvasHolder');
+            canvas.width = holder.clientWidth;
+            canvas.height = holder.clientHeight;
+            canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+            window.requestAnimationFrame(tickJS);
+        };
+
+    </script>
+
+</body>
+
+</html>

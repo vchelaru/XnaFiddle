@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.flatredball.com)",
+      "WebFetch(domain:www.nuget.org)",
+      "Bash(dotnet add:*)"
+    ]
+  }
+}
