@@ -81,7 +81,12 @@ namespace XnaFiddle.Pages
                 }
 
                 string hash = await JsRuntime.InvokeAsync<string>("eval", "window.location.hash");
-                if (hash.StartsWith("#code="))
+                if (hash.StartsWith("#snippet="))
+                {
+                    await LoadFromSnippet(hash.Substring(9));
+                    autoCompile = true;
+                }
+                else if (hash.StartsWith("#code="))
                 {
                     await LoadFromCode(hash.Substring(6));
                     autoCompile = true;
@@ -297,6 +302,29 @@ namespace XnaFiddle.Pages
             catch (Exception e)
             {
                 _statusMessage = "Share failed.";
+                _statusColor = "#f48771";
+                _diagnosticsOutput = e.Message;
+            }
+
+            StateHasChanged();
+        }
+
+        private async Task LoadFromSnippet(string encoded)
+        {
+            try
+            {
+                string json = UrlCodec.Decode(encoded);
+                string code = SnippetExpander.Expand(json);
+
+                if (_monacoReady)
+                    await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
+
+                _statusMessage = "Loaded from snippet link.";
+                _statusColor = "#4ec9b0";
+            }
+            catch (Exception e)
+            {
+                _statusMessage = "Failed to load snippet.";
                 _statusColor = "#f48771";
                 _diagnosticsOutput = e.Message;
             }
