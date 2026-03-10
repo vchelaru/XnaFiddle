@@ -96,7 +96,7 @@
                     display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 28px;">
             @if (_assets.Count == 0)
             {
-                <span style="color: #888; font-size: 12px; font-style: italic;">Drop image files onto the canvas</span>
+                <span style="color: #888; font-size: 12px; font-style: italic;">Drop files onto the canvas &mdash; supported: <span style="font-style: normal; color: #9cdcfe;">.png &nbsp;.fnt</span></span>
             }
             else
             {
@@ -112,6 +112,16 @@
                               style="color: #9cdcfe; cursor: pointer;"
                               title="Click to copy load code">@name</span>
                         <span style="color: #888;">@sizeKb</span>
+                        @if (asset.FntTextures != null)
+                        {
+                            foreach (var tex in asset.FntTextures)
+                            {
+                                if (!InMemoryContentManager.Files.ContainsKey(tex))
+                                {
+                                    <span style="color: #f48771;" title="Missing texture — drop this file onto the canvas">&#9888; @tex</span>
+                                }
+                            }
+                        }
                         <button @onclick="() => RemoveAsset(name)"
                                 style="background: none; border: none; color: #888; cursor: pointer;
                                        font-size: 14px; padding: 0 2px; line-height: 1;"

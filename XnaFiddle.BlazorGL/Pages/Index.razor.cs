@@ -37,6 +37,7 @@ namespace XnaFiddle.Pages
         {
             public string FileName;
             public int Size;
+            public string[] FntTextures; // non-null for .fnt files: texture filenames referenced by page lines
         }
 
         struct PackageInfo
@@ -109,20 +110,58 @@ namespace XnaFiddle.Pages
 
         }
 
+        static readonly HashSet<string> SupportedAssetExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".png", ".fnt"
+        };
+
         [JSInvokable]
         public void OnFileDropped(string fileName, string base64Data)
         {
+            string ext = System.IO.Path.GetExtension(fileName);
+            if (!SupportedAssetExtensions.Contains(ext))
+            {
+                _statusMessage = $"Unsupported file: {fileName} (supported: .png, .fnt)";
+                _statusColor = "#f48771";
+                _assetsOpen = true;
+                StateHasChanged();
+                return;
+            }
+
             byte[] data = Convert.FromBase64String(base64Data);
             InMemoryContentManager.AddFile(fileName, data);
 
+            string[] fntTextures = null;
+            if (fileName.EndsWith(".fnt", StringComparison.OrdinalIgnoreCase))
+                fntTextures = ParseFntTextures(data);
+
             // Update UI list (replace if same name)
             _assets.RemoveAll(a => string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
-            _assets.Add(new AssetInfo { FileName = fileName, Size = data.Length });
+            _assets.Add(new AssetInfo { FileName = fileName, Size = data.Length, FntTextures = fntTextures });
             _assetsOpen = true;
 
             _statusMessage = "Loaded: " + fileName;
             _statusColor = "#4ec9b0";
             StateHasChanged();
+        }
+
+        private static string[] ParseFntTextures(byte[] data)
+        {
+            // Parse lines like: page id=0 file="Font10Arial_0.png"
+            string text = System.Text.Encoding.UTF8.GetString(data);
+            var results = new List<string>();
+            foreach (string line in text.Split('\n'))
+            {
+                string trimmed = line.TrimStart();
+                if (!trimmed.StartsWith("page ")) continue;
+                int fileIdx = trimmed.IndexOf("file=\"", StringComparison.Ordinal);
+                if (fileIdx < 0) continue;
+                int start = fileIdx + 6;
+                int end = trimmed.IndexOf('"', start);
+                if (end < 0) continue;
+                results.Add(trimmed.Substring(start, end - start));
+            }
+            return results.ToArray();
         }
 
         private async Task CopyEditorContent()
