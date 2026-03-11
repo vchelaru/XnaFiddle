@@ -46,9 +46,9 @@ public class SecurityCheckerTests
         // Collect assembly locations via typeof() — reliable across runtime versions.
         var locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            typeof(object).Assembly.Location,                // System.Runtime
-            typeof(System.IO.File).Assembly.Location,        // System.IO.FileSystem
-            typeof(System.IO.Stream).Assembly.Location,      // System.Runtime / System.IO
+            typeof(object).Assembly.Location,                                   // System.Runtime
+            typeof(System.IO.File).Assembly.Location,                           // System.IO.FileSystem
+            typeof(System.IO.Stream).Assembly.Location,
             typeof(System.IO.MemoryStream).Assembly.Location,
             typeof(System.IO.BinaryReader).Assembly.Location,
             typeof(System.Net.Http.HttpClient).Assembly.Location,
@@ -61,11 +61,30 @@ public class SecurityCheckerTests
             typeof(System.AppDomain).Assembly.Location,
             typeof(System.Environment).Assembly.Location,
             typeof(System.Linq.Enumerable).Assembly.Location,
+            typeof(System.Linq.Expressions.Expression).Assembly.Location,       // System.Linq.Expressions
+            typeof(System.Runtime.CompilerServices.Unsafe).Assembly.Location,   // System.Runtime.CompilerServices.Unsafe
             typeof(System.Collections.Generic.List<>).Assembly.Location,
             // Roslyn itself (tests blocking Microsoft.CodeAnalysis usage).
             typeof(CSharpCompilation).Assembly.Location,
             typeof(Compilation).Assembly.Location,
         };
+
+        // Assemblies that are copied to the output dir but not directly referenced
+        // by the test project (Blazor / KNI interop assemblies).
+        string[] outputDirDlls =
+        [
+            "Microsoft.JSInterop.dll",
+            "nkast.Wasm.Clipboard.dll",       // assembly name; namespace is nkast.Wasm.WebClipboard
+            "nkast.Wasm.JSInterop.dll",        // needed for Clipboard base type resolution
+            "nkast.Wasm.Dom.dll",
+        ];
+        string baseDir = AppContext.BaseDirectory;
+        foreach (string dll in outputDirDlls)
+        {
+            string path = Path.Combine(baseDir, dll);
+            if (File.Exists(path))
+                locations.Add(path);
+        }
 
         return [.. locations.Select(l => MetadataReference.CreateFromFile(l))];
     }
@@ -99,6 +118,176 @@ public class SecurityCheckerTests
             class C { void M() { var a = System.Reflection.Assembly.GetExecutingAssembly(); } }
             """);
         Assert.True(HasError(errors, "System.Reflection"));
+    }
+
+    [Fact]
+    public void Reflection_MethodInfo_Invoke_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Reflection;
+            class C { void M() { MethodInfo mi = typeof(string).GetMethod("ToString"); mi.Invoke("hi", null); } }
+            """);
+        Assert.True(HasError(errors, "System.Reflection"));
+    }
+
+    [Fact]
+    public void Reflection_FieldInfo_GetValue_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Reflection;
+            class C { int x; void M() { FieldInfo fi = GetType().GetField("x"); fi.GetValue(this); } }
+            """);
+        Assert.True(HasError(errors, "System.Reflection"));
+    }
+
+    [Fact]
+    public void Reflection_FieldInfo_SetValue_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Reflection;
+            class C { int x; void M() { FieldInfo fi = GetType().GetField("x"); fi.SetValue(this, 42); } }
+            """);
+        Assert.True(HasError(errors, "System.Reflection"));
+    }
+
+    [Fact]
+    public void Reflection_PropertyInfo_GetValue_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Reflection;
+            class C { int X { get; set; } void M() { PropertyInfo pi = GetType().GetProperty("X"); pi.GetValue(this); } }
+            """);
+        Assert.True(HasError(errors, "System.Reflection"));
+    }
+
+    [Fact]
+    public void Reflection_PropertyInfo_SetValue_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Reflection;
+            class C { int X { get; set; } void M() { PropertyInfo pi = GetType().GetProperty("X"); pi.SetValue(this, 99); } }
+            """);
+        Assert.True(HasError(errors, "System.Reflection"));
+    }
+
+    [Fact]
+    public void Reflection_BindingFlags_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Reflection;
+            class C { void M() { var flags = BindingFlags.NonPublic | BindingFlags.Instance; } }
+            """);
+        Assert.True(HasError(errors, "System.Reflection"));
+    }
+
+    [Fact]
+    public void Activator_CreateInstance_IsBlocked()
+    {
+        var errors = Check("""
+            class C { void M() { object o = System.Activator.CreateInstance(typeof(string)); } }
+            """);
+        Assert.True(HasError(errors, "System.Activator"));
+    }
+
+    // ── Forbidden: System.Linq.Expressions ───────────────────────────────────
+
+    [Fact]
+    public void LinqExpressions_Compile_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Linq.Expressions;
+            class C { void M() { Expression<System.Func<int>> e = () => 42; var f = e.Compile(); } }
+            """);
+        Assert.True(HasError(errors, "System.Linq.Expressions"));
+    }
+
+    [Fact]
+    public void LinqExpressions_ExpressionCall_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Linq.Expressions;
+            class C { void M() { var e = Expression.Constant(42); } }
+            """);
+        Assert.True(HasError(errors, "System.Linq.Expressions"));
+    }
+
+    // ── Forbidden: System.Runtime.CompilerServices.Unsafe ────────────────────
+
+    [Fact]
+    public void CompilerServices_Unsafe_As_IsBlocked()
+    {
+        var errors = Check("""
+            class C { void M() { int x = 0; ref int r = ref System.Runtime.CompilerServices.Unsafe.AsRef(ref x); } }
+            """);
+        Assert.True(HasError(errors, "System.Runtime.CompilerServices.Unsafe"));
+    }
+
+    [Fact]
+    public void CompilerServices_Unsafe_Add_IsBlocked()
+    {
+        var errors = Check("""
+            using System.Runtime.CompilerServices;
+            class C { void M(ref int x) { ref int next = ref Unsafe.Add(ref x, 1); } }
+            """);
+        Assert.True(HasError(errors, "System.Runtime.CompilerServices.Unsafe"));
+    }
+
+    // ── Forbidden: Microsoft.JSInterop ───────────────────────────────────────
+
+    [Fact]
+    public void JSInterop_IJSRuntime_IsBlocked()
+    {
+        var errors = Check("""
+            using Microsoft.JSInterop;
+            class C { void M(IJSRuntime js) { js.InvokeVoidAsync("eval", "alert(1)"); } }
+            """);
+        Assert.True(HasError(errors, "Microsoft.JSInterop"));
+    }
+
+    [Fact]
+    public void JSInterop_JSRuntime_IsBlocked()
+    {
+        var errors = Check("""
+            using Microsoft.JSInterop;
+            class C { void M(JSRuntime js) { } }
+            """);
+        Assert.True(HasError(errors, "Microsoft.JSInterop"));
+    }
+
+    // ── Forbidden: nkast.Wasm.WebClipboard ───────────────────────────────────
+
+    [Fact]
+    public void WasmClipboard_IsBlocked()
+    {
+        var errors = Check("""
+            using nkast.Wasm.WebClipboard;
+            class C { void M(Clipboard cb) { } }
+            """);
+        Assert.True(HasError(errors, "nkast.Wasm.WebClipboard"));
+    }
+
+    // ── Allowed: System.Linq (LINQ queries must still work) ──────────────────
+
+    [Fact]
+    public void Linq_Where_IsAllowed()
+    {
+        var errors = Check("""
+            using System.Linq;
+            using System.Collections.Generic;
+            class C { void M() { var xs = new List<int> { 1, 2 }.Where(x => x > 1); } }
+            """);
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void Linq_Select_IsAllowed()
+    {
+        var errors = Check("""
+            using System.Linq;
+            using System.Collections.Generic;
+            class C { void M() { var xs = new List<int> { 1, 2 }.Select(x => x * 2); } }
+            """);
+        Assert.Empty(errors);
     }
 
     // ── Forbidden: System.Net ─────────────────────────────────────────────────

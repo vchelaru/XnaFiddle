@@ -12,14 +12,17 @@ namespace XnaFiddle
         [
             "System.Reflection",
             "System.Reflection.Emit",
+            "System.Linq.Expressions",
             "System.Runtime.InteropServices.JavaScript",
             "System.Runtime.InteropServices",
             "System.Net",
             "System.Security",
             "Microsoft.CodeAnalysis",
+            "Microsoft.JSInterop",
             "nkast.Wasm.Dom",
             "nkast.Wasm.XHR",
             "nkast.Wasm.JSInterop",
+            "nkast.Wasm.WebClipboard",
         ];
 
         // Specific types forbidden in user code (namespace not fully blocked).
@@ -31,8 +34,10 @@ namespace XnaFiddle
             "System.Diagnostics.Process",
             "System.AppDomain",
             "System.Runtime.Loader.AssemblyLoadContext",
+            "System.Runtime.CompilerServices.Unsafe",
             "System.Threading.Thread",
             "System.Environment",
+            "System.Activator",
         ];
 
         // Walks the syntax tree using the semantic model and returns errors for any
