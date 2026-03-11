@@ -14,12 +14,20 @@ namespace XnaFiddle.Pages
 {
     public partial class Index
     {
+        // Status/diagnostics color palette — update here to retheme both panels at once.
+        // static readonly rather than const: Razor generates a second partial class file and
+        // const evaluation across partial parts can produce CS0110 circular definition errors.
+        static readonly string ColorSuccess = "#4ec9b0";
+        static readonly string ColorError   = "#f48771";
+        static readonly string ColorPending = "#dcdcaa";
+        static readonly string ColorMuted   = "#888";
+
         Game _game;
 
         string _diagnosticsOutput = "";
-        string _diagnosticsColor = "#888";
+        string _diagnosticsColor = ColorMuted;
         string _statusMessage = "";
-        string _statusColor = "#4ec9b0";
+        string _statusColor = ColorSuccess;
         bool _isCompiling;
         bool _pendingCompile;
         bool _monacoReady;
@@ -143,13 +151,21 @@ namespace XnaFiddle.Pages
             if (!SupportedAssetExtensions.Contains(ext))
             {
                 _statusMessage = $"Unsupported file: {fileName} (supported: .png, .fnt)";
-                _statusColor = "#f48771";
+                _statusColor = ColorError;
                 _assetsOpen = true;
                 StateHasChanged();
                 return;
             }
 
             byte[] data = Convert.FromBase64String(base64Data);
+            if (data.Length > 10 * 1024 * 1024)
+            {
+                _statusMessage = $"File too large: {fileName} (max 10 MB)";
+                _statusColor = ColorError;
+                _assetsOpen = true;
+                StateHasChanged();
+                return;
+            }
             InMemoryContentManager.AddFile(fileName, data);
 
             string[] fntTextures = null;
@@ -162,7 +178,7 @@ namespace XnaFiddle.Pages
             _assetsOpen = true;
 
             _statusMessage = "Loaded: " + fileName;
-            _statusColor = "#4ec9b0";
+            _statusColor = ColorSuccess;
             StateHasChanged();
         }
 
@@ -178,6 +194,8 @@ namespace XnaFiddle.Pages
                 int fileIdx = trimmed.IndexOf("file=\"", StringComparison.Ordinal);
                 if (fileIdx < 0) continue;
                 int start = fileIdx + 6;
+                // IndexOf(char, startIndex) returns -1 or a value >= start, so end < start
+                // is impossible and end - start is always non-negative when end >= 0.
                 int end = trimmed.IndexOf('"', start);
                 if (end < 0) continue;
                 results.Add(trimmed.Substring(start, end - start));
@@ -195,8 +213,10 @@ namespace XnaFiddle.Pages
         private async Task CopyToClipboard(string text)
         {
             await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            _statusMessage = "Copied: " + text;
-            _statusColor = "#4ec9b0";
+            // Don't echo the copied text into the status bar — it can be arbitrarily large
+            // (e.g. full editor content) and would produce a useless wall of text in the UI.
+            _statusMessage = "Copied to clipboard.";
+            _statusColor = ColorSuccess;
             StateHasChanged();
         }
 
@@ -213,9 +233,9 @@ namespace XnaFiddle.Pages
             _game = null;
             int seconds = (int)(frameMs / 1000);
             _diagnosticsOutput = $"Game stopped: a frame blocked for {seconds}s. Check for infinite loops or excessive work in Update/Draw.";
-            _diagnosticsColor = "#f48771";
+            _diagnosticsColor = ColorError;
             _statusMessage = "Stopped (frame timeout).";
-            _statusColor = "#f48771";
+            _statusColor = ColorError;
             StateHasChanged();
         }
 
@@ -245,6 +265,9 @@ namespace XnaFiddle.Pages
                 _ = DoCompileAndRun();
             }
 
+            // No interlocked read needed: Blazor WASM is single-threaded. The only
+            // interleaving points are await boundaries, and DoCompileAndRun() has none
+            // between _game = null and _game = newGame, so this null check is sufficient.
             if (_game == null)
                 return;
 
@@ -255,7 +278,7 @@ namespace XnaFiddle.Pages
             catch (Exception e)
             {
                 _diagnosticsOutput = "Runtime error: " + e.Message;
-                _diagnosticsColor = "#f48771";
+                _diagnosticsColor = ColorError;
                 _game = null;
                 StateHasChanged();
             }
@@ -270,7 +293,7 @@ namespace XnaFiddle.Pages
             _pendingCompile = true;
             _diagnosticsOutput = "";
             _statusMessage = "Compiling...";
-            _statusColor = "#dcdcaa";
+            _statusColor = ColorPending;
             _compileProgress = 0;
             _compileTotal = 0;
             _compileStartTime = DateTime.Now;
@@ -298,7 +321,7 @@ namespace XnaFiddle.Pages
                 string versionNote = string.IsNullOrEmpty(result.VersionInfo) ? "" : $"\n{result.VersionInfo}";
                 _diagnosticsOutput = $"Compiled in {compileSeconds:0.0}s" + failedNote + versionNote +
                     (string.IsNullOrEmpty(result.Log) ? "" : "\n" + result.Log);
-                _diagnosticsColor = result.Success ? "#888" : "#f48771";
+                _diagnosticsColor = result.Success ? ColorMuted : ColorError;
 
                 // Send diagnostics to Monaco as inline markers
                 if (_monacoReady)
@@ -312,7 +335,7 @@ namespace XnaFiddle.Pages
                 if (result.Success && result.ILBytes != null)
                 {
                     _statusMessage = "Loading game...";
-                    _statusColor = "#4ec9b0";
+                    _statusColor = ColorSuccess;
                     StateHasChanged();
 
                     // Load the compiled assembly directly in-memory
@@ -326,6 +349,8 @@ namespace XnaFiddle.Pages
                         // GC will reclaim the old game eventually; this is acceptable in a fiddle context.
                         _game = null;
 
+                        // NOTE: Everything between here and _game = newGame is synchronous —
+                        // no awaits, so TickDotNet() cannot be called in this window (WASM is single-threaded).
                         CleanUpGameWindowRegistry();
                         CleanUpGumService();
 
@@ -343,26 +368,23 @@ namespace XnaFiddle.Pages
                         }
                         _game = newGame;
                         _statusMessage = "Running.";
-                        _statusColor = "#4ec9b0";
+                        _statusColor = ColorSuccess;
                     }
                     else
                     {
                         _statusMessage = "No class extending Game found.";
-                        _statusColor = "#f48771";
+                        _statusColor = ColorError;
                     }
                 }
                 else
                 {
                     _statusMessage = "Compilation failed.";
-                    _statusColor = "#f48771";
+                    _statusColor = ColorError;
                 }
             }
             catch (Exception e)
             {
-                _diagnosticsOutput = e.ToString();
-                _diagnosticsColor = "#f48771";
-                _statusMessage = "Error.";
-                _statusColor = "#f48771";
+                SetError("Error.", e.ToString());
             }
 
             _isCompiling = false;
@@ -380,13 +402,11 @@ namespace XnaFiddle.Pages
                 await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", shareUrl);
 
                 _statusMessage = "Link copied!";
-                _statusColor = "#4ec9b0";
+                _statusColor = ColorSuccess;
             }
             catch (Exception e)
             {
-                _statusMessage = "Share failed.";
-                _statusColor = "#f48771";
-                _diagnosticsOutput = e.Message;
+                SetError("Share failed.", e.Message);
             }
 
             StateHasChanged();
@@ -403,13 +423,11 @@ namespace XnaFiddle.Pages
                     await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
 
                 _statusMessage = "Loaded from snippet link.";
-                _statusColor = "#4ec9b0";
+                _statusColor = ColorSuccess;
             }
             catch (Exception e)
             {
-                _statusMessage = "Failed to load snippet.";
-                _statusColor = "#f48771";
-                _diagnosticsOutput = e.Message;
+                SetError("Failed to load snippet.", e.Message);
             }
 
             StateHasChanged();
@@ -425,13 +443,11 @@ namespace XnaFiddle.Pages
                     await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
 
                 _statusMessage = "Loaded from link.";
-                _statusColor = "#4ec9b0";
+                _statusColor = ColorSuccess;
             }
             catch (Exception e)
             {
-                _statusMessage = "Failed to load from link.";
-                _statusColor = "#f48771";
-                _diagnosticsOutput = e.Message;
+                SetError("Failed to load from link.", e.Message);
             }
 
             StateHasChanged();
@@ -449,9 +465,7 @@ namespace XnaFiddle.Pages
             }
             catch (Exception e)
             {
-                _statusMessage = "Failed to open gist site.";
-                _statusColor = "#f48771";
-                _diagnosticsOutput = e.Message;
+                SetError("Failed to open gist site.", e.Message);
             }
 
             StateHasChanged();
@@ -487,8 +501,18 @@ namespace XnaFiddle.Pages
                     gistId = parts[^1];
                 }
 
+                // Gist IDs are hex strings — if the extracted value is empty or contains a dot
+                // it's still a domain/path fragment, not a valid ID.
+                if (string.IsNullOrEmpty(gistId) || gistId.Contains('.'))
+                {
+                    _statusMessage = "Invalid gist URL or ID.";
+                    _statusColor = ColorError;
+                    StateHasChanged();
+                    return false;
+                }
+
                 _statusMessage = "Loading gist...";
-                _statusColor = "#dcdcaa";
+                _statusColor = ColorPending;
                 StateHasChanged();
 
                 var request = new HttpRequestMessage(HttpMethod.Get,
@@ -500,7 +524,7 @@ namespace XnaFiddle.Pages
                 if (!response.IsSuccessStatusCode)
                 {
                     _statusMessage = $"Gist not found ({(int)response.StatusCode}).";
-                    _statusColor = "#f48771";
+                    _statusColor = ColorError;
                     StateHasChanged();
                     return false;
                 }
@@ -527,7 +551,7 @@ namespace XnaFiddle.Pages
                 if (code == null)
                 {
                     _statusMessage = "No .cs or .txt file found in gist.";
-                    _statusColor = "#f48771";
+                    _statusColor = ColorError;
                     StateHasChanged();
                     return false;
                 }
@@ -539,16 +563,14 @@ namespace XnaFiddle.Pages
                     $"history.replaceState(null,'','?gist={Uri.EscapeDataString(gistId)}')");
 
                 _statusMessage = "Gist loaded.";
-                _statusColor = "#4ec9b0";
+                _statusColor = ColorSuccess;
                 _selectedExample = "";
                 StateHasChanged();
                 return true;
             }
             catch (Exception e)
             {
-                _statusMessage = "Failed to load gist.";
-                _statusColor = "#f48771";
-                _diagnosticsOutput = e.Message;
+                SetError("Failed to load gist.", e.Message);
                 StateHasChanged();
                 return false;
             }
@@ -611,6 +633,17 @@ namespace XnaFiddle.Pages
 
 
 
+        // Sets both status bar and diagnostics panel to an error state together.
+        // Always use this for error paths — setting them individually risks leaving
+        // _diagnosticsColor in a stale neutral state while showing red error text.
+        private void SetError(string statusMessage, string diagnosticsDetail)
+        {
+            _statusMessage = statusMessage;
+            _statusColor = ColorError;
+            _diagnosticsOutput = diagnosticsDetail;
+            _diagnosticsColor = ColorError;
+        }
+
         private static void CleanUpGumService()
         {
             try
@@ -657,7 +690,13 @@ namespace XnaFiddle.Pages
                 var isInitProp = gumServiceType.GetProperty("IsInitialized", BindingFlags.Instance | BindingFlags.Public);
                 isInitProp?.SetValue(gumService, false);
             }
-            catch { }
+            catch (Exception e)
+            {
+                // Log but don't rethrow — partial cleanup is better than aborting the run.
+                // This uses reflection against KniGum internals, so failures here are most
+                // likely caused by a KniGum API change and will show up clearly in the console.
+                Console.WriteLine($"[XnaFiddle] CleanUpGumService failed: {e}");
+            }
         }
 
         private static void CleanUpGameWindowRegistry()
@@ -669,7 +708,13 @@ namespace XnaFiddle.Pages
                 if (field?.GetValue(null) is System.Collections.IDictionary dict)
                     dict.Clear();
             }
-            catch { }
+            catch
+            {
+                // Intentionally swallowed. This reflects a single well-known field on a type
+                // in our own codebase (_instances on BlazorGameWindow). The only realistic
+                // failure is a refactor that renames the field, which would be caught immediately
+                // in development. There is nothing actionable to do if this fails at runtime.
+            }
         }
 
         private static Type FindGameType(Assembly assembly)

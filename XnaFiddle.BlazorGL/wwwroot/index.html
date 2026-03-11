@@ -250,9 +250,19 @@
         };
 
         window.initRenderJS = (instance) => {
-            if (!globalThis.Module)
+            // KNI's JS files (Canvas.8.0.10.js etc.) expect the Emscripten Module object on
+            // globalThis. Blazor no longer exposes it there by default, so we bridge the gap.
+            // Blazor.runtime.Module is an internal API — if it moves in a future Blazor version
+            // this will throw here with a clear message rather than failing silently later in KNI.
+            if (!globalThis.Module) {
+                if (!Blazor.runtime?.Module)
+                    throw new Error("[XnaFiddle] Blazor.runtime.Module is not available. " +
+                        "The Blazor runtime internal API may have changed. Update the Module shim in index.html.");
                 globalThis.Module = Blazor.runtime.Module;
+            }
 
+            // KNI also calls Blazor.platform.getArrayLength, which was removed from Blazor's
+            // public surface. Polyfill it if absent so KNI array interop continues to work.
             if (typeof Blazor.platform.getArrayLength !== "function")
             {
                 Object.assign(Blazor.platform,
