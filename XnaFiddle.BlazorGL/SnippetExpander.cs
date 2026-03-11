@@ -42,8 +42,10 @@ namespace XnaFiddle
             if (model.IsGum)
             {
                 usings.Add("MonoGameGum");
+                usings.Add("MonoGameGum.GueDeriving");
                 usings.Add("Gum.Forms");
                 usings.Add("Gum.Forms.Controls");
+                usings.Add("Gum.Mvvm");
                 members.Add("GumService GumUI => GumService.Default;");
                 postInitialize.Add("GumUI.Initialize(this, DefaultVisualsVersion.V3);");
                 preUpdate.Add("GumUI.Update(gameTime);");

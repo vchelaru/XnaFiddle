@@ -3,7 +3,9 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Apos.Shapes;
 using MonoGameGum;
+using MonoGameGum.GueDeriving;
 using Gum.Forms;
+using Gum.Mvvm;
 using Gum.Forms.Controls;
 
 public class MyGame : Game

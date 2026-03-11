@@ -28,6 +28,7 @@ namespace XnaFiddle
             "nkast.Wasm.Media",
             "nkast.Wasm.XR",
             "TextCopy",
+            "Kni.Platform",
         ];
 
         // Specific types forbidden in user code (namespace not fully blocked).
