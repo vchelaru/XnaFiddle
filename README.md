@@ -65,9 +65,13 @@ xnafiddle-encode code 'public class FiddleGame : Game { ... }'
 # Encode a snippet JSON file or string
 xnafiddle-encode snippet --file mygame.snippet.json
 xnafiddle-encode snippet '{"members":"int _x;","draw":"..."}'
+
+# Encode multiple items in one call — outputs one URL per item
+xnafiddle-encode code 'cs1' code 'cs2' snippet '{"draw":"..."}'
+xnafiddle-encode code --file a.cs snippet --file b.json code 'inline cs'
 ```
 
-The tool prints the complete URL fragment (`#code=...` or `#snippet=...`) ready to append to `https://xnafiddle.net/`.
+The tool prints one complete URL per item (`https://xnafiddle.net/#code=...` or `https://xnafiddle.net/#snippet=...`), one per line. Multiple items can be passed in a single invocation — useful when generating many links at once.
 
 ---
 

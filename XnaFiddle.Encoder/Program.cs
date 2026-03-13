@@ -6,7 +6,11 @@ using System.Text;
 // xnafiddle-encode code 'using System; public class MyGame : Game { ... }'
 // xnafiddle-encode code --file MyGame.cs
 //
-// Always outputs a single line: the full xnafiddle.net URL, ready to paste.
+// Multiple items in one call (outputs one URL per item):
+// xnafiddle-encode code 'cs1' code 'cs2' snippet 'json1'
+// xnafiddle-encode code --file a.cs snippet --file b.json code 'inline cs'
+//
+// Always outputs one URL per item, each on its own line.
 
 if (args.Length < 2)
 {
@@ -15,40 +19,64 @@ if (args.Length < 2)
     Console.Error.WriteLine("  xnafiddle-encode snippet --file <path>");
     Console.Error.WriteLine("  xnafiddle-encode code '<csharp>'");
     Console.Error.WriteLine("  xnafiddle-encode code --file <path>");
+    Console.Error.WriteLine("");
+    Console.Error.WriteLine("Multiple items (one URL per item):");
+    Console.Error.WriteLine("  xnafiddle-encode code 'cs1' snippet 'json1' code --file a.cs");
     return 1;
 }
 
-string mode = args[0].ToLowerInvariant();
-if (mode != "snippet" && mode != "code")
+// Parse all mode+value pairs from args
+var items = new List<(string mode, string input)>();
+int i = 0;
+while (i < args.Length)
 {
-    Console.Error.WriteLine($"Unknown mode '{args[0]}'. Use 'snippet' or 'code'.");
-    return 1;
-}
-
-string input;
-if (args[1] == "--file")
-{
-    if (args.Length < 3)
+    string mode = args[i].ToLowerInvariant();
+    if (mode != "snippet" && mode != "code")
     {
-        Console.Error.WriteLine("--file requires a path argument.");
+        Console.Error.WriteLine($"Unknown mode '{args[i]}'. Use 'snippet' or 'code'.");
         return 1;
     }
-    string path = args[2];
-    if (!File.Exists(path))
+    i++;
+
+    if (i >= args.Length)
     {
-        Console.Error.WriteLine($"File not found: {path}");
+        Console.Error.WriteLine($"Mode '{mode}' requires a value or '--file <path>'.");
         return 1;
     }
-    input = File.ReadAllText(path, Encoding.UTF8);
-}
-else
-{
-    input = args[1];
+
+    string input;
+    if (args[i] == "--file")
+    {
+        i++;
+        if (i >= args.Length)
+        {
+            Console.Error.WriteLine("--file requires a path argument.");
+            return 1;
+        }
+        string path = args[i];
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"File not found: {path}");
+            return 1;
+        }
+        input = File.ReadAllText(path, Encoding.UTF8);
+        i++;
+    }
+    else
+    {
+        input = args[i];
+        i++;
+    }
+
+    items.Add((mode, input));
 }
 
-string encoded = Encode(input);
-string param   = mode == "snippet" ? "snippet" : "code";
-Console.WriteLine($"https://xnafiddle.net/#{param}={encoded}");
+foreach (var (mode, input) in items)
+{
+    string encoded = Encode(input);
+    string param   = mode == "snippet" ? "snippet" : "code";
+    Console.WriteLine($"https://xnafiddle.net/#{param}={encoded}");
+}
 return 0;
 
 static string Encode(string text)
