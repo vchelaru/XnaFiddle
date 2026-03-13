@@ -68,7 +68,14 @@
         {
             <span style="color: @_statusColor; font-size: 13px;">@_statusMessage</span>
         }
-        <span style="margin-left: auto; color: #555; font-size: 11px; white-space: nowrap;" title="Version">built @BuildTimeLocal</span>
+        <a href="https://github.com/vchelaru/XnaFiddle" target="_blank" title="About XnaFiddle"
+           style="margin-left: auto; padding: 4px 8px; background: #3c3c3c; color: #d4d4d4;
+                  border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;
+                  text-decoration: none; opacity: 0.7; transition: opacity 0.15s;"
+           onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+            <i class="codicon codicon-question"></i>
+        </a>
+        <span style="color: #555; font-size: 11px; white-space: nowrap;" title="Version">built @BuildTimeLocal</span>
     </div>
 
     @if (_isCompiling)
