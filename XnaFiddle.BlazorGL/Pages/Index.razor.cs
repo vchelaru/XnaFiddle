@@ -156,13 +156,13 @@ namespace XnaFiddle.Pages
                 string hash = await JsRuntime.InvokeAsync<string>("eval", "window.location.hash");
                 if (hash.StartsWith("#snippet="))
                 {
-                    await LoadFromSnippet(hash.Substring(9));
-                    autoCompile = true;
+                    if (await LoadFromSnippet(hash.Substring(9)))
+                        autoCompile = true;
                 }
                 else if (hash.StartsWith("#code="))
                 {
-                    await LoadFromCode(hash.Substring(6));
-                    autoCompile = true;
+                    if (await LoadFromCode(hash.Substring(6)))
+                        autoCompile = true;
                 }
 
                 if (autoCompile)
@@ -591,7 +591,7 @@ namespace XnaFiddle.Pages
             await CopyToClipboard(url);
         }
 
-        private async Task LoadFromSnippet(string encoded)
+        private async Task<bool> LoadFromSnippet(string encoded)
         {
             try
             {
@@ -603,16 +603,18 @@ namespace XnaFiddle.Pages
 
                 _statusMessage = "Loaded from snippet link.";
                 _statusColor = ColorSuccess;
+                StateHasChanged();
+                return true;
             }
             catch (Exception e)
             {
-                SetError("Failed to load snippet.", e.Message);
+                SetError("Invalid snippet link.", e.Message);
+                StateHasChanged();
+                return false;
             }
-
-            StateHasChanged();
         }
 
-        private async Task LoadFromCode(string encoded)
+        private async Task<bool> LoadFromCode(string encoded)
         {
             try
             {
@@ -623,13 +625,15 @@ namespace XnaFiddle.Pages
 
                 _statusMessage = "Loaded from link.";
                 _statusColor = ColorSuccess;
+                StateHasChanged();
+                return true;
             }
             catch (Exception e)
             {
-                SetError("Failed to load from link.", e.Message);
+                SetError("Invalid share link.", e.Message);
+                StateHasChanged();
+                return false;
             }
-
-            StateHasChanged();
         }
 
         private async Task OpenGistSite()

@@ -1,0 +1,10 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- Suppress warnings that originate entirely from submodule code (KniSB / WasmSB).
+         None of these fire in our own XnaFiddle.BlazorGL project; they are all noise
+         from third-party sources we cannot modify. -->
+    <NoWarn>$(NoWarn);CS8500;CS3001;CS3002;CS3003;CS3008;CS3009;CS0108;CS0162;CS0168;CS0169;CS0219;CS0414;CS0618;CS0649;CS0660;CS0661;CS1066;CS1572;CS1573;CS1734;CS4014;CS8981;IL2057;IL2067;IL2070;IL2087</NoWarn>
+  </PropertyGroup>
+
+</Project>
