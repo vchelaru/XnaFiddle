@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>XnaFiddle</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #000;
+            color: #ccc;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #ui {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        #title {
+            font-size: 15px;
+            font-weight: 300;
+            letter-spacing: 0.08em;
+            color: #9cdcfe;
+        }
+
+        #runBtn {
+            padding: 8px 24px;
+            background: #0e639c;
+            color: #fff;
+            border: none;
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.15s;
+        }
+        #runBtn:hover { background: #1177bb; }
+        #runBtn:disabled { background: #2a2a2a; color: #555; cursor: default; }
+
+        #note {
+            font-size: 11px;
+            color: #555;
+        }
+
+        /* Simple progress bar shown while prefetching (optional visual) */
+        #prefetchBar {
+            width: 180px;
+            height: 2px;
+            background: #1a1a1a;
+            border-radius: 1px;
+            overflow: hidden;
+            display: none;
+        }
+        #prefetchFill {
+            height: 100%;
+            width: 0%;
+            background: #007acc;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+<div id="ui">
+    <div id="title">XnaFiddle</div>
+    <button id="runBtn">&#9654; Run Sample</button>
+    <div id="prefetchBar"><div id="prefetchFill"></div></div>
+    <div id="note">~4 MB &middot; cached after first visit</div>
+</div>
+
+<script>
+(function () {
+    // Build the target Blazor embed URL, forwarding all params + hash.
+    var params = new URLSearchParams(window.location.search);
+    params.set('embed', 'true');
+    var blazorUrl = '/?' + params.toString() + window.location.hash;
+
+    // If the user has already consented, skip straight to the embed.
+    try {
+        if (localStorage.getItem('xnafiddle_consented')) {
+            window.location.replace(blazorUrl);
+            return;
+        }
+    } catch (e) { /* localStorage unavailable (private mode etc.) — show button */ }
+
+    var btn = document.getElementById('runBtn');
+    var bar = document.getElementById('prefetchBar');
+    var fill = document.getElementById('prefetchFill');
+    var note = document.getElementById('note');
+
+    btn.addEventListener('click', function () {
+        try { localStorage.setItem('xnafiddle_consented', '1'); } catch (e) {}
+        window.location.replace(blazorUrl);
+    });
+
+    // Prefetch all framework files in the background so the cache is warm by
+    // the time the user clicks. We fetch blazor.boot.json first to discover
+    // the full file list, then fire off low-priority fetches for everything.
+    prefetchFramework();
+
+    function prefetchFramework() {
+        fetch('/_framework/blazor.boot.json')
+            .then(function (r) { return r.json(); })
+            .then(function (boot) {
+                var files = [];
+
+                // The big one first
+                files.push('/_framework/dotnet.native.wasm');
+
+                // All assembly .wasm files listed in the boot manifest
+                var assemblies = (boot.resources && boot.resources.assembly) || {};
+                Object.keys(assemblies).forEach(function (name) {
+                    files.push('/_framework/' + name);
+                });
+
+                // JS modules
+                var jsNative  = (boot.resources && boot.resources.jsModuleNative)  || {};
+                var jsRuntime = (boot.resources && boot.resources.jsModuleRuntime) || {};
+                Object.keys(jsNative).forEach(function (name)  { files.push('/_framework/' + name); });
+                Object.keys(jsRuntime).forEach(function (name) { files.push('/_framework/' + name); });
+
+                bar.style.display = 'block';
+                var done = 0;
+                var total = files.length;
+
+                files.forEach(function (url) {
+                    fetch(url, { priority: 'low' })
+                        .catch(function () {}) // ignore errors; this is best-effort
+                        .finally(function () {
+                            done++;
+                            fill.style.width = Math.round(done / total * 100) + '%';
+                            if (done === total) {
+                                bar.style.display = 'none';
+                                note.textContent = 'Ready \u2014 click to run';
+                            }
+                        });
+                });
+            })
+            .catch(function () {}); // silently fail — button still works
+    }
+})();
+</script>
+</body>
+</html>

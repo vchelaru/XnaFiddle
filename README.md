@@ -2,29 +2,196 @@
 
 A browser-based C# game editor and runner powered by [KNI](https://github.com/kniEngine/kni). Write XNA-style game code in a Monaco editor, compile it with Roslyn in the browser, and see it run live on a WebGL canvas.
 
-## Setup
+---
+
+## Using XnaFiddle
+
+### URL Parameters
+
+XnaFiddle loads code via URL so links are shareable and embeddable. There are two kinds of parameters:
+
+**Query string** (`?param=value`) — short values and named resources:
+
+| Parameter | Example | Description |
+|---|---|---|
+| `?example=<name>` | `?example=BouncingBall` | Load a built-in example by name |
+| `?gist=<id>` | `?gist=abc123` | Load from a GitHub Gist (ID or full URL) |
+| `?embed=true` | `?embed=true&example=AposShapes` | Canvas-only mode — hides the editor (see [Embedding](#embedding)) |
+
+**Fragment** (`#key=value`) — large payloads, never sent to the server:
+
+| Parameter | Description |
+|---|---|
+| `#code=<encoded>` | Full C# source, gzip-compressed and base64-encoded |
+| `#snippet=<encoded>` | Compact snippet JSON, gzip-compressed and base64-encoded |
+
+Fragment params can be combined with query params:
+
+```
+https://xnafiddle.net/?embed=true#code=H4sIAAAAA...
+```
+
+---
+
+### Built-in Examples
+
+Pass any of these names to `?example=`:
+
+| Name | Description |
+|---|---|
+| `ColorCycle` | Cycles the background color (default) |
+| `BouncingBall` | Physics bouncing ball with SpriteBatch |
+| `Checkerboard` | SpriteBatch tile rendering |
+| `MouseTrail` | Mouse input tracking |
+| `AposShapes` | Vector shapes with Apos.Shapes |
+| `GumUI` | UI controls with Gum |
+| `Camera2D (MonoGame.Extended)` | 2D camera pan with MonoGame.Extended |
+
+---
+
+### Encoding (`#code=` and `#snippet=`)
+
+Both `#code=` and `#snippet=` store payloads as **gzip-compressed, base64url-encoded** strings. This keeps URLs short enough to share and copy-paste while supporting arbitrarily large code files.
+
+Use `tools/xnafiddle-encode.exe` to generate these URLs from the command line:
 
 ```bash
-git clone --recursive https://github.com/user/XnaFiddle.git
+# Encode a full C# file
+xnafiddle-encode code --file MyGame.cs
+xnafiddle-encode code 'public class FiddleGame : Game { ... }'
+
+# Encode a snippet JSON file or string
+xnafiddle-encode snippet --file mygame.snippet.json
+xnafiddle-encode snippet '{"members":"int _x;","draw":"..."}'
+```
+
+The tool prints the complete URL fragment (`#code=...` or `#snippet=...`) ready to append to `https://xnafiddle.net/`.
+
+---
+
+### Snippet Format
+
+Snippets are a compact JSON format that expands into a full `Game` subclass. Instead of writing all the boilerplate, you only provide the parts that differ.
+
+**Available fields:**
+
+| Field | Injected into |
+|---|---|
+| `members` | Class-level field declarations |
+| `initialize` | Inside `Initialize()`, after `base.Initialize()` |
+| `loadContent` | Inside `LoadContent()` |
+| `update` | Inside `Update()`, before `base.Update()` |
+| `draw` | Inside `Draw()`, between `Clear()` and any post-draw |
+| `IsGum` | `true` to inject `GumService` init/update/draw boilerplate |
+| `IsMonoGameExtended` | `true` to inject `SpriteBatch _spriteBatch` and its `LoadContent` init |
+| `IsAposShapes` | `true` to inject `ShapeBatch _shapeBatch`, its init, and `Begin()`/`End()` wrappers |
+
+**Example — bouncing square:**
+
+```json
+{
+  "members": "SpriteBatch _sb;\nTexture2D _pixel;\nVector2 _pos = new Vector2(200, 150);\nVector2 _vel = new Vector2(180f, 130f);",
+  "loadContent": "_sb = new SpriteBatch(GraphicsDevice);\n_pixel = new Texture2D(GraphicsDevice, 1, 1);\n_pixel.SetData(new[] { Color.White });",
+  "update": "float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;\n_pos += _vel * dt;\nif (_pos.X < 0 || _pos.X > GraphicsDevice.Viewport.Width - 40) _vel.X = -_vel.X;\nif (_pos.Y < 0 || _pos.Y > GraphicsDevice.Viewport.Height - 40) _vel.Y = -_vel.Y;",
+  "draw": "_sb.Begin();\n_sb.Draw(_pixel, new Rectangle((int)_pos.X, (int)_pos.Y, 40, 40), Color.Coral);\n_sb.End();"
+}
+```
+
+**Example — Gum UI click counter:**
+
+```json
+{
+  "IsGum": true,
+  "initialize": "int count = 0;\nvar label = new Label();\nlabel.Text = \"Clicks: 0\";\nlabel.AddToRoot();\nvar btn = new Button();\nbtn.Text = \"Click me!\";\nbtn.Width = 200;\nbtn.Click += (_, _) => label.Text = $\"Clicks: {++count}\";\nbtn.AddToRoot();"
+}
+```
+
+Draw order for preset flags: `Clear` → preset `preDraw` (e.g. `_shapeBatch.Begin()`) → user `draw` code → preset `postDraw` (e.g. `_shapeBatch.End()`, `GumUI.Draw()`). MonoGame.Extended does **not** auto-wrap `Begin()`/`End()` since camera usage requires a `transformMatrix`.
+
+---
+
+### Embedding
+
+XnaFiddle can be embedded in any website as an iframe. There are two approaches depending on whether you want to gate the load behind a button.
+
+#### Direct embed
+
+Add `?embed=true` to any XnaFiddle URL. The editor is hidden, the canvas fills the full iframe, and the code compiles and runs automatically on load.
+
+```html
+<iframe src="https://xnafiddle.net/?embed=true&example=AposShapes"
+        width="600" height="400"></iframe>
+
+<iframe src="https://xnafiddle.net/?embed=true&gist=abc123"
+        width="600" height="400"></iframe>
+
+<iframe src="https://xnafiddle.net/?embed=true#code=H4sIAAAAA..."
+        width="600" height="400"></iframe>
+```
+
+In embed mode:
+- A loading overlay shows compilation progress (progress bar + status text)
+- An **"Edit in XnaFiddle"** button appears in the corner, linking to the full editor
+
+#### Gate page (recommended for docs sites)
+
+`embed-gate.html` is a lightweight wrapper page (no WASM) that shows a **"▶ Run Sample"** button and begins downloading the framework files in the background immediately. By the time the user clicks, the ~4 MB download is already cached.
+
+```html
+<iframe src="https://xnafiddle.net/embed-gate.html?example=AposShapes"
+        width="600" height="400"></iframe>
+```
+
+The gate page accepts the same parameters as the main app (`example`, `gist`, `#code=`, `#snippet=`) and forwards them automatically.
+
+**localStorage memory:** once a user clicks "Run Sample" on any page, the button is skipped on all future visits across any page that uses `embed-gate.html`. The framework files are also already cached at that point, so subsequent embeds load with no download cost.
+
+#### Performance notes
+
+- Framework files (~4 MB after brotli compression) are cached by the browser after the first load and shared across all XnaFiddle iframes on any page
+- Each iframe runs its own WASM instance — there is no shared memory between iframes on the same page
+- Compilation runs fresh per iframe load; the gate page background prefetch ensures the download is not the bottleneck
+
+---
+
+## Development
+
+### Setup
+
+```bash
+git clone --recursive https://github.com/your-org/XnaFiddle.git
 cd XnaFiddle
 dotnet run --project XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj
 ```
 
-If you already cloned without `--recursive`, run `git submodule update --init --recursive` before building.
+If you already cloned without `--recursive`:
+```bash
+git submodule update --init --recursive
+```
 
-Opens at **https://localhost:60440**.
+Opens at **https://localhost:60440** (HTTP: 60441).
 
-## Upgrading Apos.Shapes
+### Adding Examples
 
-The `Apos.Shapes.KNI` NuGet package includes a pre-built content file (`apos-shapes.xnb`) that must be shipped with the app. When upgrading to a new version:
+Add a `.cs` file to `XnaFiddle.BlazorGL/Examples/`. It will be picked up automatically by `ExampleGallery.cs` and appear in the dropdown. The file must not define a namespace — the class goes directly at the top level.
 
-1. Update the package version in `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj`.
-2. Build the project so NuGet restores the new package.
-3. Copy the new XNB from the NuGet cache to `wwwroot/`:
+### Upgrading Apos.Shapes
+
+The `Apos.Shapes.KNI` NuGet package includes a pre-built content file (`apos-shapes.xnb`) that must be shipped with the app. When upgrading:
+
+1. Update the version in `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj`
+2. Build to restore the new package
+3. Copy the XNB from the NuGet cache:
+   ```bash
+   cp ~/.nuget/packages/apos.shapes/<VERSION>/buildTransitive/Content/bin/DesktopGL/Content/apos-shapes.xnb XnaFiddle.BlazorGL/wwwroot/apos-shapes.xnb
    ```
-   cp ~/.nuget/packages/apos.shapes/<NEW_VERSION>/buildTransitive/Content/bin/DesktopGL/Content/apos-shapes.xnb XnaFiddle.BlazorGL/wwwroot/apos-shapes.xnb
-   ```
-4. Verify the Apos.Shapes example still runs.
+4. Verify the AposShapes example still runs
+
+### Deployment
+
+Deployed automatically to GitHub Pages on push to `main` via `.github/workflows/deploy.yml`. Uses `dotnet publish` which generates brotli-compressed framework files.
+
+---
 
 ## License
 
