@@ -310,6 +310,25 @@
             canvas.height = holder.clientHeight;
             canvas.addEventListener("contextmenu", e => e.preventDefault());
 
+            // Make the canvas focusable so we can track when it has focus.
+            if (!canvas.hasAttribute('tabindex')) canvas.setAttribute('tabindex', '0');
+
+            // When the canvas has focus, suppress Alt+key so the browser menu doesn't activate.
+            var canvasFocused = false;
+            canvas.addEventListener('focus', function () { canvasFocused = true; });
+            canvas.addEventListener('blur',  function () { canvasFocused = false; });
+            canvas.addEventListener('keydown', function (e) {
+                if (e.altKey) e.preventDefault();
+            });
+            // Also intercept at the window level while canvas is focused,
+            // because some browsers fire the menu on keyup rather than keydown.
+            window.addEventListener('keydown', function (e) {
+                if (e.altKey && canvasFocused) e.preventDefault();
+            }, true);
+            window.addEventListener('keyup', function (e) {
+                if (e.altKey && canvasFocused) e.preventDefault();
+            }, true);
+
             var params = new URLSearchParams(window.location.search);
             var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
