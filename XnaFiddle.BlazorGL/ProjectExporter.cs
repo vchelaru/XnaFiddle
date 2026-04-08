@@ -165,6 +165,7 @@ namespace XnaFiddle
                     _ => "MonoGame.Framework.DesktopGL",
                 };
                 packages.Add(new NuGetPackage { Id = monoGamePkg, Version = PackageVersions.MonoGameFramework });
+                packages.Add(new NuGetPackage { Id = "MonoGame.Content.Builder.Task", Version = PackageVersions.MonoGameFramework });
             }
 
             // Third-party libraries — detected by scanning the source for namespace/type names.
@@ -297,6 +298,7 @@ namespace XnaFiddle
                     sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
                     sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
+                    sb.AppendLine("    <MonoGamePlatform>DesktopGL</MonoGamePlatform>");
                     break;
 
                 case ExportTarget.MonoGameWindowsDX:
@@ -304,6 +306,7 @@ namespace XnaFiddle
                     sb.AppendLine("    <TargetFramework>net8.0-windows</TargetFramework>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
                     sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
+                    sb.AppendLine("    <MonoGamePlatform>Windows</MonoGamePlatform>");
                     break;
 
                 case ExportTarget.MonoGameAndroid:
@@ -311,6 +314,7 @@ namespace XnaFiddle
                     sb.AppendLine("    <TargetFramework>net9.0-android</TargetFramework>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
                     sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
+                    sb.AppendLine("    <MonoGamePlatform>Android</MonoGamePlatform>");
                     sb.AppendLine($"    <ApplicationId>com.myfiddle.{projectName.ToLowerInvariant()}</ApplicationId>");
                     sb.AppendLine("    <ApplicationVersion>1</ApplicationVersion>");
                     sb.AppendLine("    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>");
