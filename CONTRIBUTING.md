@@ -84,7 +84,20 @@ Create an example `.cs` file in `XnaFiddle.BlazorGL/Examples/`. The file:
 
 Register the example in `ExampleGallery.cs` so it appears in the dropdown.
 
-#### 5. Optional: Snippet Preset
+#### 5. Welcome Page Library List (`Pages/Index.razor`)
+
+The welcome screen displays an "Available libraries" list near the bottom. Add a link for your library following the existing pattern — a `·` dot separator followed by an `<a>` tag pointing to the library's docs or repository:
+
+```html
+<span style="margin: 0 8px; color: #444;">·</span>
+<a href="https://example.com/newlibrary-docs" target="_blank"
+   style="color: #666; text-decoration: none;"
+   onmouseover="this.style.color='#999'" onmouseout="this.style.color='#666'">NewLibrary</a>
+```
+
+Search for the `Available libraries:` span in `Index.razor` and append your entry at the end of the list.
+
+#### 6. Optional: Snippet Preset
 
 If the library requires boilerplate that users shouldn't have to write every time (initialization, per-frame calls, etc.), you can add a **preset**:
 
@@ -96,11 +109,11 @@ If the library requires boilerplate that users shouldn't have to write every tim
 
 Most libraries do **not** need a preset — presets are only for libraries that inject significant boilerplate (like Gum's `GumService.Initialize` / `Update` / `Draw` pattern).
 
-#### 6. Optional: Static State Cleanup
+#### 7. Optional: Static State Cleanup
 
 If the library maintains global/static state between game runs (like Gum's `GumService.Default`), add cleanup logic in `Pages/Index.razor.cs` using reflection. See `CleanUpGumService()` for an example. This ensures that recompiling and running new code doesn't carry over stale state from the previous run.
 
-#### 7. Optional: Security Exceptions
+#### 8. Optional: Security Exceptions
 
 If the library uses namespaces or types that collide with blocked patterns in `SecurityChecker.cs`, you may need to add exceptions. This is rare and will receive extra scrutiny during review.
 
