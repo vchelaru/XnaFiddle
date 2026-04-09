@@ -20,11 +20,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -36,10 +36,12 @@ jobs:
         shell: pwsh
 
       - name: Upload Pages artifact
+        # Do NOT upgrade to v4+ — v4 excludes dotfiles by default with no opt-out,
+        # which would drop .nojekyll and break GitHub Pages builds.
         uses: actions/upload-pages-artifact@v3
         with:
           path: output/wwwroot
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
