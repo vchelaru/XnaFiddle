@@ -395,19 +395,20 @@ window.compileTimerInterop = {
 };
 
 // Prevent KNI from receiving keyboard events when the Monaco editor has focus.
-// KNI registers keydown/keyup on `window` in the bubbling phase, so a capturing
-// listener that stops propagation will intercept them first.
+// KNI registers keydown/keyup on `window` in the bubbling phase. By listening on
+// `document` (one level below window) in the bubbling phase and stopping propagation,
+// events still reach Monaco's own DOM elements normally but never bubble up to KNI.
 (function () {
     function isEditorFocused() {
         var active = document.activeElement;
         return active && active.closest('.monaco-editor');
     }
-    window.addEventListener('keydown', function (e) {
+    document.addEventListener('keydown', function (e) {
         if (isEditorFocused() && e.key !== 'F5') e.stopPropagation();
-    }, true);
-    window.addEventListener('keyup', function (e) {
+    });
+    document.addEventListener('keyup', function (e) {
         if (isEditorFocused()) e.stopPropagation();
-    }, true);
+    });
 })();
 
 // Keyboard shortcuts interop (e.g. F5 → compile & run)
