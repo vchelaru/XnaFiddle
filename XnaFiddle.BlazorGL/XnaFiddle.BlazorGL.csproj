@@ -130,6 +130,8 @@ namespace XnaFiddle {
     <ItemGroup>
       <Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
     </ItemGroup>
+    <!-- Write the same timestamp into a JS file so C# can detect stale static assets -->
+    <WriteLinesToFile File="wwwroot/js/build-version.js" Lines="window._buildVersion = &quot;$(_BuildTimestamp)&quot;%3B" Overwrite="true" />
   </Target>
 
 

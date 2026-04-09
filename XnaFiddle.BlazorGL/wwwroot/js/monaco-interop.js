@@ -126,6 +126,9 @@ window.monacoInterop = {
             'ComboBox':          { kind: Kind.Class, members: ['Items', 'SelectedObject', 'SelectedIndex', 'SelectionChanged'] },
             'ListBox':           { kind: Kind.Class, members: ['Items', 'Visual', 'SelectedObject', 'SelectedIndex', 'SelectionChanged'] },
             'RadioButton':       { kind: Kind.Class, members: ['Text', 'IsChecked', 'Checked'] },
+            // Audio
+            'SoundEffect':         { kind: Kind.Class, members: ['FromStream', 'Play', 'CreateInstance', 'Duration', 'IsDisposed', 'Name', 'Dispose'] },
+            'SoundEffectInstance': { kind: Kind.Class, members: ['Play', 'Pause', 'Resume', 'Stop', 'Volume', 'Pitch', 'Pan', 'IsLooped', 'State', 'Dispose'] },
             // Apos.Shapes
             'ShapeBatch':        { kind: Kind.Class, members: ['Begin', 'End', 'DrawCircle', 'FillCircle', 'DrawRectangle', 'FillRectangle', 'BorderCircle', 'BorderRectangle', 'BorderLine', 'DrawLine', 'FillLine'] },
         };
@@ -193,6 +196,8 @@ window.monacoInterop = {
             'keyboardstate': 'KeyboardState', '_keyboardstate': 'KeyboardState',
             'viewport': 'Viewport',
             '_shapebatch': 'ShapeBatch', 'shapebatch': 'ShapeBatch',
+            '_soundeffect': 'SoundEffect', 'soundeffect': 'SoundEffect',
+            '_sfx': 'SoundEffectInstance', 'sfx': 'SoundEffectInstance',
             'window': 'GameWindow',
         };
 
@@ -389,6 +394,22 @@ window.compileTimerInterop = {
     }
 };
 
+// Prevent KNI from receiving keyboard events when the Monaco editor has focus.
+// KNI registers keydown/keyup on `window` in the bubbling phase, so a capturing
+// listener that stops propagation will intercept them first.
+(function () {
+    function isEditorFocused() {
+        var active = document.activeElement;
+        return active && active.closest('.monaco-editor');
+    }
+    window.addEventListener('keydown', function (e) {
+        if (isEditorFocused() && e.key !== 'F5') e.stopPropagation();
+    }, true);
+    window.addEventListener('keyup', function (e) {
+        if (isEditorFocused()) e.stopPropagation();
+    }, true);
+})();
+
 // Keyboard shortcuts interop (e.g. F5 → compile & run)
 window.keyboardInterop = {
     init: function (dotNetRef) {
@@ -437,7 +458,6 @@ window.fileDropInterop = {
             var files = e.dataTransfer.files;
             for (var i = 0; i < files.length; i++) {
                 (function (file) {
-                    if (!file.type.startsWith('image/')) return;
                     var reader = new FileReader();
                     reader.onload = function () {
                         var base64 = reader.result.split(',')[1];

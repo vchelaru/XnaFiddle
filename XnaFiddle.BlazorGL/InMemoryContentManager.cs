@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -58,6 +59,14 @@ namespace XnaFiddle
                     Texture2D texture = Texture2D.FromStream(GetGraphicsDevice(), stream);
                     _loaded[assetName] = texture;
                     return (T)(object)texture;
+                }
+
+                if (typeof(T) == typeof(SoundEffect))
+                {
+                    using MemoryStream stream = new(bytes);
+                    SoundEffect sfx = SoundEffect.FromStream(stream);
+                    _loaded[assetName] = sfx;
+                    return (T)(object)sfx;
                 }
             }
 

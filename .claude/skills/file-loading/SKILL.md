@@ -21,9 +21,12 @@ Both paths converge on `InMemoryContentManager.AddFile(fileName, bytes)`, which 
 Controlled by `SupportedAssetExtensions` in `Index.razor.cs`:
 
 - **`.png`** — loaded as `Texture2D` via `Texture2D.FromStream()`
+- **`.wav`** — loaded as `SoundEffect` via `SoundEffect.FromStream()`
 - **`.fnt`** — BMFont text format; stored as raw bytes. The UI parses `page` lines to show which texture files the font references (so users know what companion `.png` files to also drop)
+- **`.ttf`** — TrueType font; stored as raw bytes for FontStashSharp
+- **`.ember`** — stored as raw bytes
 
-Only `Texture2D` is handled by `InMemoryContentManager.Load<T>()` today. Any other type falls through to `base.Load<T>()`, which will fail (no disk content pipeline exists).
+`InMemoryContentManager.Load<T>()` has explicit branches for `Texture2D` and `SoundEffect`. Any other type falls through to `base.Load<T>()`, which will fail (no disk content pipeline exists).
 
 ## Embedded example assets
 
@@ -41,15 +44,27 @@ Every example asset is **also** served as a static file under `wwwroot/examples/
 
 **When adding a new example asset:** place the file in `Examples/` (embedded resource, picked up by wildcard), **and** copy it to `wwwroot/examples/{ExampleName}/{AssetFile}` (static web asset). Both locations are required.
 
-Current static copies: `AetherPhysics/CircleSprite.png`, `AetherPhysics/GroundSprite.png`, `FontStashSharp/DroidSans.ttf`, `TextureLoading/KniIcon.png`.
+Current static copies: `AetherPhysics/CircleSprite.png`, `AetherPhysics/GroundSprite.png`, `FontStashSharp/DroidSans.ttf`, `SoundPlayback/powerup.wav`, `TextureLoading/KniIcon.png`.
 
 ## Drag-and-drop flow
 
 1. JS `fileDropInterop` listens on `#canvasHolder` for `drop` events
-2. JS filters to `file.type.startsWith('image/')` — this means `.fnt` files only work if the browser assigns an image MIME type (potential gap; the C# side accepts `.fnt` but JS may reject it)
+2. All dropped files are passed through to C# — no JS-side MIME or extension filtering
 3. File is read as base64 via `FileReader`, sent to C# `OnFileDropped(fileName, base64)`
 4. C# validates extension against `SupportedAssetExtensions`, enforces 10 MB limit
 5. Calls `InMemoryContentManager.AddFile()` and updates the UI asset list
+
+## Keyboard event suppression
+
+A capturing-phase IIFE in `monaco-interop.js` intercepts `keydown`/`keyup` on `window` and calls `stopPropagation()` when focus is inside a `.monaco-editor` element. This prevents KNI (which listens in the bubbling phase) from receiving keyboard input while the user types in the editor. **F5 is exempted** from `keydown` suppression so the compile-and-run shortcut always works.
+
+## Build version detection
+
+MSBuild generates `BuildInfo.g.cs` (C# const) and `wwwroot/js/build-version.js` (`window._buildVersion`) with the same UTC timestamp. On startup, C# compares `BuildInfo.BuildTime` against the JS value fetched from the browser. If they differ, the app sets `_staleAssets = true` and shows a warning banner with a Refresh button, indicating the browser is serving cached static assets from an older build.
+
+## Exported project support
+
+`ProjectExporter.cs`'s `GenerateRawContentManager` template includes an `AudioExtensions` array (`.wav`) and a `SoundEffect.FromStream()` branch alongside the existing `Texture2D` one, so exported MonoGame projects can load both textures and audio from raw files.
 
 ## Static persistence
 
@@ -58,17 +73,19 @@ Current static copies: `AetherPhysics/CircleSprite.png`, `AetherPhysics/GroundSp
 ## Adding a new file format
 
 1. Add the extension to `SupportedAssetExtensions` in `Index.razor.cs`
-2. Add a type check branch in `InMemoryContentManager.Load<T>()` (alongside the existing `Texture2D` branch)
-3. If the format is not an image, update the JS `fileDropInterop` drop handler — it currently filters on `file.type.startsWith('image/')`, which will silently reject non-image files
+2. Add a type check branch in `InMemoryContentManager.Load<T>()` (alongside the existing `Texture2D` and `SoundEffect` branches)
+3. Update the `GenerateRawContentManager` template in `ProjectExporter.cs` if exported projects should also support the format
 4. For embedded example assets: place the file in `Examples/` with the `{ExampleName}.{filename}` naming convention; the `.csproj` wildcards will pick it up automatically
 
 ## Key files
 
 | File | Role |
 |---|---|
-| `XnaFiddle.BlazorGL/InMemoryContentManager.cs` | Static file store + `ContentManager` that loads `Texture2D` from bytes |
+| `XnaFiddle.BlazorGL/InMemoryContentManager.cs` | Static file store + `ContentManager` that loads `Texture2D` and `SoundEffect` from bytes |
 | `XnaFiddle.BlazorGL/ExampleGallery.cs` | Reads embedded resources; `LoadAssets()` extracts non-code files for an example |
-| `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `OnFileDropped` JSInvokable, `SupportedAssetExtensions`, `LoadExampleAssets()` |
-| `XnaFiddle.BlazorGL/wwwroot/js/monaco-interop.js` | `fileDropInterop` — JS drag-and-drop handler on `#canvasHolder` |
-| `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj` | `EmbeddedResource` wildcards for `Examples/` |
-| `XnaFiddle.BlazorGL/Examples/TextureLoading.cs` | Reference example showing `Content.Load<Texture2D>()` usage |
+| `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `OnFileDropped` JSInvokable, `SupportedAssetExtensions`, `LoadExampleAssets()`, stale-assets check |
+| `XnaFiddle.BlazorGL/ProjectExporter.cs` | `GenerateRawContentManager` template with `Texture2D` + `SoundEffect` branches |
+| `XnaFiddle.BlazorGL/wwwroot/js/monaco-interop.js` | `fileDropInterop` (drag-and-drop), keyboard event suppression for Monaco |
+| `XnaFiddle.BlazorGL/wwwroot/js/build-version.js` | MSBuild-generated; sets `window._buildVersion` for stale-asset detection |
+| `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj` | `EmbeddedResource` wildcards for `Examples/`, `GenerateBuildInfo` target |
+| `XnaFiddle.BlazorGL/Examples/SoundPlayback.cs` | Example showing `Content.Load<SoundEffect>()` usage |

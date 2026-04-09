@@ -76,6 +76,14 @@
         @if (!string.IsNullOrEmpty(_statusMessage))
         {
             <span style="color: @_statusColor; font-size: 13px;">@_statusMessage</span>
+            @if (_staleAssets)
+            {
+                <button @onclick="ForceRefresh"
+                        style="padding: 2px 8px; background: #0e639c; color: #fff; border: 1px solid #007acc;
+                               cursor: pointer; font-size: 12px; margin-left: 4px;">
+                    Refresh
+                </button>
+            }
         }
         <a href="https://github.com/vchelaru/XnaFiddle" target="_blank" title="About XnaFiddle"
            style="margin-left: auto; padding: 4px 8px; background: #3c3c3c; color: #d4d4d4;

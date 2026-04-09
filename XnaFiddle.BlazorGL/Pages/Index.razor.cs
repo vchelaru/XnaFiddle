@@ -35,6 +35,7 @@ namespace XnaFiddle.Pages
         bool _pendingCompile;
         int _compileThrottleFrame;
         bool _monacoReady;
+        bool _staleAssets;
         bool _assetsOpen;
         bool _gistOpen;
         bool _gistCodeCopied;
@@ -131,6 +132,18 @@ namespace XnaFiddle.Pages
                 await JsRuntime.InvokeVoidAsync("keyboardInterop.init", dotNetRef);
                 try { await JsRuntime.InvokeVoidAsync("monacoInterop.registerChangeCallback", dotNetRef); }
                 catch { /* stale JS cache — hard-reload the page to pick up the new monaco-interop.js */ }
+
+                // Detect stale static assets: build-version.js sets window._buildVersion
+                // at load time; if it doesn't match the C# BuildInfo the browser is serving
+                // cached JS files from an older build.
+                string jsBuildVersion = await JsRuntime.InvokeAsync<string>("eval", "window._buildVersion || ''");
+                if (!string.IsNullOrEmpty(jsBuildVersion) && jsBuildVersion != BuildInfo.BuildTime)
+                {
+                    _staleAssets = true;
+                    _statusMessage = "Static assets are out of date.";
+                    _statusColor = ColorError;
+                    StateHasChanged();
+                }
                 string exampleFromQuery = UrlCodec.ParseQueryParam(search, "example");
                 string gistFromQuery = UrlCodec.ParseQueryParam(search, "gist");
                 bool autoCompile = false;
@@ -200,7 +213,7 @@ namespace XnaFiddle.Pages
 
         static readonly HashSet<string> SupportedAssetExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".png", ".fnt", ".ttf", ".ember"
+            ".png", ".fnt", ".ttf", ".ember", ".wav"
         };
 
         static readonly string SupportedExtensionsDisplay =
@@ -319,6 +332,13 @@ namespace XnaFiddle.Pages
                 results.Add(trimmed.Substring(start, end - start));
             }
             return results.ToArray();
+        }
+
+        private async Task ForceRefresh()
+        {
+            // Clear browser caches for this origin, then reload.
+            await JsRuntime.InvokeVoidAsync("eval",
+                "caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))).then(() => location.reload())");
         }
 
         private async Task CopyEditorContent()

@@ -604,13 +604,14 @@ internal class Program
 using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
+using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace {projectName};
 
 /// <summary>
-/// A ContentManager that supports loading raw image files (png, jpg, bmp)
-/// via Content.Load&lt;Texture2D&gt;(). MonoGame's built-in ContentManager only
+/// A ContentManager that supports loading raw asset files (images and audio)
+/// without the content pipeline. MonoGame's built-in ContentManager only
 /// supports pipeline-processed .xnb files; this shim bridges the gap so
 /// code written for XnaFiddle or KNI works unchanged.
 /// Uses TitleContainer.OpenStream for cross-platform compatibility (desktop,
@@ -619,6 +620,7 @@ namespace {projectName};
 public class RawContentManager : ContentManager
 {{
     static readonly string[] ImageExtensions = {{ "".png"", "".jpg"", "".jpeg"", "".bmp"" }};
+    static readonly string[] AudioExtensions = {{ "".wav"" }};
     static readonly bool IsDesktop = !OperatingSystem.IsAndroid() && !OperatingSystem.IsBrowser();
 
     readonly IGraphicsDeviceService _graphics;
@@ -654,6 +656,31 @@ public class RawContentManager : ContentManager
                 }}
             }}
         }}
+
+        if (typeof(T) == typeof(SoundEffect))
+        {{
+            foreach (var ext in AudioExtensions)
+            {{
+                string path = Path.Combine(RootDirectory, assetName + ext);
+                if (IsDesktop)
+                {{
+                    if (!File.Exists(path))
+                        continue;
+                    using var stream = File.OpenRead(path);
+                    return (T)(object)SoundEffect.FromStream(stream);
+                }}
+                else
+                {{
+                    try
+                    {{
+                        using var stream = TitleContainer.OpenStream(path);
+                        return (T)(object)SoundEffect.FromStream(stream);
+                    }}
+                    catch (FileNotFoundException) {{ }}
+                }}
+            }}
+        }}
+
         return base.Load<T>(assetName);
     }}
 }}

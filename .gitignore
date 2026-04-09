@@ -15,6 +15,9 @@ obj/
 ## Claude
 .claude/settings.local.json
 
+## Build-generated
+XnaFiddle.BlazorGL/wwwroot/js/build-version.js
+
 ## OS
 Thumbs.db
 .DS_Store
