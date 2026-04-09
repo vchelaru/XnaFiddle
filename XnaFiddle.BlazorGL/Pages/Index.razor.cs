@@ -596,6 +596,7 @@ namespace XnaFiddle.Pages
                         // no awaits, so TickDotNet() cannot be called in this window (WASM is single-threaded).
                         CleanUpGameWindowRegistry();
                         CleanUpGumService();
+                        CleanUpMlemPlatform();
 
                         Game newGame = (Game)Activator.CreateInstance(gameType);
                         newGame.Content = new InMemoryContentManager(newGame.Services);
@@ -1132,6 +1133,20 @@ namespace XnaFiddle.Pages
                 // This uses reflection against KniGum internals, so failures here are most
                 // likely caused by a KniGum API change and will show up clearly in the console.
                 Console.WriteLine($"[XnaFiddle] CleanUpGumService failed: {e}");
+            }
+        }
+
+        private static void CleanUpMlemPlatform()
+        {
+            try
+            {
+                var type = Type.GetType("MLEM.Misc.MlemPlatform, MLEM.KNI");
+                var current = type.GetField("Current", BindingFlags.Static | BindingFlags.Public);
+                current.SetValue(null, null);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[XnaFiddle] CleanUpMlemPlatform failed: {e}");
             }
         }
 
