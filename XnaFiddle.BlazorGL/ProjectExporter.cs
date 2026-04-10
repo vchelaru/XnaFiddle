@@ -390,7 +390,7 @@ namespace XnaFiddle
             {
                 packages.Add(new NuGetPackage
                 {
-                    Id = isKni ? "FontStashSharp.Kni" : "FontStashSharp",
+                    Id = isKni ? "FontStashSharp.Kni" : "FontStashSharp.MonoGame",
                     Version = PackageVersions.FontStashSharp
                 });
             }
@@ -567,9 +567,8 @@ namespace XnaFiddle
                     }
                     else if (target == ExportTarget.KniBlazorGL)
                     {
-                        sb.AppendLine(@"    <None Include=""..\Content\**\*"" Link=""wwwroot\Content\%(RecursiveDir)%(Filename)%(Extension)"">");
-                        sb.AppendLine(@"      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>");
-                        sb.AppendLine(@"    </None>");
+                        // Blazor serves static files only from wwwroot/. Handled by
+                        // a pre-build target below that copies shared content there.
                     }
                     else
                     {
@@ -596,6 +595,18 @@ namespace XnaFiddle
                     }
                     sb.AppendLine(@"  </ItemGroup>");
                 }
+            }
+
+            // BlazorGL multi-platform: add a pre-build target to copy shared content into wwwroot/
+            if (isMultiPlatform && target == ExportTarget.KniBlazorGL && hasAssets)
+            {
+                sb.AppendLine();
+                sb.AppendLine(@"  <Target Name=""CopySharedContent"" AfterTargets=""Build"">");
+                sb.AppendLine(@"    <ItemGroup>");
+                sb.AppendLine(@"      <_SharedContent Include=""..\Content\**\*"" />");
+                sb.AppendLine(@"    </ItemGroup>");
+                sb.AppendLine(@"    <Copy SourceFiles=""@(_SharedContent)"" DestinationFiles=""@(_SharedContent->'wwwroot\Content\%(RecursiveDir)%(Filename)%(Extension)')"" SkipUnchangedFiles=""true"" />");
+                sb.AppendLine(@"  </Target>");
             }
 
             sb.AppendLine();

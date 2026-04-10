@@ -297,7 +297,7 @@ namespace XnaFiddle.Pages
                 StateHasChanged();
                 return;
             }
-            InMemoryContentManager.AddFile(fileName, data);
+            RegisterContentFile(fileName, data);
 
             string[] fntTextures = null;
             if (fileName.EndsWith(".fnt", StringComparison.OrdinalIgnoreCase))
@@ -358,9 +358,25 @@ namespace XnaFiddle.Pages
             StateHasChanged();
         }
 
-        private void RemoveAsset(string fileName)
+        /// <summary>
+        /// Registers a content file in both InMemoryContentManager and the JS-side
+        /// XHR cache so that TitleContainer.OpenStream can resolve it.
+        /// </summary>
+        private void RegisterContentFile(string fileName, byte[] data)
+        {
+            InMemoryContentManager.AddFile(fileName, data);
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.register", fileName, Convert.ToBase64String(data));
+        }
+
+        private void UnregisterContentFile(string fileName)
         {
             InMemoryContentManager.RemoveFile(fileName);
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.unregister", fileName);
+        }
+
+        private void RemoveAsset(string fileName)
+        {
+            UnregisterContentFile(fileName);
             _assets.RemoveAll(a => string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
             StateHasChanged();
         }
@@ -421,7 +437,7 @@ namespace XnaFiddle.Pages
                     return;
                 }
 
-                InMemoryContentManager.AddFile(fileName, data);
+                RegisterContentFile(fileName, data);
 
                 string[] fntTextures = null;
                 if (fileName.EndsWith(".fnt", StringComparison.OrdinalIgnoreCase))
@@ -1075,7 +1091,7 @@ namespace XnaFiddle.Pages
 
             for (int i = 0; i < assets.Length; i++)
             {
-                InMemoryContentManager.AddFile(assets[i].FileName, assets[i].Data);
+                RegisterContentFile(assets[i].FileName, assets[i].Data);
 
                 // Update the UI asset list (same as drag-and-drop path)
                 _assets.RemoveAll(a => string.Equals(a.FileName, assets[i].FileName, System.StringComparison.OrdinalIgnoreCase));

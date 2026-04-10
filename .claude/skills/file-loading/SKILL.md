@@ -1,5 +1,5 @@
 ---
-description: How file/asset loading works in XnaFiddle — embedded example assets, user drag-and-drop, InMemoryContentManager, and supported formats. Load when working on content loading, asset handling, drag-and-drop, or adding file format support.
+description: How file/asset loading works in XnaFiddle — embedded example assets, user drag-and-drop, InMemoryContentManager, TitleContainer XHR intercept, and exported project content. Load when working on content loading, asset handling, drag-and-drop, TitleContainer.OpenStream, project export, or adding file format support.
 ---
 
 # File Loading
@@ -10,11 +10,13 @@ XnaFiddle has no disk or traditional content pipeline. All assets live in memory
 
 | Source | Mechanism | Ends up in | SourceUrl set? |
 |---|---|---|---|
-| **Example assets** | Embedded resources in the assembly, loaded by `ExampleGallery.LoadAssets()` | `InMemoryContentManager.AddFile()` | Yes — points to `wwwroot/examples/{ExampleName}/{file}` |
-| **URL-fetched assets** | `FetchAndAddAssetUrl(url)` via `&assets=` share param or URL input | `InMemoryContentManager.AddFile()` | Yes — the fetched URL |
-| **User drag-and-drop** | JS `fileDropInterop` -> `OnFileDropped` JSInvokable | `InMemoryContentManager.AddFile()` | No — cannot be re-fetched |
+| **Example assets** | Embedded resources in the assembly, loaded by `ExampleGallery.LoadAssets()` | `RegisterContentFile()` | Yes — points to `wwwroot/examples/{ExampleName}/{file}` |
+| **URL-fetched assets** | `FetchAndAddAssetUrl(url)` via `&assets=` share param or URL input | `RegisterContentFile()` | Yes — the fetched URL |
+| **User drag-and-drop** | JS `fileDropInterop` -> `OnFileDropped` JSInvokable | `RegisterContentFile()` | No — cannot be re-fetched |
 
-Both paths converge on `InMemoryContentManager.AddFile(fileName, bytes)`, which stores the data under the original filename AND the extension-stripped name. This lets user code call `Content.Load<Texture2D>("KniIcon")` without knowing the extension.
+All three paths converge on `RegisterContentFile(fileName, bytes)` in `Index.razor.cs`, which does two things:
+1. `InMemoryContentManager.AddFile(fileName, bytes)` — stores data under the original filename AND the extension-stripped name (so `Content.Load<Texture2D>("KniIcon")` works without knowing the extension)
+2. `contentFileCache.register(fileName, base64)` via JS interop — registers the file in the JS-side XHR cache so `TitleContainer.OpenStream()` can resolve it (see below)
 
 ## Supported formats
 
@@ -27,6 +29,26 @@ Controlled by `SupportedAssetExtensions` in `Index.razor.cs`:
 - **`.ember`** — stored as raw bytes
 
 `InMemoryContentManager.Load<T>()` has explicit branches for `Texture2D` and `SoundEffect`. Any other type falls through to `base.Load<T>()`, which will fail (no disk content pipeline exists).
+
+## TitleContainer XHR intercept
+
+`TitleContainer.OpenStream(path)` is the standard XNA/MonoGame/KNI way to load raw files. In KNI's Blazor platform, it performs a **synchronous XHR GET** to the relative URL `path`. Since XnaFiddle's content files exist only in memory (not on a web server), a JS-side XHR monkey-patch intercepts these requests.
+
+**JS side** (`wwwroot/index.html`, `contentFileCache` IIFE):
+- `contentFileCache.register(path, base64)` decodes base64 to a binary string and stores it keyed by path
+- `contentFileCache.unregister(path)` removes a cached entry; `clear()` removes all
+- `XMLHttpRequest.prototype.open` is patched to capture the method and URL on each instance
+- `XMLHttpRequest.prototype.send` is patched: if the request is a GET and the URL matches a registered path, it sets `_cfcIntercepted = true` and stores the cached data instead of hitting the network
+- Property getters for `status`, `responseText`, and `readyState` are overridden to return cached values when `_cfcIntercepted` is set; non-intercepted XHRs fall through to the original native getters
+
+**C# side** (`Index.razor.cs`):
+- `RegisterContentFile(fileName, data)` calls both `InMemoryContentManager.AddFile()` and `contentFileCache.register()` via `IJSInProcessRuntime`
+- `UnregisterContentFile(fileName)` does the reverse with `RemoveFile()` and `unregister()`
+
+**Path gotcha — `Content.RootDirectory` differences:**
+- In XnaFiddle, `Content.RootDirectory` is `""` (empty), so `TitleContainer.OpenStream("DroidSans.ttf")` requests `"DroidSans.ttf"` — files are registered under bare filenames
+- In exported projects, `Content.RootDirectory` is `"Content"`, so the path becomes `"Content/DroidSans.ttf"` and the file is served from disk/wwwroot
+- Export-compatible user code should use `Path.Combine(Content.RootDirectory, "file.ext")` to work in both environments
 
 ## Embedded example assets
 
@@ -52,7 +74,7 @@ Current static copies: `AetherPhysics/CircleSprite.png`, `AetherPhysics/GroundSp
 2. All dropped files are passed through to C# — no JS-side MIME or extension filtering
 3. File is read as base64 via `FileReader`, sent to C# `OnFileDropped(fileName, base64)`
 4. C# validates extension against `SupportedAssetExtensions`, enforces 10 MB limit
-5. Calls `InMemoryContentManager.AddFile()` and updates the UI asset list
+5. Calls `RegisterContentFile()` (InMemoryContentManager + JS XHR cache) and updates the UI asset list
 
 ## Keyboard event suppression
 
@@ -64,7 +86,11 @@ MSBuild generates `BuildInfo.g.cs` (C# const) and `wwwroot/js/build-version.js` 
 
 ## Exported project support
 
-`ProjectExporter.cs`'s `GenerateRawContentManager` template includes an `AudioExtensions` array (`.wav`) and a `SoundEffect.FromStream()` branch alongside the existing `Texture2D` one, so exported MonoGame projects can load both textures and audio from raw files.
+Multi-platform exports produce a solution with a common project (`{Name}Common`) holding `Game1.cs` and `RawContentManager.cs`, plus per-platform projects (`{Name}.DesktopGL`, `{Name}.BlazorGL`, etc.) each with their own entry point. Content files live in a shared `Content/` folder at the solution root.
+
+`RawContentManager` (generated by `ProjectExporter.GenerateRawContentManager`) replaces `InMemoryContentManager` in exports. It uses `TitleContainer.OpenStream(Path.Combine(RootDirectory, assetName + ext))` for non-desktop platforms (Android, Blazor) and `File.OpenRead` for desktop. Supports `Texture2D` (`.png`, `.jpg`, `.jpeg`, `.bmp`) and `SoundEffect` (`.wav`).
+
+**BlazorGL content linking:** BlazorGL serves content from `wwwroot/Content/`. In multi-platform exports, a post-build MSBuild target (`CopySharedContent`) copies files from the shared `Content/` folder into `wwwroot/Content/`. Other platforms reference `Content/` directly (or as Android assets).
 
 ## Static persistence
 
@@ -85,6 +111,7 @@ MSBuild generates `BuildInfo.g.cs` (C# const) and `wwwroot/js/build-version.js` 
 | `XnaFiddle.BlazorGL/ExampleGallery.cs` | Reads embedded resources; `LoadAssets()` extracts non-code files for an example |
 | `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `OnFileDropped` JSInvokable, `SupportedAssetExtensions`, `LoadExampleAssets()`, stale-assets check |
 | `XnaFiddle.BlazorGL/ProjectExporter.cs` | `GenerateRawContentManager` template with `Texture2D` + `SoundEffect` branches |
+| `XnaFiddle.BlazorGL/wwwroot/index.html` | XHR intercept for `TitleContainer.OpenStream`, canvas tick loop, splitter layout, other JS interop |
 | `XnaFiddle.BlazorGL/wwwroot/js/monaco-interop.js` | `fileDropInterop` (drag-and-drop), keyboard event suppression for Monaco |
 | `XnaFiddle.BlazorGL/wwwroot/js/build-version.js` | MSBuild-generated; sets `window._buildVersion` for stale-asset detection |
 | `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj` | `EmbeddedResource` wildcards for `Examples/`, `GenerateBuildInfo` target |
