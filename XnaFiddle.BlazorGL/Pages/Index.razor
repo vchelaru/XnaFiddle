@@ -222,16 +222,9 @@
 
     @if (_exportOpen)
     {
-        <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4;">
-            <div style="padding: 8px 12px; display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap;">
-                @* Project name *@
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="color: #aaa;">Project name:</span>
-                    <input type="text" @bind="_exportProjectName" @bind:event="oninput"
-                           style="background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px;
-                                  font-size: 12px; font-family: inherit; width: 150px;" />
-                </div>
-
+        <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
+            @* Row 1: Runtime + Platform *@
+            <div style="display: flex; align-items: flex-start; gap: 20px;">
                 @* Runtime radio buttons *@
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <span style="color: #aaa; margin-bottom: 2px;">Runtime:</span>
@@ -249,7 +242,7 @@
                     </label>
                 </div>
 
-                @* Platform radio buttons *@
+                @* Platform checkboxes *@
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <span style="color: #aaa; margin-bottom: 2px;">Platform:</span>
                     @foreach (var (platform, label) in new[] {
@@ -263,24 +256,33 @@
                         if (p == ExportPlatform.BlazorGL && _exportRuntime == ExportRuntime.MonoGame)
                             continue;
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
-                            <input type="radio" name="exportPlatform" checked="@(_exportPlatform == p)"
-                                   @onchange="() => _exportPlatform = p"
+                            <input type="checkbox" checked="@(_selectedPlatforms.Contains(p))"
+                                   @onchange="() => TogglePlatform(p)"
                                    style="accent-color: #0e639c;" />
                             @label
                         </label>
                     }
+                    @if (_selectedPlatforms.Count >= 2)
+                    {
+                        <span style="color: #569cd6; font-size: 11px; margin-top: 2px;">
+                            Multiple platforms selected — export will generate a shared library project plus one project per platform.
+                        </span>
+                    }
                 </div>
+            </div>
 
-                @* Export button *@
-                <div style="display: flex; align-items: flex-end; align-self: stretch;">
-                    <button @onclick="ExportProject" disabled="@(_isExporting || string.IsNullOrWhiteSpace(_exportProjectName))"
-                            style="padding: 5px 20px; background: #0e639c; color: white; border: none; cursor: pointer;
-                                   font-size: 13px; border-radius: 3px; display: flex; align-items: center; gap: 5px;
-                                   align-self: flex-end;">
-                        <i class="codicon codicon-package"></i>
-                        @(_isExporting ? "Exporting..." : "Export")
-                    </button>
-                </div>
+            @* Row 2: Project name + Export button *@
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="color: #aaa;">Project name:</span>
+                <input type="text" @bind="_exportProjectName" @bind:event="oninput"
+                       style="background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px;
+                              font-size: 12px; font-family: inherit; width: 150px;" />
+                <button @onclick="ExportProject" disabled="@(_isExporting || string.IsNullOrWhiteSpace(_exportProjectName) || _selectedPlatforms.Count == 0)"
+                        style="margin-left: auto; padding: 5px 20px; background: #0e639c; color: white; border: none; cursor: pointer;
+                               font-size: 13px; border-radius: 3px; display: flex; align-items: center; gap: 5px;">
+                    <i class="codicon codicon-package"></i>
+                    @(_isExporting ? "Exporting..." : "Export")
+                </button>
             </div>
         </div>
     }

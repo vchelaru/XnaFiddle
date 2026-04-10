@@ -78,7 +78,7 @@ namespace XnaFiddle.Pages
         bool _exportOpen;
         bool _isExporting;
         ExportRuntime _exportRuntime = ExportRuntime.Kni;
-        ExportPlatform _exportPlatform = ExportPlatform.DesktopGL;
+        HashSet<ExportPlatform> _selectedPlatforms = new() { ExportPlatform.DesktopGL };
         string _exportProjectName = "MyFiddle";
         List<AssetInfo> _assets = new();
         string _assetUrlInput = "";
@@ -934,7 +934,7 @@ namespace XnaFiddle.Pages
             }
         }
 
-        ExportTarget GetExportTarget() => (_exportRuntime, _exportPlatform) switch
+        ExportTarget GetExportTarget(ExportPlatform platform) => (_exportRuntime, platform) switch
         {
             (ExportRuntime.Kni, ExportPlatform.DesktopGL)  => ExportTarget.KniDesktopGL,
             (ExportRuntime.Kni, ExportPlatform.WindowsDX)  => ExportTarget.KniWindowsDX,
@@ -947,11 +947,27 @@ namespace XnaFiddle.Pages
             _ => ExportTarget.MonoGameDesktopGL,
         };
 
+        List<ExportTarget> GetExportTargets()
+        {
+            var targets = new List<ExportTarget>(_selectedPlatforms.Count);
+            foreach (var p in _selectedPlatforms)
+                targets.Add(GetExportTarget(p));
+            return targets;
+        }
+
+        void TogglePlatform(ExportPlatform platform)
+        {
+            if (_selectedPlatforms.Contains(platform))
+                _selectedPlatforms.Remove(platform);
+            else
+                _selectedPlatforms.Add(platform);
+        }
+
         void SetExportRuntime(ExportRuntime runtime)
         {
             _exportRuntime = runtime;
-            if (runtime == ExportRuntime.MonoGame && _exportPlatform == ExportPlatform.BlazorGL)
-                _exportPlatform = ExportPlatform.DesktopGL;
+            if (runtime == ExportRuntime.MonoGame)
+                _selectedPlatforms.Remove(ExportPlatform.BlazorGL);
         }
 
         private async Task ExportProject()
@@ -967,7 +983,8 @@ namespace XnaFiddle.Pages
                     : "";
 
                 var assets = InMemoryContentManager.Files;
-                byte[] zipBytes = ProjectExporter.Export(code, GetExportTarget(), projectName, assets: assets.Count > 0 ? assets : null);
+                var targets = GetExportTargets();
+                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }
