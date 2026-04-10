@@ -67,6 +67,9 @@ namespace XnaFiddle
             "KernSmith",
             "KernSmith.GumCommon",
             "KernSmith.KniGum",
+            "MLEM.KNI",
+            "MLEM.Ui.KNI",
+            "MLEM.Extended.KNI"
         ];
 
         public class DiagnosticInfo
@@ -128,6 +131,7 @@ namespace XnaFiddle
                 ("FontStashSharp.Kni", ["FontStashSharp.Kni", "FontStashSharp.Base"]),
                 ("Aether.Physics2D",  ["Aether.Physics2D"]),
                 ("KernSmith.KniGum",  ["KernSmith.KniGum", "KernSmith.GumCommon", "KernSmith"]),
+                ("MLEM",              ["MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI"])
             ];
             string versionInfo = string.Join("  ·  ",
                 versionTargets.Select(t => $"{t.Label} {t.AsmNames.Select(GetAssemblyVersion).FirstOrDefault(v => v != "?" && v != "0.0.0.0" && v != "0.0.0") ?? GetAssemblyVersion(t.AsmNames[0])}"));

@@ -412,6 +412,21 @@ namespace XnaFiddle
                 packages.Add(new NuGetPackage { Id = "KernSmith.Rasterizers.StbTrueType", Version = PackageVersions.KernSmith });
             }
 
+            if (source.Contains("MLEM"))
+            {
+                // we always add MLEM base in case only that one is used
+                packages.Add(new NuGetPackage {Id = isKni ? "MLEM.KNI" : "MLEM", Version = PackageVersions.Mlem});
+
+                if (source.Contains("MLEM.Ui"))
+                {
+                    packages.Add(new NuGetPackage {Id = isKni ? "MLEM.Ui.KNI" : "MLEM.Ui", Version = PackageVersions.Mlem});
+                }
+                if (source.Contains("MLEM.Extended"))
+                {
+                    packages.Add(new NuGetPackage {Id = isKni ? "MLEM.Extended.KNI" : "MLEM.Extended", Version = PackageVersions.Mlem});
+                }
+            }
+
             return packages;
         }
 

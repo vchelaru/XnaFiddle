@@ -53,6 +53,7 @@
     <GumVersion>2026.4.5.1</GumVersion>
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
     <KernSmithVersion>0.12.3</KernSmithVersion>
+    <MlemVersion>8.1.0</MlemVersion>
   </PropertyGroup>
 
   <!-- Game libraries that XnaFiddle references directly (KNI variants).
@@ -63,6 +64,8 @@
     <PackageReference Include="FontStashSharp.Kni" Version="$(FontStashSharpVersion)" />
     <PackageReference Include="Gum.KNI" Version="$(GumVersion)" />
     <PackageReference Include="KNI.Extended" Version="$(KniExtendedVersion)" />
+    <PackageReference Include="MLEM.Ui.KNI" Version="$(MlemVersion)" />
+    <PackageReference Include="MLEM.Extended.KNI" Version="$(MlemVersion)" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.17" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.17" PrivateAssets="all" />
   </ItemGroup>
@@ -114,6 +117,7 @@ namespace XnaFiddle {
         public const string Gum = &quot;$(GumVersion)&quot;%3B
         public const string KniExtended = &quot;$(KniExtendedVersion)&quot;%3B
         public const string KernSmith = &quot;$(KernSmithVersion)&quot;%3B
+        public const string Mlem = &quot;$(MlemVersion)&quot;%3B
     }
 }" />
     <ItemGroup>
