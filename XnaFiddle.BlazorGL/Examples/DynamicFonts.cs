@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -41,16 +42,14 @@ public class Game1 : Game
         GumUI.Initialize(this, DefaultVisualsVersion.V3);
 
         // Register bundled fonts so KernSmith can resolve them by name
-        var files = XnaFiddle.InMemoryContentManager.Files;
-        Console.WriteLine($"[DynamicFonts] Files available: {string.Join(", ", files.Keys)}");
-        if (files.TryGetValue("DroidSans.ttf", out var fontBytes))
+        using (var stream = TitleContainer.OpenStream(
+            Path.Combine(Content.RootDirectory, "DroidSans.ttf")))
         {
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            byte[] fontBytes = ms.ToArray();
             Console.WriteLine($"[DynamicFonts] Registering Droid Sans ({fontBytes.Length} bytes)");
             BmFont.RegisterFont("Droid Sans", fontBytes);
-        }
-        else
-        {
-            Console.WriteLine("[DynamicFonts] ERROR: DroidSans.ttf not found in InMemoryContentManager!");
         }
 
         // Test: can KernSmith actually generate a font in WASM?

@@ -78,7 +78,7 @@ namespace XnaFiddle.Pages
         bool _exportOpen;
         bool _isExporting;
         ExportRuntime _exportRuntime = ExportRuntime.Kni;
-        ExportPlatform _exportPlatform = ExportPlatform.DesktopGL;
+        HashSet<ExportPlatform> _selectedPlatforms = new() { ExportPlatform.DesktopGL };
         string _exportProjectName = "MyFiddle";
         List<AssetInfo> _assets = new();
         string _assetUrlInput = "";
@@ -297,7 +297,7 @@ namespace XnaFiddle.Pages
                 StateHasChanged();
                 return;
             }
-            InMemoryContentManager.AddFile(fileName, data);
+            RegisterContentFile(fileName, data);
 
             string[] fntTextures = null;
             if (fileName.EndsWith(".fnt", StringComparison.OrdinalIgnoreCase))
@@ -358,9 +358,25 @@ namespace XnaFiddle.Pages
             StateHasChanged();
         }
 
-        private void RemoveAsset(string fileName)
+        /// <summary>
+        /// Registers a content file in both InMemoryContentManager and the JS-side
+        /// XHR cache so that TitleContainer.OpenStream can resolve it.
+        /// </summary>
+        private void RegisterContentFile(string fileName, byte[] data)
+        {
+            InMemoryContentManager.AddFile(fileName, data);
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.register", fileName, Convert.ToBase64String(data));
+        }
+
+        private void UnregisterContentFile(string fileName)
         {
             InMemoryContentManager.RemoveFile(fileName);
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.unregister", fileName);
+        }
+
+        private void RemoveAsset(string fileName)
+        {
+            UnregisterContentFile(fileName);
             _assets.RemoveAll(a => string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
             StateHasChanged();
         }
@@ -421,7 +437,7 @@ namespace XnaFiddle.Pages
                     return;
                 }
 
-                InMemoryContentManager.AddFile(fileName, data);
+                RegisterContentFile(fileName, data);
 
                 string[] fntTextures = null;
                 if (fileName.EndsWith(".fnt", StringComparison.OrdinalIgnoreCase))
@@ -935,7 +951,7 @@ namespace XnaFiddle.Pages
             }
         }
 
-        ExportTarget GetExportTarget() => (_exportRuntime, _exportPlatform) switch
+        ExportTarget GetExportTarget(ExportPlatform platform) => (_exportRuntime, platform) switch
         {
             (ExportRuntime.Kni, ExportPlatform.DesktopGL)  => ExportTarget.KniDesktopGL,
             (ExportRuntime.Kni, ExportPlatform.WindowsDX)  => ExportTarget.KniWindowsDX,
@@ -948,11 +964,27 @@ namespace XnaFiddle.Pages
             _ => ExportTarget.MonoGameDesktopGL,
         };
 
+        List<ExportTarget> GetExportTargets()
+        {
+            var targets = new List<ExportTarget>(_selectedPlatforms.Count);
+            foreach (var p in _selectedPlatforms)
+                targets.Add(GetExportTarget(p));
+            return targets;
+        }
+
+        void TogglePlatform(ExportPlatform platform)
+        {
+            if (_selectedPlatforms.Contains(platform))
+                _selectedPlatforms.Remove(platform);
+            else
+                _selectedPlatforms.Add(platform);
+        }
+
         void SetExportRuntime(ExportRuntime runtime)
         {
             _exportRuntime = runtime;
-            if (runtime == ExportRuntime.MonoGame && _exportPlatform == ExportPlatform.BlazorGL)
-                _exportPlatform = ExportPlatform.DesktopGL;
+            if (runtime == ExportRuntime.MonoGame)
+                _selectedPlatforms.Remove(ExportPlatform.BlazorGL);
         }
 
         private async Task ExportProject()
@@ -968,7 +1000,8 @@ namespace XnaFiddle.Pages
                     : "";
 
                 var assets = InMemoryContentManager.Files;
-                byte[] zipBytes = ProjectExporter.Export(code, GetExportTarget(), projectName, assets: assets.Count > 0 ? assets : null);
+                var targets = GetExportTargets();
+                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }
@@ -1053,12 +1086,17 @@ namespace XnaFiddle.Pages
 
         private void LoadExampleAssets(string exampleName)
         {
+            // Clear previous content files from both InMemoryContentManager and the JS XHR cache
+            InMemoryContentManager.ClearFiles();
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.clear");
+            _assets.Clear();
+
             ExampleAsset[] assets = ExampleGallery.LoadAssets(exampleName);
             if (assets.Length == 0) return;
 
             for (int i = 0; i < assets.Length; i++)
             {
-                InMemoryContentManager.AddFile(assets[i].FileName, assets[i].Data);
+                RegisterContentFile(assets[i].FileName, assets[i].Data);
 
                 // Update the UI asset list (same as drag-and-drop path)
                 _assets.RemoveAll(a => string.Equals(a.FileName, assets[i].FileName, System.StringComparison.OrdinalIgnoreCase));

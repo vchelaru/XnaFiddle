@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -56,6 +57,38 @@ namespace XnaFiddle
             "nkast.Xna.Framework.Storage",
             "nkast.Xna.Framework.XR",
         ];
+
+        static string GetPlatformSuffix(ExportTarget target) => target switch
+        {
+            ExportTarget.KniDesktopGL      => "DesktopGL",
+            ExportTarget.KniWindowsDX      => "WindowsDX",
+            ExportTarget.KniAndroid        => "Android",
+            ExportTarget.KniBlazorGL       => "BlazorGL",
+            ExportTarget.MonoGameDesktopGL => "DesktopGL",
+            ExportTarget.MonoGameWindowsDX => "WindowsDX",
+            ExportTarget.MonoGameAndroid   => "Android",
+            _ => throw new ArgumentOutOfRangeException(nameof(target), target, null),
+        };
+
+        /// <summary>
+        /// Exports a multi-platform solution when multiple targets are specified.
+        /// Delegates to the single-target <see cref="Export(string, ExportTarget, string, IReadOnlyDictionary{string, byte[]})"/>
+        /// when only one target is given.
+        /// </summary>
+        public static byte[] Export(
+            string expandedSource,
+            IReadOnlyList<ExportTarget> targets,
+            string projectName = "MyFiddle",
+            IReadOnlyDictionary<string, byte[]> assets = null)
+        {
+            if (targets == null || targets.Count == 0)
+                throw new ArgumentException("At least one export target is required.", nameof(targets));
+
+            if (targets.Count == 1)
+                return Export(expandedSource, targets[0], projectName, assets);
+
+            return ExportMultiPlatform(expandedSource, targets, projectName, assets);
+        }
 
         public static byte[] Export(
             string expandedSource,
@@ -120,6 +153,161 @@ namespace XnaFiddle
             }
 
             return memoryStream.ToArray();
+        }
+
+        static byte[] ExportMultiPlatform(
+            string expandedSource,
+            IReadOnlyList<ExportTarget> targets,
+            string projectName,
+            IReadOnlyDictionary<string, byte[]> assets)
+        {
+            bool hasAssets = assets != null && assets.Count > 0;
+            string commonName = $"{projectName}Common";
+            string gameCs = GenerateGameClass(projectName, expandedSource);
+
+            // The common project holds Game1.cs, RawContentManager.cs and shared code.
+            // Each platform project references the common project and adds its entry point.
+            List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0]);
+            string commonCsproj = GenerateCommonCsproj(projectName, commonName, commonPackages);
+            string slnx = GenerateSlnx(projectName, commonName, targets);
+
+            using var memoryStream = new MemoryStream();
+            using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                AddTextEntry(archive, $"{projectName}.slnx", slnx);
+
+                // Common project
+                AddTextEntry(archive, $"{commonName}/{commonName}.csproj", commonCsproj);
+                AddTextEntry(archive, $"{commonName}/Game1.cs", gameCs);
+                AddTextEntry(archive, $"{commonName}/RawContentManager.cs", GenerateRawContentManager(projectName));
+
+                // Per-platform projects
+                foreach (var target in targets)
+                {
+                    string suffix = GetPlatformSuffix(target);
+                    string platformDir = $"{projectName}.{suffix}";
+                    List<NuGetPackage> packages = BuildPackageList(expandedSource, target);
+                    string csproj = GenerateCsproj(projectName, target, packages, hasAssets, isMultiPlatform: true, commonProjectName: commonName);
+
+                    AddTextEntry(archive, $"{platformDir}/{platformDir}.csproj", csproj);
+
+                    // Platform-specific entry points
+                    if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
+                    {
+                        AddTextEntry(archive, $"{platformDir}/Activity1.cs", GenerateAndroidActivity(projectName));
+                    }
+                    else if (target == ExportTarget.KniBlazorGL)
+                    {
+                        AddTextEntry(archive, $"{platformDir}/Program.cs", GenerateBlazorProgram(projectName));
+                        AddTextEntry(archive, $"{platformDir}/App.razor", GenerateBlazorAppRazor());
+                        AddTextEntry(archive, $"{platformDir}/MainLayout.razor", GenerateBlazorMainLayoutRazor());
+                        AddTextEntry(archive, $"{platformDir}/_Imports.razor", GenerateBlazorImportsRazor(projectName));
+                        AddTextEntry(archive, $"{platformDir}/Pages/Index.razor", GenerateBlazorIndexRazor());
+                        AddTextEntry(archive, $"{platformDir}/wwwroot/index.html", GenerateBlazorIndexHtml(projectName));
+                    }
+                    else
+                    {
+                        AddTextEntry(archive, $"{platformDir}/Program.cs", GenerateProgram(projectName));
+                    }
+                }
+
+                // Shared content at solution root Content/ folder
+                if (assets != null)
+                {
+                    foreach (var kvp in assets)
+                    {
+                        if (string.IsNullOrEmpty(Path.GetExtension(kvp.Key)))
+                            continue;
+                        var entry = archive.CreateEntry($"Content/{kvp.Key}", CompressionLevel.Optimal);
+                        using var stream = entry.Open();
+                        stream.Write(kvp.Value, 0, kvp.Value.Length);
+                    }
+                }
+            }
+
+            return memoryStream.ToArray();
+        }
+
+        /// <summary>
+        /// Generates a common (shared) .csproj for multi-platform exports.
+        /// Contains only platform-agnostic packages; platform-specific packages
+        /// (Platform SDKs, content pipeline, Blazor hosting) belong in each
+        /// platform project's csproj instead.
+        /// </summary>
+        static string GenerateCommonCsproj(string projectName, string commonName, List<NuGetPackage> packages)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine(@"<Project Sdk=""Microsoft.NET.Sdk"">");
+            sb.AppendLine();
+            sb.AppendLine("  <PropertyGroup>");
+            sb.AppendLine("    <OutputType>Library</OutputType>");
+            sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+            sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
+            sb.AppendLine($"    <AssemblyName>{commonName}</AssemblyName>");
+            sb.AppendLine("  </PropertyGroup>");
+            sb.AppendLine();
+            sb.AppendLine("  <ItemGroup>");
+
+            // MonoGame bundles the framework into platform-specific packages (e.g.
+            // MonoGame.Framework.DesktopGL). The common library still needs a framework
+            // reference to compile against, so we pick DesktopGL as the default.
+            // Each platform project brings its own correct package at runtime.
+            bool isMonoGame = packages.Exists(p => p.Id.StartsWith("MonoGame.Framework."));
+            if (isMonoGame)
+            {
+                var mgPkg = packages.Find(p => p.Id.StartsWith("MonoGame.Framework."));
+                sb.AppendLine($@"    <PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{mgPkg.Version}"" PrivateAssets=""All"" />");
+            }
+
+            foreach (var pkg in packages)
+            {
+                // Skip platform-specific packages — they belong in per-platform projects.
+                if (pkg.Id.Contains("Platform"))
+                    continue;
+                if (pkg.Id.StartsWith("MonoGame.Framework."))
+                    continue;
+                if (pkg.Id == "nkast.Xna.Framework.Content.Pipeline.Builder")
+                    continue;
+                if (pkg.Id == "MonoGame.Content.Builder.Task")
+                    continue;
+                if (pkg.Id == "Microsoft.AspNetCore.Components.WebAssembly")
+                    continue;
+                if (pkg.Id == "Microsoft.AspNetCore.Components.WebAssembly.DevServer")
+                    continue;
+
+                sb.AppendLine($@"    <PackageReference Include=""{pkg.Id}"" Version=""{pkg.Version}"" />");
+            }
+
+            sb.AppendLine("  </ItemGroup>");
+            sb.AppendLine();
+            sb.AppendLine("</Project>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Generates a .slnx for multi-platform exports that includes
+        /// the common project and one project per target platform.
+        /// </summary>
+        static string GenerateSlnx(string projectName, string commonName, IReadOnlyList<ExportTarget> targets)
+        {
+            bool needsDeploy = targets.Any(t =>
+                t == ExportTarget.KniAndroid || t == ExportTarget.MonoGameAndroid);
+            string deployConfig = needsDeploy
+                ? @"
+  <Configuration Solution=""*|*"" Project=""*|*|Deploy"" />"
+                : "";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($@"<Solution>{deployConfig}");
+            sb.AppendLine($@"  <Project Path=""{commonName}\{commonName}.csproj"" />");
+            foreach (var target in targets)
+            {
+                string suffix = GetPlatformSuffix(target);
+                string platformDir = $"{projectName}.{suffix}";
+                sb.AppendLine($@"  <Project Path=""{platformDir}\{platformDir}.csproj"" />");
+            }
+            sb.AppendLine("</Solution>");
+            return sb.ToString();
         }
 
         static List<NuGetPackage> BuildPackageList(string source, ExportTarget target)
@@ -202,7 +390,7 @@ namespace XnaFiddle
             {
                 packages.Add(new NuGetPackage
                 {
-                    Id = isKni ? "FontStashSharp.Kni" : "FontStashSharp",
+                    Id = isKni ? "FontStashSharp.Kni" : "FontStashSharp.MonoGame",
                     Version = PackageVersions.FontStashSharp
                 });
             }
@@ -256,9 +444,23 @@ namespace XnaFiddle
 ";
         }
 
-        static string GenerateCsproj(string projectName, ExportTarget target, List<NuGetPackage> packages, bool hasAssets)
+        static string GenerateCsproj(string projectName, ExportTarget target, List<NuGetPackage> packages, bool hasAssets,
+            bool isMultiPlatform = false, string commonProjectName = null)
         {
             var sb = new StringBuilder();
+
+            // In multi-platform mode, filter to platform-specific packages only.
+            // Framework packages belong in the common project.
+            if (isMultiPlatform)
+            {
+                packages = packages.FindAll(p =>
+                    p.Id.Contains("Platform") ||
+                    p.Id.StartsWith("MonoGame.Framework.") ||
+                    p.Id == "nkast.Xna.Framework.Content.Pipeline.Builder" ||
+                    p.Id == "MonoGame.Content.Builder.Task" ||
+                    p.Id == "Microsoft.AspNetCore.Components.WebAssembly" ||
+                    p.Id == "Microsoft.AspNetCore.Components.WebAssembly.DevServer");
+            }
 
             // BlazorGL uses the Blazor SDK; all others use the standard SDK
             string sdk = target == ExportTarget.KniBlazorGL
@@ -343,22 +545,68 @@ namespace XnaFiddle
                 sb.AppendLine($@"    <PackageReference Include=""{pkg.Id}"" Version=""{pkg.Version}"" />");
             sb.AppendLine("  </ItemGroup>");
 
-            if (hasAssets && target != ExportTarget.KniBlazorGL)
+            // In multi-platform mode, reference the common project.
+            if (isMultiPlatform && commonProjectName != null)
             {
-                // BlazorGL: content lives in wwwroot/ and is served automatically — no csproj entry needed.
                 sb.AppendLine();
-                sb.AppendLine(@"  <ItemGroup>");
-                if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
+                sb.AppendLine("  <ItemGroup>");
+                sb.AppendLine($@"    <ProjectReference Include=""..\{commonProjectName}\{commonProjectName}.csproj"" />");
+                sb.AppendLine("  </ItemGroup>");
+            }
+
+            if (hasAssets)
+            {
+                if (isMultiPlatform)
                 {
-                    sb.AppendLine(@"    <AndroidAsset Include=""Content\**\*.*"" />");
+                    // Multi-platform: content lives at solution root, reference with relative paths.
+                    sb.AppendLine();
+                    sb.AppendLine(@"  <ItemGroup>");
+                    if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
+                    {
+                        sb.AppendLine(@"    <AndroidAsset Include=""..\Content\**\*"" Link=""Assets\Content\%(RecursiveDir)%(Filename)%(Extension)"" />");
+                    }
+                    else if (target == ExportTarget.KniBlazorGL)
+                    {
+                        // Blazor serves static files only from wwwroot/. Handled by
+                        // a pre-build target below that copies shared content there.
+                    }
+                    else
+                    {
+                        sb.AppendLine(@"    <None Include=""..\Content\**\*"" Link=""Content\%(RecursiveDir)%(Filename)%(Extension)"">");
+                        sb.AppendLine(@"      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>");
+                        sb.AppendLine(@"    </None>");
+                    }
+                    sb.AppendLine(@"  </ItemGroup>");
                 }
-                else
+                else if (target != ExportTarget.KniBlazorGL)
                 {
-                    sb.AppendLine(@"    <None Update=""Content\**\*"">");
-                    sb.AppendLine(@"      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>");
-                    sb.AppendLine(@"    </None>");
+                    // Single-platform: BlazorGL content lives in wwwroot/ and is served automatically — no csproj entry needed.
+                    sb.AppendLine();
+                    sb.AppendLine(@"  <ItemGroup>");
+                    if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
+                    {
+                        sb.AppendLine(@"    <AndroidAsset Include=""Content\**\*.*"" />");
+                    }
+                    else
+                    {
+                        sb.AppendLine(@"    <None Update=""Content\**\*"">");
+                        sb.AppendLine(@"      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>");
+                        sb.AppendLine(@"    </None>");
+                    }
+                    sb.AppendLine(@"  </ItemGroup>");
                 }
-                sb.AppendLine(@"  </ItemGroup>");
+            }
+
+            // BlazorGL multi-platform: add a pre-build target to copy shared content into wwwroot/
+            if (isMultiPlatform && target == ExportTarget.KniBlazorGL && hasAssets)
+            {
+                sb.AppendLine();
+                sb.AppendLine(@"  <Target Name=""CopySharedContent"" AfterTargets=""Build"">");
+                sb.AppendLine(@"    <ItemGroup>");
+                sb.AppendLine(@"      <_SharedContent Include=""..\Content\**\*"" />");
+                sb.AppendLine(@"    </ItemGroup>");
+                sb.AppendLine(@"    <Copy SourceFiles=""@(_SharedContent)"" DestinationFiles=""@(_SharedContent->'wwwroot\Content\%(RecursiveDir)%(Filename)%(Extension)')"" SkipUnchangedFiles=""true"" />");
+                sb.AppendLine(@"  </Target>");
             }
 
             sb.AppendLine();

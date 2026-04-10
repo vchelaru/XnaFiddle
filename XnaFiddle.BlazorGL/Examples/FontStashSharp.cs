@@ -1,5 +1,5 @@
 using System;
-using System.Linq;
+using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using FontStashSharp;
@@ -24,10 +24,13 @@ public class Game1 : Game
     {
         spriteBatch = new SpriteBatch(GraphicsDevice);
 
-        // Load the embedded TTF font from the in-memory content store.
+        // Load the TTF font as raw bytes from the content directory.
         // You can also drag-and-drop your own .ttf files onto the canvas.
-        var files = XnaFiddle.InMemoryContentManager.Files;
-        byte[] fontBytes = files.Values.First();
+        using var stream = TitleContainer.OpenStream(
+            Path.Combine(Content.RootDirectory, "DroidSans.ttf"));
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        byte[] fontBytes = ms.ToArray();
         fontSystem = new FontSystem();
         fontSystem.AddFont(fontBytes);
     }

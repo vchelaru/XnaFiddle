@@ -265,6 +265,69 @@
             });
         })();
 
+        // In-memory content file cache — allows TitleContainer.OpenStream (which
+        // does a synchronous XHR in KNI's Blazor platform) to resolve files that
+        // exist only in memory (embedded example assets, drag-and-drop uploads).
+        (function () {
+            var files = {};
+            var origOpen = XMLHttpRequest.prototype.open;
+            var origSend = XMLHttpRequest.prototype.send;
+
+            window.contentFileCache = {
+                register: function (path, base64) {
+                    // Blazor marshals byte[] as base64. Decode to binary string
+                    // matching the OverrideMimeType charset used by KNI's TitleContainer.
+                    var raw = atob(base64);
+                    files[path] = raw;
+                },
+                unregister: function (path) { delete files[path]; },
+                clear: function () { files = {}; }
+            };
+
+            XMLHttpRequest.prototype.open = function (method, url) {
+                this._cfcUrl = url;
+                this._cfcMethod = method;
+                return origOpen.apply(this, arguments);
+            };
+
+            XMLHttpRequest.prototype.send = function () {
+                try {
+                    if (this._cfcMethod === 'GET' && this._cfcUrl && files[this._cfcUrl] !== undefined) {
+                        var data = files[this._cfcUrl];
+                        // Create a new XHR-like facade object isn't needed —
+                        // we can fake the response by storing values and overriding getters.
+                        this._cfcStatus = 200;
+                        this._cfcResponseText = data;
+                        this._cfcReadyState = 4;
+                        this._cfcIntercepted = true;
+                        if (this.onreadystatechange) this.onreadystatechange();
+                        return;
+                    }
+                } catch (e) {
+                    // Fall through to real XHR on any error
+                }
+                return origSend.apply(this, arguments);
+            };
+
+            // Override getters so KNI's C# XMLHttpRequest wrapper reads our cached values
+            var statusDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'status');
+            var responseTextDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
+            var readyStateDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'readyState');
+
+            Object.defineProperty(XMLHttpRequest.prototype, 'status', {
+                get: function () { return this._cfcIntercepted ? this._cfcStatus : statusDesc.get.call(this); },
+                configurable: true
+            });
+            Object.defineProperty(XMLHttpRequest.prototype, 'responseText', {
+                get: function () { return this._cfcIntercepted ? this._cfcResponseText : responseTextDesc.get.call(this); },
+                configurable: true
+            });
+            Object.defineProperty(XMLHttpRequest.prototype, 'readyState', {
+                get: function () { return this._cfcIntercepted ? this._cfcReadyState : readyStateDesc.get.call(this); },
+                configurable: true
+            });
+        })();
+
         window.downloadFile = function (fileName, contentBase64) {
             var bytes = Uint8Array.from(atob(contentBase64), function (c) { return c.charCodeAt(0); });
             var blob = new Blob([bytes], { type: 'application/zip' });

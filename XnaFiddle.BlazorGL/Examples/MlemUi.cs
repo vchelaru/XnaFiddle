@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -165,9 +166,12 @@ public class Game1 : Game
     private SpriteFontBase LoadFont(string name)
     {
         // we use FontStashSharp fonts for this example; see the FontStashSharp example for more information
-        var files = XnaFiddle.InMemoryContentManager.Files;
+        using var stream = TitleContainer.OpenStream(
+            Path.Combine(Content.RootDirectory, name + ".ttf"));
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
         var fontSystem = new FontSystem();
-        fontSystem.AddFont(files[name]);
+        fontSystem.AddFont(ms.ToArray());
         return fontSystem.GetFont(64);
     }
 }
