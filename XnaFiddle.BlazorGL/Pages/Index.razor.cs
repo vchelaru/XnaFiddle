@@ -1086,6 +1086,11 @@ namespace XnaFiddle.Pages
 
         private void LoadExampleAssets(string exampleName)
         {
+            // Clear previous content files from both InMemoryContentManager and the JS XHR cache
+            InMemoryContentManager.ClearFiles();
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.clear");
+            _assets.Clear();
+
             ExampleAsset[] assets = ExampleGallery.LoadAssets(exampleName);
             if (assets.Length == 0) return;
 
