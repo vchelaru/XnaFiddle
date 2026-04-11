@@ -17,11 +17,13 @@ namespace XnaFiddle
     public class CompilationService
     {
         private readonly NavigationManager _navigationManager;
+        private readonly LibraryRegistry _libraryRegistry;
         private BlazorWasmMetadataReferenceService _referenceService;
 
-        public CompilationService(NavigationManager navigationManager)
+        public CompilationService(NavigationManager navigationManager, LibraryRegistry libraryRegistry)
         {
             _navigationManager = navigationManager;
+            _libraryRegistry = libraryRegistry;
         }
 
         // BCL assemblies that users may need but aren't loaded by XnaFiddle's own code.
@@ -32,9 +34,10 @@ namespace XnaFiddle
             "System.Linq.Expressions",     // Expression trees (used by some binding APIs)
         ];
 
-        // KNI assemblies that exist in _framework/ but may not be loaded into the AppDomain
-        // yet due to lazy loading (no game is running when the user first compiles).
-        private static readonly string[] KniAssemblyNames =
+        // Core KNI platform assemblies that exist in _framework/ but may not be loaded
+        // into the AppDomain yet due to lazy loading. Library-specific assemblies are
+        // contributed by ILibraryPlugin.RequiredAssemblies via the LibraryRegistry.
+        private static readonly string[] KniCoreAssemblyNames =
         [
             "Xna.Framework",
             "Xna.Framework.Graphics",
@@ -54,22 +57,7 @@ namespace XnaFiddle
             "nkast.Wasm.XHR",
             "nkast.Wasm.XR",
             "nkast.Wasm.Clipboard",
-            "KniGum",
-            "GumCommon",
-            "FlatRedBall.InterpolationCore",
             "TextCopy",
-            "Apos.Shapes.KNI",
-            "FontStashSharp.Kni",
-            "FontStashSharp.Base",
-            "FontStashSharp.Rasterizers.StbTrueTypeSharp",
-            "KNI.Extended",
-            "Aether.Physics2D",
-            "KernSmith",
-            "KernSmith.GumCommon",
-            "KernSmith.KniGum",
-            "MLEM.KNI",
-            "MLEM.Ui.KNI",
-            "MLEM.Extended.KNI"
         ];
 
         public class DiagnosticInfo
@@ -110,10 +98,20 @@ namespace XnaFiddle
             // Force-load optional assemblies into the AppDomain.
             // Blazor WASM lazy-loads assemblies; without this they may not be present when
             // a #code= link is opened on a fresh page, causing silent metadata-fetch failures.
-            for (int i = 0; i < KniAssemblyNames.Length; i++)
+            for (int i = 0; i < KniCoreAssemblyNames.Length; i++)
             {
-                try { Assembly.Load(KniAssemblyNames[i]); }
+                try { Assembly.Load(KniCoreAssemblyNames[i]); }
                 catch { /* already loaded, or genuinely absent — handled below */ }
+            }
+            IReadOnlyList<ILibraryPlugin> plugins = _libraryRegistry.Plugins;
+            for (int i = 0; i < plugins.Count; i++)
+            {
+                string[] assemblies = plugins[i].RequiredAssemblies;
+                for (int j = 0; j < assemblies.Length; j++)
+                {
+                    try { Assembly.Load(assemblies[j]); }
+                    catch { /* already loaded, or genuinely absent — handled below */ }
+                }
             }
             for (int i = 0; i < BclAssemblyNames.Length; i++)
             {
@@ -121,20 +119,20 @@ namespace XnaFiddle
                 catch { /* already loaded, or genuinely absent — handled below */ }
             }
 
-            // Collect library version info for display in the diagnostics panel
-            (string Label, string[] AsmNames)[] versionTargets =
-            [
-                ("KNI",              ["Kni.Platform"]),
-                ("Gum.KNI",          ["GumCommon", "KniGum"]),
-                ("KNI.Extended",     ["KNI.Extended"]),
-                ("Apos.Shapes.KNI",  ["Apos.Shapes.KNI"]),
-                ("FontStashSharp.Kni", ["FontStashSharp.Kni", "FontStashSharp.Base"]),
-                ("Aether.Physics2D",  ["Aether.Physics2D"]),
-                ("KernSmith.KniGum",  ["KernSmith.KniGum", "KernSmith.GumCommon", "KernSmith"]),
-                ("MLEM",              ["MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI"])
-            ];
-            string versionInfo = string.Join("  ·  ",
-                versionTargets.Select(t => $"{t.Label} {t.AsmNames.Select(GetAssemblyVersion).FirstOrDefault(v => v != "?" && v != "0.0.0.0" && v != "0.0.0") ?? GetAssemblyVersion(t.AsmNames[0])}"));
+            // Collect library version info for display in the diagnostics panel.
+            // KNI platform version is always first; plugin versions follow.
+            var versionParts = new List<string>();
+            versionParts.Add($"KNI {GetAssemblyVersion("Kni.Platform")}");
+            for (int i = 0; i < plugins.Count; i++)
+            {
+                var info = plugins[i].VersionInfo;
+                if (info.Label.Length == 0) continue;
+                string version = info.AssemblyNames.Select(GetAssemblyVersion)
+                    .FirstOrDefault(v => v != "?" && v != "0.0.0.0" && v != "0.0.0")
+                    ?? GetAssemblyVersion(info.AssemblyNames[0]);
+                versionParts.Add($"{info.Label} {version}");
+            }
+            string versionInfo = string.Join("  ·  ", versionParts);
 
             // Collect assembly names from loaded assemblies + known KNI assemblies
             HashSet<string> assembliesRequired = [];
@@ -150,9 +148,17 @@ namespace XnaFiddle
                     assembliesRequired.Add(assemblyName);
             }
 
-            // Add KNI assemblies that may not be loaded yet due to lazy loading
-            for (int i = 0; i < KniAssemblyNames.Length; i++)
-                assembliesRequired.Add(KniAssemblyNames[i]);
+            // Add KNI core assemblies that may not be loaded yet due to lazy loading
+            for (int i = 0; i < KniCoreAssemblyNames.Length; i++)
+                assembliesRequired.Add(KniCoreAssemblyNames[i]);
+
+            // Add library assemblies from registered plugins
+            for (int i = 0; i < plugins.Count; i++)
+            {
+                string[] assemblies = plugins[i].RequiredAssemblies;
+                for (int j = 0; j < assemblies.Length; j++)
+                    assembliesRequired.Add(assemblies[j]);
+            }
 
             // Add BCL assemblies needed for type-forwarding resolution
             for (int i = 0; i < BclAssemblyNames.Length; i++)

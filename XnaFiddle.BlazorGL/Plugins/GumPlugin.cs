@@ -7,7 +7,7 @@ namespace XnaFiddle.Plugins
     public class GumPlugin : ILibraryPlugin
     {
         public string Name => "Gum";
-        public string[] RequiredAssemblies => ["KniGum", "GumCommon"];
+        public string[] RequiredAssemblies => ["KniGum", "GumCommon", "FlatRedBall.InterpolationCore"];
         public (string Label, string[] AssemblyNames) VersionInfo => ("Gum.KNI", ["GumCommon", "KniGum"]);
 
         public void CleanUp()

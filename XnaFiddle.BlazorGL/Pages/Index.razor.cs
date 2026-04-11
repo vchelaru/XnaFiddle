@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Microsoft.Xna.Framework;
-using XnaFiddle.Plugins;
 
 namespace XnaFiddle.Pages
 {
@@ -24,17 +23,6 @@ namespace XnaFiddle.Pages
         static readonly string ColorError   = "#f48771";
         static readonly string ColorPending = "#dcdcaa";
         static readonly string ColorMuted   = "#888";
-
-        static readonly LibraryRegistry _libraryRegistry = CreateLibraryRegistry();
-
-        static LibraryRegistry CreateLibraryRegistry()
-        {
-            var registry = new LibraryRegistry();
-            registry.Register(new GameWindowPlugin());
-            registry.Register(new GumPlugin());
-            registry.Register(new MlemPlugin());
-            return registry;
-        }
 
         Game _game;
 
@@ -622,7 +610,7 @@ namespace XnaFiddle.Pages
 
                         // NOTE: Everything between here and _game = newGame is synchronous —
                         // no awaits, so TickDotNet() cannot be called in this window (WASM is single-threaded).
-                        _libraryRegistry.RunAllCleanups();
+                        LibraryRegistry.RunAllCleanups();
 
                         Game newGame = (Game)Activator.CreateInstance(gameType);
                         newGame.Content = new InMemoryContentManager(newGame.Services);
@@ -636,7 +624,7 @@ namespace XnaFiddle.Pages
                         catch (Exception runEx)
                         {
                             try { newGame.Dispose(); } catch { }
-                            _libraryRegistry.RunAllCleanups();
+                            LibraryRegistry.RunAllCleanups();
                             throw new Exception("Game crashed during initialization: " + runEx.Message, runEx);
                         }
                         _game = newGame;
