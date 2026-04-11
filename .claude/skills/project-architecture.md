@@ -44,7 +44,7 @@ XnaFiddle/
 4. IL bytes are loaded via `Assembly.Load(ilBytes)`
 5. `FindGameType()` scans for a class with base type `Microsoft.Xna.Framework.Game`
 6. The old game is dropped (**not Disposed** — `Dispose()` would invalidate shared GraphicsDevice textures)
-7. `CleanUpGameWindowRegistry()` and `CleanUpGumService()` reset static singletons so the next game starts clean
+7. `_libraryRegistry.RunAllCleanups()` iterates registered `ILibraryPlugin` instances to reset static singletons so the next game starts clean
 8. New game is instantiated, given an `InMemoryContentManager`, and `.Run()` is called
 
 ### Game loop
@@ -72,6 +72,5 @@ XnaFiddle/
 |-------|-----|
 | Monitor deadlock when compiling | Route compile through `_pendingCompile` flag, consumed in rAF tick |
 | KNI assemblies not loaded at compile time | Hardcoded `KniAssemblyNames` list in `CompilationService` |
-| Gum statics accumulate across hot-reloads | `CleanUpGumService()` clears Root children, resets `SystemManagers.Default`, `LoaderManager` cache, `IsInitialized` |
-| BlazorGameWindow `_instances` dict not cleared | `CleanUpGameWindowRegistry()` clears it via reflection |
+| Library statics accumulate across hot-reloads | `LibraryRegistry.RunAllCleanups()` calls each `ILibraryPlugin.CleanUp()` — see `Plugins/` folder (GumPlugin, MlemPlugin, GameWindowPlugin) |
 | Old game Dispose() breaks next run | Set `_game = null` without calling `Dispose()` |

@@ -111,7 +111,7 @@ Most libraries do **not** need a preset — presets are only for libraries that 
 
 #### 7. Optional: Static State Cleanup
 
-If the library maintains global/static state between game runs (like Gum's `GumService.Default`), add cleanup logic in `Pages/Index.razor.cs` using reflection. See `CleanUpGumService()` for an example. This ensures that recompiling and running new code doesn't carry over stale state from the previous run.
+If the library maintains global/static state between game runs (like Gum's `GumService.Default`), implement the `ILibraryPlugin` interface in a new class under `Plugins/` and register it in the `LibraryRegistry` (see `Index.razor.cs` — `CreateLibraryRegistry()`). Your plugin's `CleanUp()` method should use reflection to reset the relevant statics. See `GumPlugin.cs` for an example. The cleanup must be idempotent — safe to call when the library hasn't been initialized and safe to call multiple times.
 
 #### 8. Optional: Security Exceptions
 

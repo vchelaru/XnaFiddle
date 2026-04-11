@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Microsoft.Xna.Framework;
+using XnaFiddle.Plugins;
 
 namespace XnaFiddle.Pages
 {
@@ -23,6 +24,17 @@ namespace XnaFiddle.Pages
         static readonly string ColorError   = "#f48771";
         static readonly string ColorPending = "#dcdcaa";
         static readonly string ColorMuted   = "#888";
+
+        static readonly LibraryRegistry _libraryRegistry = CreateLibraryRegistry();
+
+        static LibraryRegistry CreateLibraryRegistry()
+        {
+            var registry = new LibraryRegistry();
+            registry.Register(new GameWindowPlugin());
+            registry.Register(new GumPlugin());
+            registry.Register(new MlemPlugin());
+            return registry;
+        }
 
         Game _game;
 
@@ -610,9 +622,7 @@ namespace XnaFiddle.Pages
 
                         // NOTE: Everything between here and _game = newGame is synchronous —
                         // no awaits, so TickDotNet() cannot be called in this window (WASM is single-threaded).
-                        CleanUpGameWindowRegistry();
-                        CleanUpGumService();
-                        CleanUpMlemPlatform();
+                        _libraryRegistry.RunAllCleanups();
 
                         Game newGame = (Game)Activator.CreateInstance(gameType);
                         newGame.Content = new InMemoryContentManager(newGame.Services);
@@ -626,7 +636,7 @@ namespace XnaFiddle.Pages
                         catch (Exception runEx)
                         {
                             try { newGame.Dispose(); } catch { }
-                            CleanUpGameWindowRegistry();
+                            _libraryRegistry.RunAllCleanups();
                             throw new Exception("Game crashed during initialization: " + runEx.Message, runEx);
                         }
                         _game = newGame;
@@ -1117,93 +1127,6 @@ namespace XnaFiddle.Pages
             _statusColor = ColorError;
             _diagnosticsOutput = diagnosticsDetail;
             _diagnosticsColor = ColorError;
-        }
-
-        private static void CleanUpGumService()
-        {
-            try
-            {
-                var gumServiceType = Type.GetType("MonoGameGum.GumService, KniGum");
-                if (gumServiceType == null) return;
-                var defaultProp = gumServiceType.GetProperty("Default", BindingFlags.Static | BindingFlags.Public);
-                var gumService = defaultProp?.GetValue(null);
-                if (gumService == null) return;
-
-                // Clear Root, PopupRoot, and ModalRoot children.
-                // These are persistent statics — old controls accumulate across runs without this.
-                foreach (var rootPropName in new[] { "Root", "PopupRoot", "ModalRoot" })
-                {
-                    var rootProp = gumServiceType.GetProperty(rootPropName, BindingFlags.Instance | BindingFlags.Public);
-                    var root = rootProp?.GetValue(gumService);
-                    if (root == null) continue;
-                    var childrenProp = root.GetType().GetProperty("Children", BindingFlags.Instance | BindingFlags.Public);
-                    (childrenProp?.GetValue(root) as System.Collections.IList)?.Clear();
-                }
-
-                // Reset SystemManagers.Default so GumService.Initialize creates a fresh one
-                var systemManagersType = Type.GetType("RenderingLibrary.SystemManagers, GumCommon");
-                if (systemManagersType != null)
-                {
-                    var defaultPropSM = systemManagersType.GetProperty("Default", BindingFlags.Static | BindingFlags.Public);
-                    defaultPropSM?.SetValue(null, null);
-                }
-
-                // Clear LoaderManager cache WITHOUT disposing textures
-                var loaderManagerType = Type.GetType("RenderingLibrary.Content.LoaderManager, GumCommon");
-                if (loaderManagerType != null)
-                {
-                    var selfProp = loaderManagerType.GetProperty("Self", BindingFlags.Static | BindingFlags.Public);
-                    var loaderInstance = selfProp?.GetValue(null);
-                    if (loaderInstance != null)
-                    {
-                        var cacheField = loaderManagerType.GetField("mCachedDisposables", BindingFlags.Instance | BindingFlags.NonPublic);
-                        (cacheField?.GetValue(loaderInstance) as System.Collections.IDictionary)?.Clear();
-                    }
-                }
-
-                // Reset IsInitialized so the next game can call GumService.Initialize()
-                var isInitProp = gumServiceType.GetProperty("IsInitialized", BindingFlags.Instance | BindingFlags.Public);
-                isInitProp?.SetValue(gumService, false);
-            }
-            catch (Exception e)
-            {
-                // Log but don't rethrow — partial cleanup is better than aborting the run.
-                // This uses reflection against KniGum internals, so failures here are most
-                // likely caused by a KniGum API change and will show up clearly in the console.
-                Console.WriteLine($"[XnaFiddle] CleanUpGumService failed: {e}");
-            }
-        }
-
-        private static void CleanUpMlemPlatform()
-        {
-            try
-            {
-                var type = Type.GetType("MLEM.Misc.MlemPlatform, MLEM.KNI");
-                var current = type.GetField("Current", BindingFlags.Static | BindingFlags.Public);
-                current.SetValue(null, null);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[XnaFiddle] CleanUpMlemPlatform failed: {e}");
-            }
-        }
-
-        private static void CleanUpGameWindowRegistry()
-        {
-            try
-            {
-                var field = typeof(BlazorGameWindow).GetField("_instances",
-                    BindingFlags.Static | BindingFlags.NonPublic);
-                if (field?.GetValue(null) is System.Collections.IDictionary dict)
-                    dict.Clear();
-            }
-            catch
-            {
-                // Intentionally swallowed. This reflects a single well-known field on a type
-                // in our own codebase (_instances on BlazorGameWindow). The only realistic
-                // failure is a refactor that renames the field, which would be caught immediately
-                // in development. There is nothing actionable to do if this fails at runtime.
-            }
         }
 
         private static Type FindGameType(Assembly assembly)
