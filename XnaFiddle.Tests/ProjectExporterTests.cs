@@ -4,11 +4,26 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using XnaFiddle;
+using XnaFiddle.Plugins;
 
 namespace XnaFiddle.Tests;
 
 public class ProjectExporterTests
 {
+    static LibraryRegistry CreateRegistry()
+    {
+        var registry = new LibraryRegistry();
+        registry.Register(new GameWindowPlugin());
+        registry.Register(new GumPlugin());
+        registry.Register(new MlemPlugin());
+        registry.Register(new AposShapesPlugin());
+        registry.Register(new FontStashSharpPlugin());
+        registry.Register(new MonoGameExtendedPlugin());
+        registry.Register(new AetherPhysicsPlugin());
+        registry.Register(new KernSmithPlugin());
+        return registry;
+    }
+
     // Minimal game code that triggers no third-party library detection
     const string MinimalCode = @"
 using Microsoft.Xna.Framework;
@@ -303,7 +318,7 @@ public class Game1 : Game
     public void FontStashSharp_MonoGame_UsesCorrectPackageName()
     {
         var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameAndroid };
-        byte[] zip = ProjectExporter.Export(FontStashSharpCode, targets, "MyGame");
+        byte[] zip = ProjectExporter.Export(FontStashSharpCode, targets, "MyGame", libraryRegistry: CreateRegistry());
         var files = ExtractTextFiles(zip);
         string common = files["MyGameCommon/MyGameCommon.csproj"];
 
@@ -316,7 +331,7 @@ public class Game1 : Game
     public void FontStashSharp_Kni_UsesKniPackage()
     {
         var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
-        byte[] zip = ProjectExporter.Export(FontStashSharpCode, targets, "MyGame");
+        byte[] zip = ProjectExporter.Export(FontStashSharpCode, targets, "MyGame", libraryRegistry: CreateRegistry());
         var files = ExtractTextFiles(zip);
         string common = files["MyGameCommon/MyGameCommon.csproj"];
 
@@ -327,7 +342,7 @@ public class Game1 : Game
     public void ThirdPartyLibs_GoInCommonProject()
     {
         var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
-        byte[] zip = ProjectExporter.Export(GumCode, targets, "MyGame");
+        byte[] zip = ProjectExporter.Export(GumCode, targets, "MyGame", libraryRegistry: CreateRegistry());
         var files = ExtractTextFiles(zip);
 
         string common = files["MyGameCommon/MyGameCommon.csproj"];

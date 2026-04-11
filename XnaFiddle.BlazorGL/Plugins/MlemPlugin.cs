@@ -1,9 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 
 namespace XnaFiddle.Plugins
 {
-    public class MlemPlugin : ILibraryPlugin
+    public class MlemPlugin : ILibraryPlugin, IExportableLibrary
     {
         public string Name => "MLEM";
         public string[] RequiredAssemblies => ["MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI"];
@@ -22,6 +23,25 @@ namespace XnaFiddle.Plugins
             {
                 Console.WriteLine($"[XnaFiddle] {Name} cleanup failed: {e}");
             }
+        }
+
+        public bool IsUsedInSource(string source) => source.Contains("MLEM");
+
+        public List<ExportPackage> GetExportPackages(ExportTarget target, string source)
+        {
+            bool isKni = target.IsKni();
+            var packages = new List<ExportPackage>
+            {
+                new() { Id = isKni ? "MLEM.KNI" : "MLEM", Version = PackageVersions.Mlem }
+            };
+
+            if (source.Contains("MLEM.Ui"))
+                packages.Add(new ExportPackage { Id = isKni ? "MLEM.Ui.KNI" : "MLEM.Ui", Version = PackageVersions.Mlem });
+
+            if (source.Contains("MLEM.Extended"))
+                packages.Add(new ExportPackage { Id = isKni ? "MLEM.Extended.KNI" : "MLEM.Extended", Version = PackageVersions.Mlem });
+
+            return packages;
         }
     }
 }

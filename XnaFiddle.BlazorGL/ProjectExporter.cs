@@ -33,16 +33,6 @@ namespace XnaFiddle
             public string Version;
         }
 
-        static bool IsKni(ExportTarget target) => target switch
-        {
-            ExportTarget.KniDesktopGL => true,
-            ExportTarget.KniWindowsDX => true,
-            ExportTarget.KniAndroid => true,
-            ExportTarget.KniBlazorGL => true,
-            _ => false,
-        };
-
-
         // The 10 core KNI framework assemblies, each published as a separate NuGet package.
         static readonly string[] KniFrameworkPackages =
         [
@@ -79,24 +69,26 @@ namespace XnaFiddle
             string expandedSource,
             IReadOnlyList<ExportTarget> targets,
             string projectName = "MyFiddle",
-            IReadOnlyDictionary<string, byte[]> assets = null)
+            IReadOnlyDictionary<string, byte[]> assets = null,
+            LibraryRegistry libraryRegistry = null)
         {
             if (targets == null || targets.Count == 0)
                 throw new ArgumentException("At least one export target is required.", nameof(targets));
 
             if (targets.Count == 1)
-                return Export(expandedSource, targets[0], projectName, assets);
+                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry);
 
-            return ExportMultiPlatform(expandedSource, targets, projectName, assets);
+            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry);
         }
 
         public static byte[] Export(
             string expandedSource,
             ExportTarget target,
             string projectName = "MyFiddle",
-            IReadOnlyDictionary<string, byte[]> assets = null)
+            IReadOnlyDictionary<string, byte[]> assets = null,
+            LibraryRegistry libraryRegistry = null)
         {
-            List<NuGetPackage> packages = BuildPackageList(expandedSource, target);
+            List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry);
             string slnx = GenerateSlnx(projectName, target);
             string csproj = GenerateCsproj(projectName, target, packages, assets != null && assets.Count > 0);
             string gameCs = GenerateGameClass(projectName, expandedSource);
@@ -159,7 +151,8 @@ namespace XnaFiddle
             string expandedSource,
             IReadOnlyList<ExportTarget> targets,
             string projectName,
-            IReadOnlyDictionary<string, byte[]> assets)
+            IReadOnlyDictionary<string, byte[]> assets,
+            LibraryRegistry libraryRegistry)
         {
             bool hasAssets = assets != null && assets.Count > 0;
             string commonName = $"{projectName}Common";
@@ -167,7 +160,7 @@ namespace XnaFiddle
 
             // The common project holds Game1.cs, RawContentManager.cs and shared code.
             // Each platform project references the common project and adds its entry point.
-            List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0]);
+            List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0], libraryRegistry);
             string commonCsproj = GenerateCommonCsproj(projectName, commonName, commonPackages);
             string slnx = GenerateSlnx(projectName, commonName, targets);
 
@@ -186,7 +179,7 @@ namespace XnaFiddle
                 {
                     string suffix = GetPlatformSuffix(target);
                     string platformDir = $"{projectName}.{suffix}";
-                    List<NuGetPackage> packages = BuildPackageList(expandedSource, target);
+                    List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry);
                     string csproj = GenerateCsproj(projectName, target, packages, hasAssets, isMultiPlatform: true, commonProjectName: commonName);
 
                     AddTextEntry(archive, $"{platformDir}/{platformDir}.csproj", csproj);
@@ -310,10 +303,10 @@ namespace XnaFiddle
             return sb.ToString();
         }
 
-        static List<NuGetPackage> BuildPackageList(string source, ExportTarget target)
+        static List<NuGetPackage> BuildPackageList(string source, ExportTarget target, LibraryRegistry libraryRegistry)
         {
             var packages = new List<NuGetPackage>();
-            bool isKni = IsKni(target);
+            bool isKni = target.IsKni();
 
             // Base framework packages
             if (isKni)
@@ -356,74 +349,19 @@ namespace XnaFiddle
                 packages.Add(new NuGetPackage { Id = "MonoGame.Content.Builder.Task", Version = PackageVersions.MonoGameFramework });
             }
 
-            // Third-party libraries — detected by scanning the source for namespace/type names.
-            // No "using" prefix required; works with fully qualified references too.
-
-            if (source.Contains("MonoGameGum") || source.Contains("Gum."))
+            // Third-party libraries — detected by scanning the source for namespace/type names
+            // via registered IExportableLibrary plugins.
+            if (libraryRegistry != null)
             {
-                packages.Add(new NuGetPackage
+                IReadOnlyList<ILibraryPlugin> plugins = libraryRegistry.Plugins;
+                for (int i = 0; i < plugins.Count; i++)
                 {
-                    Id = isKni ? "Gum.KNI" : "Gum.MonoGame",
-                    Version = PackageVersions.Gum
-                });
-            }
-
-            if (source.Contains("Apos.Shapes"))
-            {
-                packages.Add(new NuGetPackage
-                {
-                    Id = isKni ? "Apos.Shapes.KNI" : "Apos.Shapes",
-                    Version = PackageVersions.AposShapes
-                });
-            }
-
-            if (source.Contains("MonoGame.Extended"))
-            {
-                packages.Add(new NuGetPackage
-                {
-                    Id = isKni ? "KNI.Extended" : "MonoGame.Extended",
-                    Version = PackageVersions.KniExtended
-                });
-            }
-
-            if (source.Contains("FontStashSharp"))
-            {
-                packages.Add(new NuGetPackage
-                {
-                    Id = isKni ? "FontStashSharp.Kni" : "FontStashSharp.MonoGame",
-                    Version = PackageVersions.FontStashSharp
-                });
-            }
-
-            // Aether.Physics2D — using-directive scan (nkast = KNI fork, tainicom = original)
-            if (source.Contains("Aether.Physics2D"))
-            {
-                packages.Add(new NuGetPackage
-                {
-                    Id = isKni ? "Aether.Physics2D.KNI" : "Aether.Physics2D",
-                    Version = PackageVersions.AetherPhysics
-                });
-            }
-
-            if (source.Contains("KernSmith"))
-            {
-                packages.Add(new NuGetPackage { Id = "KernSmith", Version = PackageVersions.KernSmith });
-                packages.Add(new NuGetPackage { Id = isKni ? "KernSmith.KniGum" : "KernSmith.MonoGameGum", Version = PackageVersions.KernSmith });
-                packages.Add(new NuGetPackage { Id = "KernSmith.Rasterizers.StbTrueType", Version = PackageVersions.KernSmith });
-            }
-
-            if (source.Contains("MLEM"))
-            {
-                // we always add MLEM base in case only that one is used
-                packages.Add(new NuGetPackage {Id = isKni ? "MLEM.KNI" : "MLEM", Version = PackageVersions.Mlem});
-
-                if (source.Contains("MLEM.Ui"))
-                {
-                    packages.Add(new NuGetPackage {Id = isKni ? "MLEM.Ui.KNI" : "MLEM.Ui", Version = PackageVersions.Mlem});
-                }
-                if (source.Contains("MLEM.Extended"))
-                {
-                    packages.Add(new NuGetPackage {Id = isKni ? "MLEM.Extended.KNI" : "MLEM.Extended", Version = PackageVersions.Mlem});
+                    if (plugins[i] is IExportableLibrary exportable && exportable.IsUsedInSource(source))
+                    {
+                        List<ExportPackage> exportPackages = exportable.GetExportPackages(target, source);
+                        for (int j = 0; j < exportPackages.Count; j++)
+                            packages.Add(new NuGetPackage { Id = exportPackages[j].Id, Version = exportPackages[j].Version });
+                    }
                 }
             }
 

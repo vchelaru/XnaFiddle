@@ -40,37 +40,54 @@ public const string NewLibrary = "$(NewLibraryVersion)"%3B
 
 This auto-generates a `PackageVersions.NewLibrary` constant that the exporter uses.
 
-#### 2. Export Detection (`ProjectExporter.cs`)
+#### 2. Create a Plugin Class (`Plugins/`)
 
-In `BuildPackageList()`, add a source-scanning block that detects the library by namespace or type name. Do not require a `using` prefix — the detection should work with fully qualified references too:
+Create a class in `XnaFiddle.BlazorGL/Plugins/` that implements `ILibraryPlugin` and `IExportableLibrary`. This single class handles assembly registration, version display, export detection, package mapping, and static state cleanup.
+
+Here is a minimal example (Apos.Shapes — no cleanup needed):
 
 ```csharp
-if (source.Contains("NewLibrary.SomeNamespace"))
+public class AposShapesPlugin : ILibraryPlugin, IExportableLibrary
 {
-    packages.Add(new NuGetPackage
-    {
-        Id = isKni ? "NewLibrary.KNI" : "NewLibrary",
-        Version = PackageVersions.NewLibrary
-    });
+    public string Name => "Apos.Shapes";
+    public string[] RequiredAssemblies => ["Apos.Shapes.KNI"];
+    public (string Label, string[] AssemblyNames) VersionInfo => ("Apos.Shapes.KNI", ["Apos.Shapes.KNI"]);
+
+    public void CleanUp() { }
+
+    public bool IsUsedInSource(string source) => source.Contains("Apos.Shapes");
+
+    public List<ExportPackage> GetExportPackages(ExportTarget target, string source) =>
+    [
+        new() { Id = target.IsKni() ? "Apos.Shapes.KNI" : "Apos.Shapes", Version = PackageVersions.AposShapes }
+    ];
 }
 ```
 
-Pick a detection string that is specific enough to avoid false positives but general enough to catch all usage patterns.
+**`ILibraryPlugin`** members:
 
-#### 3. Roslyn Assembly Resolution (`CompilationService.cs`)
+- **`Name`** — Display name shown in diagnostics.
+- **`RequiredAssemblies`** — KNI assembly names that Roslyn needs for compilation. If the library has multiple assemblies (e.g. a base package + platform package), list all of them.
+- **`VersionInfo`** — Label and assembly names for the version banner in the diagnostics panel.
+- **`CleanUp()`** — Reset any global/static state the library holds between game runs. If the library has no static state, leave the method body empty. If it does, use reflection to reset the relevant statics (see `GumPlugin.cs` for a thorough example). Cleanup must be idempotent — safe to call when the library hasn't been initialized, and safe to call multiple times.
 
-Add the library's assembly name(s) to the `KniAssemblyNames` array so Roslyn can resolve types at compile time:
+**`IExportableLibrary`** members:
+
+- **`IsUsedInSource(string source)`** — Return true if the source code uses this library. Typically `source.Contains("SomeNamespace")`. Pick a detection string specific enough to avoid false positives but general enough to catch fully qualified references.
+- **`GetExportPackages(ExportTarget target, string source)`** — Return the NuGet packages to include in the exported project. Use `target.IsKni()` to choose between KNI and MonoGame package IDs. For libraries with optional sub-packages, inspect `source` to conditionally include them (see `MlemPlugin.cs` for an example).
+
+#### 3. Register the Plugin (`Program.cs`)
+
+Add your plugin to the registration block in `Program.cs`:
 
 ```csharp
-"NewLibrary.KNI",
+libraryRegistry.Register(new NewLibraryPlugin());
 ```
 
-If the library has multiple assemblies (e.g. a base package + platform package), add all of them.
-
-Optionally, add an entry to `versionTargets` to display the library version in the diagnostics panel:
+If the library's assemblies need eager loading (to support shared `#code=` links before the library is actually used), add a `typeof()` touch at the top of `Main()`:
 
 ```csharp
-("NewLibrary", ["NewLibrary.KNI"]),
+_ = typeof(NewLibrary.SomeType);  // NewLibrary.KNI
 ```
 
 #### 4. Example (`Examples/`)
@@ -109,11 +126,7 @@ If the library requires boilerplate that users shouldn't have to write every tim
 
 Most libraries do **not** need a preset — presets are only for libraries that inject significant boilerplate (like Gum's `GumService.Initialize` / `Update` / `Draw` pattern).
 
-#### 7. Optional: Static State Cleanup
-
-If the library maintains global/static state between game runs (like Gum's `GumService.Default`), implement the `ILibraryPlugin` interface in a new class under `Plugins/` and register it in the `LibraryRegistry` (see `Index.razor.cs` — `CreateLibraryRegistry()`). Your plugin's `CleanUp()` method should use reflection to reset the relevant statics. See `GumPlugin.cs` for an example. The cleanup must be idempotent — safe to call when the library hasn't been initialized and safe to call multiple times.
-
-#### 8. Optional: Security Exceptions
+#### 7. Optional: Security Exceptions
 
 If the library uses namespaces or types that collide with blocked patterns in `SecurityChecker.cs`, you may need to add exceptions. This is rare and will receive extra scrutiny during review.
 

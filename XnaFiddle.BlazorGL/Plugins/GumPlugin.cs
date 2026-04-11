@@ -1,14 +1,23 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 
 namespace XnaFiddle.Plugins
 {
-    public class GumPlugin : ILibraryPlugin
+    public class GumPlugin : ILibraryPlugin, IExportableLibrary
     {
         public string Name => "Gum";
         public string[] RequiredAssemblies => ["KniGum", "GumCommon", "FlatRedBall.InterpolationCore"];
         public (string Label, string[] AssemblyNames) VersionInfo => ("Gum.KNI", ["GumCommon", "KniGum"]);
+
+        public bool IsUsedInSource(string source) =>
+            source.Contains("MonoGameGum") || source.Contains("Gum.");
+
+        public List<ExportPackage> GetExportPackages(ExportTarget target, string source) =>
+        [
+            new() { Id = target.IsKni() ? "Gum.KNI" : "Gum.MonoGame", Version = PackageVersions.Gum }
+        ];
 
         public void CleanUp()
         {

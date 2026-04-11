@@ -38,7 +38,7 @@ XnaFiddle/
 1. User clicks button → `CompileAndRun()` sets `_isCompiling = true`, `_pendingCompile = true`
 2. **`_pendingCompile` is consumed inside `TickDotNet()`**, which runs in the `requestAnimationFrame` context — this avoids a Blazor sync-context Monitor deadlock that occurs when compiling directly from a button click handler
 3. `DoCompileAndRun()` calls `CompilationService.CompileAsync()`:
-   - Fetches metadata references for all loaded assemblies + hardcoded `KniAssemblyNames` list (bypasses lazy-loading gap)
+   - Fetches metadata references for all loaded assemblies + core `KniCoreAssemblyNames` + plugin `RequiredAssemblies` (bypasses lazy-loading gap)
    - Compiles with Roslyn to IL bytes
    - Returns `CompilationResult` with IL, log, and `DiagnosticInfo` list
 4. IL bytes are loaded via `Assembly.Load(ilBytes)`
@@ -71,6 +71,6 @@ XnaFiddle/
 | Issue | Fix |
 |-------|-----|
 | Monitor deadlock when compiling | Route compile through `_pendingCompile` flag, consumed in rAF tick |
-| KNI assemblies not loaded at compile time | Hardcoded `KniAssemblyNames` list in `CompilationService` |
+| KNI assemblies not loaded at compile time | `KniCoreAssemblyNames` + plugin `RequiredAssemblies` in `CompilationService` |
 | Library statics accumulate across hot-reloads | `LibraryRegistry.RunAllCleanups()` calls each `ILibraryPlugin.CleanUp()` — see `Plugins/` folder (GumPlugin, MlemPlugin, GameWindowPlugin) |
 | Old game Dispose() breaks next run | Set `_game = null` without calling `Dispose()` |

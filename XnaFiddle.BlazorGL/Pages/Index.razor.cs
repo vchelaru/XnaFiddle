@@ -999,7 +999,7 @@ namespace XnaFiddle.Pages
 
                 var assets = InMemoryContentManager.Files;
                 var targets = GetExportTargets();
-                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null);
+                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null, libraryRegistry: LibraryRegistry);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }
