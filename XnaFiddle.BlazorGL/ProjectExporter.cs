@@ -103,6 +103,8 @@ namespace XnaFiddle
                 if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
                 {
                     AddTextEntry(archive, $"{projectName}/Activity1.cs", GenerateAndroidActivity(projectName));
+                    AddTextEntry(archive, $"{projectName}/AndroidManifest.xml", GenerateAndroidManifest(projectName));
+                    AddAndroidResources(archive, $"{projectName}", projectName);
                 }
                 else if (target == ExportTarget.KniBlazorGL)
                 {
@@ -188,6 +190,8 @@ namespace XnaFiddle
                     if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
                     {
                         AddTextEntry(archive, $"{platformDir}/Activity1.cs", GenerateAndroidActivity(projectName));
+                        AddTextEntry(archive, $"{platformDir}/AndroidManifest.xml", GenerateAndroidManifest(projectName));
+                        AddAndroidResources(archive, platformDir, projectName);
                     }
                     else if (target == ExportTarget.KniBlazorGL)
                     {
@@ -431,10 +435,11 @@ namespace XnaFiddle
                 case ExportTarget.KniAndroid:
                     sb.AppendLine("    <OutputType>Exe</OutputType>");
                     sb.AppendLine("    <TargetFramework>net9.0-android</TargetFramework>");
+                    sb.AppendLine("    <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
                     sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
                     sb.AppendLine("    <KniPlatform>Android</KniPlatform>");
-                    sb.AppendLine($"    <ApplicationId>com.myfiddle.{projectName.ToLowerInvariant()}</ApplicationId>");
+                    sb.AppendLine($"    <ApplicationId>com.companyname.{projectName}</ApplicationId>");
                     sb.AppendLine("    <ApplicationVersion>1</ApplicationVersion>");
                     sb.AppendLine("    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>");
                     break;
@@ -467,10 +472,12 @@ namespace XnaFiddle
                 case ExportTarget.MonoGameAndroid:
                     sb.AppendLine("    <OutputType>Exe</OutputType>");
                     sb.AppendLine("    <TargetFramework>net9.0-android</TargetFramework>");
+                    sb.AppendLine("    <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
                     sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
                     sb.AppendLine("    <MonoGamePlatform>Android</MonoGamePlatform>");
-                    sb.AppendLine($"    <ApplicationId>com.myfiddle.{projectName.ToLowerInvariant()}</ApplicationId>");
+                    sb.AppendLine("    <MonoGameSplashScreen>false</MonoGameSplashScreen>");
+                    sb.AppendLine($"    <ApplicationId>com.companyname.{projectName}</ApplicationId>");
                     sb.AppendLine("    <ApplicationVersion>1</ApplicationVersion>");
                     sb.AppendLine("    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>");
                     break;
@@ -568,6 +575,55 @@ public static class Program
         game.Run();
     }}
 }}
+";
+        }
+
+        // Streams the Android template resources (icons, splash PNGs, styles.xml,
+        // ic_launcher_background.xml) embedded in this assembly into the exported zip,
+        // and emits a project-named strings.xml so @string/app_name resolves.
+        static void AddAndroidResources(ZipArchive archive, string projectDir, string projectName)
+        {
+            // Resource LogicalNames are set explicitly in the csproj to preserve hyphens
+            // and folder structure: "AndroidTemplate/Resources/drawable-hdpi/icon.png".
+            var assembly = typeof(ProjectExporter).Assembly;
+            const string prefix = "AndroidTemplate/";
+            foreach (string resourceName in assembly.GetManifestResourceNames())
+            {
+                if (!resourceName.StartsWith(prefix)) continue;
+                string relativePath = resourceName.Substring(prefix.Length);
+                string zipPath = $"{projectDir}/{relativePath}";
+
+                using Stream source = assembly.GetManifestResourceStream(resourceName);
+                var entry = archive.CreateEntry(zipPath, CompressionLevel.Optimal);
+                using Stream dest = entry.Open();
+                source.CopyTo(dest);
+            }
+
+            AddTextEntry(archive, $"{projectDir}/Resources/Values/strings.xml",
+                $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<resources>
+  <string name=""app_name"">{projectName}</string>
+</resources>
+");
+        }
+
+        static string GenerateAndroidManifest(string projectName)
+        {
+            return $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<manifest xmlns:android=""http://schemas.android.com/apk/res/android"" package=""com.companyname.{projectName}"" android:versionCode=""1"" android:versionName=""1.0"">
+	<uses-feature android:glEsVersion=""0x00020000"" android:required=""true"" />
+	<uses-sdk android:minSdkVersion=""21"" android:targetSdkVersion=""36"" />
+	<uses-permission android:name=""android.permission.ACCESS_NETWORK_STATE"" />
+	<uses-permission android:name=""android.permission.INTERNET"" />
+	<uses-permission android:name=""android.permission.ACCESS_WIFI_STATE"" />
+	<application
+		android:hardwareAccelerated=""true""
+		android:icon=""@drawable/icon""
+		android:isGame=""true""
+		android:label=""@string/app_name""
+		android:theme=""@style/MainTheme""
+		/>
+</manifest>
 ";
         }
 

@@ -89,6 +89,15 @@
     <EmbeddedResource Include="Examples\*.*" Exclude="Examples\*.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Android project template assets streamed into exported .Android projects by ProjectExporter.
+         LogicalName is set explicitly so folder names with hyphens (drawable-hdpi) survive — MSBuild's
+         default naming replaces hyphens with underscores. -->
+    <EmbeddedResource Include="AndroidTemplate\**\*.*">
+      <LogicalName>AndroidTemplate/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- Generate PackageVersions.g.cs — makes the version properties above available to C#.
        ProjectExporter uses these constants to emit correct NuGet versions in exported projects.
        The generated file lives in obj/ and is never checked in. -->

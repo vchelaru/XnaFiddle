@@ -84,6 +84,51 @@ public class Game1 : Game
         Assert.DoesNotContain(files.Keys, k => k.Contains("Common"));
     }
 
+    static HashSet<string> ExtractAllFileNames(byte[] zip)
+    {
+        var names = new HashSet<string>();
+        using var ms = new MemoryStream(zip);
+        using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
+        foreach (var entry in archive.Entries)
+            names.Add(entry.FullName);
+        return names;
+    }
+
+    [Fact]
+    public void SinglePlatform_Android_IncludesManifestAndResources()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
+        var files = ExtractTextFiles(zip);
+        var allFiles = ExtractAllFileNames(zip);
+
+        Assert.Contains("MyGame/AndroidManifest.xml", files.Keys);
+        Assert.Contains("MyGame/Resources/Values/strings.xml", files.Keys);
+        Assert.Contains("MyGame/Resources/Values/styles.xml", allFiles);
+        Assert.Contains("MyGame/Resources/Values/ic_launcher_background.xml", allFiles);
+        Assert.Contains("MyGame/Resources/drawable-hdpi/icon.png", allFiles);
+        Assert.Contains("MyGame/Resources/drawable-mdpi/icon.png", allFiles);
+        Assert.Contains("MyGame/Resources/drawable-xhdpi/icon.png", allFiles);
+        Assert.Contains("MyGame/Resources/drawable-xxhdpi/icon.png", allFiles);
+        Assert.Contains("MyGame/Resources/drawable-xxxhdpi/icon.png", allFiles);
+        Assert.Contains("MyGame/Resources/drawable-hdpi/splash.png", allFiles);
+
+        Assert.Contains("com.companyname.MyGame", files["MyGame/AndroidManifest.xml"]);
+        Assert.Contains("<string name=\"app_name\">MyGame</string>", files["MyGame/Resources/Values/strings.xml"]);
+    }
+
+    [Fact]
+    public void MultiPlatform_Android_IncludesManifestAndResources()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
+        var allFiles = ExtractAllFileNames(zip);
+
+        Assert.Contains("MyGame.Android/AndroidManifest.xml", allFiles);
+        Assert.Contains("MyGame.Android/Resources/Values/strings.xml", allFiles);
+        Assert.Contains("MyGame.Android/Resources/drawable-xxxhdpi/icon.png", allFiles);
+    }
+
     // ── Multi-platform export structure ──────────────────────────────────────
 
     [Fact]
