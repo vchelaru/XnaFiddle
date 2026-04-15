@@ -581,6 +581,13 @@ namespace XnaFiddle.Pages
             if (_isCompiling)
                 return;
 
+            if (_game != null)
+            {
+                _game = null;
+                LibraryRegistry.RunAllCleanups();
+                _ = JsRuntime.InvokeVoidAsync("clearCanvas");
+            }
+
             _isCompiling = true;
             _compileCts = new CancellationTokenSource();
             _pendingCompile = true;
@@ -596,6 +603,18 @@ namespace XnaFiddle.Pages
         private void StopCompilation()
         {
             _compileCts?.Cancel();
+        }
+
+        private void StopGame()
+        {
+            if (_game == null)
+                return;
+            _game = null;
+            LibraryRegistry.RunAllCleanups();
+            _ = JsRuntime.InvokeVoidAsync("clearCanvas");
+            _statusMessage = "Stopped.";
+            _statusColor = ColorPending;
+            StateHasChanged();
         }
 
         private async Task DoCompileAndRun()
