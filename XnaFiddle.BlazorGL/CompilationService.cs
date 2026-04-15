@@ -80,47 +80,24 @@ namespace XnaFiddle
             public string VersionInfo { get; set; }
         }
 
-        public async Task<CompilationResult> CompileAsync(string sourceCode, Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Builds and returns the full metadata reference list for the current user
+        /// environment, resolving via BlazorWasmMetadataReferenceService. Used by
+        /// CompileAsync and shared with IntellisenseService so the completion workspace
+        /// sees the same BCL/KNI/plugin surface the compile will see.
+        /// </summary>
+        public async Task<(List<MetadataReference> References, List<string> FailedAssemblies, string VersionInfo)>
+            GetMetadataReferencesAsync(Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
         {
             // Always create a fresh service so cached failure results from a previous
             // compile don't permanently hide assemblies that are now loaded.
             _referenceService = new(_navigationManager);
-            string log = "";
 
-            // Parse
-            string[] preprocessorSymbols = ["BLAZORGL"];
-            CSharpParseOptions parseOptions = CSharpParseOptions.Default
-                .WithLanguageVersion(LanguageVersion.LatestMajor)
-                .WithPreprocessorSymbols(preprocessorSymbols);
+            ForceLoadAssemblies();
 
-            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
-
-            // Force-load optional assemblies into the AppDomain.
-            // Blazor WASM lazy-loads assemblies; without this they may not be present when
-            // a #code= link is opened on a fresh page, causing silent metadata-fetch failures.
-            for (int i = 0; i < KniCoreAssemblyNames.Length; i++)
-            {
-                try { Assembly.Load(KniCoreAssemblyNames[i]); }
-                catch { /* already loaded, or genuinely absent — handled below */ }
-            }
             IReadOnlyList<ILibraryPlugin> plugins = _libraryRegistry.Plugins;
-            for (int i = 0; i < plugins.Count; i++)
-            {
-                string[] assemblies = plugins[i].RequiredAssemblies;
-                for (int j = 0; j < assemblies.Length; j++)
-                {
-                    try { Assembly.Load(assemblies[j]); }
-                    catch { /* already loaded, or genuinely absent — handled below */ }
-                }
-            }
-            for (int i = 0; i < BclAssemblyNames.Length; i++)
-            {
-                try { Assembly.Load(BclAssemblyNames[i]); }
-                catch { /* already loaded, or genuinely absent — handled below */ }
-            }
 
             // Collect library version info for display in the diagnostics panel.
-            // KNI platform version is always first; plugin versions follow.
             var versionParts = new List<string>();
             versionParts.Add($"KNI {GetAssemblyVersion("Kni.Platform")}");
             for (int i = 0; i < plugins.Count; i++)
@@ -134,25 +111,19 @@ namespace XnaFiddle
             }
             string versionInfo = string.Join("  ·  ", versionParts);
 
-            // Collect assembly names from loaded assemblies + known KNI assemblies
             HashSet<string> assembliesRequired = [];
             Assembly[] loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
             for (int i = 0; i < loadedAssemblies.Length; i++)
             {
-                // Skip dynamic assemblies — they exist only in memory (e.g. "Anonymously Hosted
-                // DynamicMethods Assembly") and have no .dll file to fetch metadata from.
                 if (loadedAssemblies[i].IsDynamic) continue;
                 string assemblyName = loadedAssemblies[i].GetName().Name;
-                // Skip our own previously compiled assembly — it's in-memory and has no .dll to fetch
                 if (!string.IsNullOrEmpty(assemblyName) && assemblyName != "UserAssembly")
                     assembliesRequired.Add(assemblyName);
             }
 
-            // Add KNI core assemblies that may not be loaded yet due to lazy loading
             for (int i = 0; i < KniCoreAssemblyNames.Length; i++)
                 assembliesRequired.Add(KniCoreAssemblyNames[i]);
 
-            // Add library assemblies from registered plugins
             for (int i = 0; i < plugins.Count; i++)
             {
                 string[] assemblies = plugins[i].RequiredAssemblies;
@@ -160,11 +131,9 @@ namespace XnaFiddle
                     assembliesRequired.Add(assemblies[j]);
             }
 
-            // Add BCL assemblies needed for type-forwarding resolution
             for (int i = 0; i < BclAssemblyNames.Length; i++)
                 assembliesRequired.Add(BclAssemblyNames[i]);
 
-            // Fetch metadata references
             List<MetadataReference> metadataReferences = [];
             List<string> failedAssemblies = [];
             int resolved = 0;
@@ -191,6 +160,51 @@ namespace XnaFiddle
 
             if (failedAssemblies.Count > 0)
                 Console.WriteLine($"[XnaFiddle] {failedAssemblies.Count} assembl{(failedAssemblies.Count == 1 ? "y" : "ies")} failed to resolve: {string.Join(", ", failedAssemblies)}");
+
+            return (metadataReferences, failedAssemblies, versionInfo);
+        }
+
+        private void ForceLoadAssemblies()
+        {
+            // Force-load optional assemblies into the AppDomain.
+            // Blazor WASM lazy-loads assemblies; without this they may not be present when
+            // a #code= link is opened on a fresh page, causing silent metadata-fetch failures.
+            for (int i = 0; i < KniCoreAssemblyNames.Length; i++)
+            {
+                try { Assembly.Load(KniCoreAssemblyNames[i]); }
+                catch { /* already loaded, or genuinely absent — handled below */ }
+            }
+            IReadOnlyList<ILibraryPlugin> plugins = _libraryRegistry.Plugins;
+            for (int i = 0; i < plugins.Count; i++)
+            {
+                string[] assemblies = plugins[i].RequiredAssemblies;
+                for (int j = 0; j < assemblies.Length; j++)
+                {
+                    try { Assembly.Load(assemblies[j]); }
+                    catch { /* already loaded, or genuinely absent — handled below */ }
+                }
+            }
+            for (int i = 0; i < BclAssemblyNames.Length; i++)
+            {
+                try { Assembly.Load(BclAssemblyNames[i]); }
+                catch { /* already loaded, or genuinely absent — handled below */ }
+            }
+        }
+
+        public async Task<CompilationResult> CompileAsync(string sourceCode, Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
+        {
+            string log = "";
+
+            // Parse
+            string[] preprocessorSymbols = ["BLAZORGL"];
+            CSharpParseOptions parseOptions = CSharpParseOptions.Default
+                .WithLanguageVersion(LanguageVersion.LatestMajor)
+                .WithPreprocessorSymbols(preprocessorSymbols);
+
+            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
+
+            (List<MetadataReference> metadataReferences, List<string> failedAssemblies, string versionInfo) =
+                await GetMetadataReferencesAsync(onProgress, cancellationToken);
 
             // Compile
             CSharpCompilationOptions compilationOptions = new(

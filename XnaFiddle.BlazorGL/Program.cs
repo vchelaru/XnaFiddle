@@ -46,6 +46,7 @@ namespace XnaFiddle
             });
             builder.Services.AddSingleton(libraryRegistry);
             builder.Services.AddSingleton<CompilationService>();
+            builder.Services.AddSingleton<IntellisenseService>();
 
             await builder.Build().RunAsync();
         }

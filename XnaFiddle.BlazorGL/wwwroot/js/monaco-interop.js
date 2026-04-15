@@ -22,8 +22,10 @@ window.monacoInterop = {
                     }
                 });
 
-                // Register C#/XNA completion provider
+                // Register C#/XNA completion + signature help + hover providers
                 window.monacoInterop._registerCompletions();
+                window.monacoInterop._registerSignatureHelp();
+                window.monacoInterop._registerHover();
 
                 window.monacoInterop._editor = monaco.editor.create(
                     document.getElementById(containerId),
@@ -50,6 +52,9 @@ window.monacoInterop = {
                 );
 
                 window.monacoInterop._editor.onDidChangeModelContent(function () {
+                    // Live diagnostics (squiggles) — debounced, readiness-gated.
+                    window.monacoInterop._scheduleDiagnostics();
+
                     if (!window.monacoInterop._changeCallbackRef) return;
                     clearTimeout(window.monacoInterop._changeTimer);
                     window.monacoInterop._changeTimer = setTimeout(function () {
@@ -62,263 +67,409 @@ window.monacoInterop = {
         });
     },
 
-    _registerCompletions: function () {
-        var Kind = monaco.languages.CompletionItemKind;
-        var Insert = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+    _intellisenseRef: null,
+    _isIntellisenseReady: false,
+    _completionInFlight: false,
+    _diagnosticsDebounceMs: 700,
+    _diagnosticsTimer: null,
 
-        // --- Static completion items ---
-
-        var csharpKeywords = [
-            'abstract', 'as', 'async', 'await', 'base', 'bool', 'break', 'byte',
-            'case', 'catch', 'char', 'class', 'const', 'continue', 'decimal',
-            'default', 'delegate', 'do', 'double', 'else', 'enum', 'event',
-            'false', 'finally', 'float', 'for', 'foreach', 'if', 'in', 'int',
-            'interface', 'internal', 'is', 'lock', 'long', 'namespace', 'new',
-            'null', 'object', 'out', 'override', 'params', 'private', 'protected',
-            'public', 'readonly', 'ref', 'return', 'sealed', 'short', 'sizeof',
-            'static', 'string', 'struct', 'switch', 'this', 'throw', 'true',
-            'try', 'typeof', 'uint', 'ulong', 'unsafe', 'ushort', 'using', 'var',
-            'virtual', 'void', 'volatile', 'while'
-        ];
-
-        // XNA/KNI types with their members
-        var xnaTypes = {
-            'Game':              { kind: Kind.Class, members: ['Initialize', 'LoadContent', 'UnloadContent', 'Update', 'Draw', 'Content', 'GraphicsDevice', 'Window', 'IsMouseVisible', 'Run', 'Exit', 'Services', 'Tick', 'Dispose'] },
-            'GameTime':          { kind: Kind.Class, members: ['ElapsedGameTime', 'TotalGameTime', 'IsRunningSlowly'] },
-            'GraphicsDeviceManager': { kind: Kind.Class, members: ['PreferredBackBufferWidth', 'PreferredBackBufferHeight', 'IsFullScreen', 'GraphicsProfile', 'ApplyChanges', 'GraphicsDevice'] },
-            'GraphicsDevice':    { kind: Kind.Class, members: ['Clear', 'Viewport', 'PresentationParameters', 'SetRenderTarget', 'DrawPrimitives', 'DrawIndexedPrimitives'] },
-            'SpriteBatch':       { kind: Kind.Class, members: ['Begin', 'End', 'Draw', 'DrawString'] },
-            'Texture2D':         { kind: Kind.Class, members: ['Width', 'Height', 'SetData', 'GetData', 'Bounds'] },
-            'SpriteFont':        { kind: Kind.Class, members: ['MeasureString', 'LineSpacing', 'Spacing'] },
-            'Color':             { kind: Kind.Struct, members: ['R', 'G', 'B', 'A', 'White', 'Black', 'Red', 'Green', 'Blue', 'Yellow', 'Cyan', 'Magenta', 'Orange', 'Purple', 'Gray', 'DarkGray', 'LightGray', 'CornflowerBlue', 'Transparent', 'TransparentBlack', 'Coral', 'Lerp', 'Multiply'] },
-            'Vector2':           { kind: Kind.Struct, members: ['X', 'Y', 'Zero', 'One', 'UnitX', 'UnitY', 'Length', 'LengthSquared', 'Normalize', 'Distance', 'DistanceSquared', 'Dot', 'Lerp', 'Clamp', 'Min', 'Max', 'Transform', 'Negate'] },
-            'Vector3':           { kind: Kind.Struct, members: ['X', 'Y', 'Z', 'Zero', 'One', 'Forward', 'Backward', 'Up', 'Down', 'Left', 'Right', 'UnitX', 'UnitY', 'UnitZ', 'Length', 'Normalize', 'Cross', 'Dot', 'Lerp', 'Distance', 'Transform'] },
-            'Vector4':           { kind: Kind.Struct, members: ['X', 'Y', 'Z', 'W', 'Zero', 'One', 'Lerp', 'Transform'] },
-            'Matrix':            { kind: Kind.Struct, members: ['Identity', 'CreateTranslation', 'CreateRotationX', 'CreateRotationY', 'CreateRotationZ', 'CreateScale', 'CreateOrthographic', 'CreateOrthographicOffCenter', 'CreatePerspective', 'CreatePerspectiveFieldOfView', 'CreateLookAt', 'CreateWorld', 'Invert', 'Transpose', 'Lerp', 'Multiply'] },
-            'Rectangle':         { kind: Kind.Struct, members: ['X', 'Y', 'Width', 'Height', 'Left', 'Right', 'Top', 'Bottom', 'Center', 'Location', 'Size', 'Contains', 'Intersects', 'Inflate', 'Offset', 'Union', 'Intersect', 'Empty'] },
-            'Point':             { kind: Kind.Struct, members: ['X', 'Y', 'Zero'] },
-            'MathHelper':        { kind: Kind.Class, members: ['Pi', 'TwoPi', 'PiOver2', 'PiOver4', 'E', 'ToRadians', 'ToDegrees', 'Lerp', 'Clamp', 'Min', 'Max', 'SmoothStep', 'Distance', 'WrapAngle'] },
-            'Viewport':          { kind: Kind.Struct, members: ['X', 'Y', 'Width', 'Height', 'Bounds'] },
-            'ContentManager':    { kind: Kind.Class, members: ['Load', 'Unload', 'RootDirectory'] },
-            'Mouse':             { kind: Kind.Class, members: ['GetState'] },
-            'MouseState':        { kind: Kind.Struct, members: ['X', 'Y', 'LeftButton', 'RightButton', 'MiddleButton', 'ScrollWheelValue'] },
-            'Keyboard':          { kind: Kind.Class, members: ['GetState'] },
-            'KeyboardState':     { kind: Kind.Struct, members: ['IsKeyDown', 'IsKeyUp', 'GetPressedKeys'] },
-            'Keys':              { kind: Kind.Enum, members: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Space', 'Enter', 'Escape', 'Tab', 'Back', 'Delete', 'Left', 'Right', 'Up', 'Down', 'LeftShift', 'RightShift', 'LeftControl', 'RightControl'] },
-            'ButtonState':       { kind: Kind.Enum, members: ['Pressed', 'Released'] },
-            'GraphicsProfile':   { kind: Kind.Enum, members: ['Reach', 'HiDef'] },
-            'SpriteSortMode':    { kind: Kind.Enum, members: ['Deferred', 'Immediate', 'Texture', 'BackToFront', 'FrontToBack'] },
-            'BlendState':        { kind: Kind.Class, members: ['AlphaBlend', 'Additive', 'NonPremultiplied', 'Opaque'] },
-            'SamplerState':      { kind: Kind.Class, members: ['PointClamp', 'PointWrap', 'LinearClamp', 'LinearWrap', 'AnisotropicClamp', 'AnisotropicWrap'] },
-            'RenderTarget2D':    { kind: Kind.Class, members: ['Width', 'Height', 'Bounds'] },
-            'BasicEffect':       { kind: Kind.Class, members: ['World', 'View', 'Projection', 'DiffuseColor', 'Alpha', 'VertexColorEnabled', 'TextureEnabled', 'Texture', 'LightingEnabled', 'CurrentTechnique'] },
-            'Effect':            { kind: Kind.Class, members: ['Parameters', 'CurrentTechnique', 'Techniques'] },
-            'TimeSpan':          { kind: Kind.Struct, members: ['TotalSeconds', 'TotalMilliseconds', 'Seconds', 'Milliseconds', 'Zero', 'FromSeconds', 'FromMilliseconds'] },
-            // Gum UI
-            'GumService':        { kind: Kind.Class, members: ['Default', 'Initialize', 'Update', 'Draw'] },
-            'DefaultVisualsVersion': { kind: Kind.Enum, members: ['V1', 'V2', 'V3'] },
-            'StackPanel':        { kind: Kind.Class, members: ['Spacing', 'AddToRoot', 'AddChild', 'Children', 'Width', 'Height'] },
-            'Label':             { kind: Kind.Class, members: ['Text', 'Width', 'Height'] },
-            'Button':            { kind: Kind.Class, members: ['Text', 'Width', 'Height', 'Click'] },
-            'TextBox':           { kind: Kind.Class, members: ['Text', 'Placeholder', 'Width', 'Height', 'TextChanged'] },
-            'CheckBox':          { kind: Kind.Class, members: ['Text', 'IsChecked', 'Checked', 'Unchecked'] },
-            'Slider':            { kind: Kind.Class, members: ['Value', 'Minimum', 'Maximum', 'Width', 'ValueChanged'] },
-            'ComboBox':          { kind: Kind.Class, members: ['Items', 'SelectedObject', 'SelectedIndex', 'SelectionChanged'] },
-            'ListBox':           { kind: Kind.Class, members: ['Items', 'Visual', 'SelectedObject', 'SelectedIndex', 'SelectionChanged'] },
-            'RadioButton':       { kind: Kind.Class, members: ['Text', 'IsChecked', 'Checked'] },
-            // Audio
-            'SoundEffect':         { kind: Kind.Class, members: ['FromStream', 'Play', 'CreateInstance', 'Duration', 'IsDisposed', 'Name', 'Dispose'] },
-            'SoundEffectInstance': { kind: Kind.Class, members: ['Play', 'Pause', 'Resume', 'Stop', 'Volume', 'Pitch', 'Pan', 'IsLooped', 'State', 'Dispose'] },
-            // Apos.Shapes
-            'ShapeBatch':        { kind: Kind.Class, members: ['Begin', 'End', 'DrawCircle', 'FillCircle', 'DrawRectangle', 'FillRectangle', 'BorderCircle', 'BorderRectangle', 'BorderLine', 'DrawLine', 'FillLine'] },
+    // Debounced live-diagnostics: re-runs Roslyn GetDiagnosticsAsync a short while
+    // after the last keystroke. Uses owner 'roslyn' so markers don't collide with
+    // the post-compile path (owner 'compilation'). If a completion request is
+    // currently in flight on the single WASM thread, defer briefly to avoid
+    // fighting over the thread.
+    _scheduleDiagnostics: function () {
+        var interop = window.monacoInterop;
+        if (!interop._isIntellisenseReady) return;
+        if (interop._diagnosticsTimer) {
+            clearTimeout(interop._diagnosticsTimer);
+            interop._diagnosticsTimer = null;
+        }
+        var fire = function () {
+            interop._diagnosticsTimer = null;
+            if (interop._completionInFlight) {
+                interop._diagnosticsTimer = setTimeout(fire, 300);
+                return;
+            }
+            interop._runDiagnostics();
         };
+        interop._diagnosticsTimer = setTimeout(fire, interop._diagnosticsDebounceMs);
+    },
 
-        // Known namespaces (for 'using' directive completions)
-        var knownNamespaces = [
-            // XNA/KNI
-            'Microsoft.Xna.Framework',
-            'Microsoft.Xna.Framework.Graphics',
-            'Microsoft.Xna.Framework.Input',
-            'Microsoft.Xna.Framework.Input.Touch',
-            'Microsoft.Xna.Framework.Audio',
-            'Microsoft.Xna.Framework.Content',
-            'Microsoft.Xna.Framework.Media',
-            // MonoGameGum / Gum
-            'MonoGameGum',
-            'Gum.Forms',
-            'Gum.Forms.Controls',
-            'Gum.DataTypes',
-            // Apos.Shapes
-            'Apos.Shapes',
-            // MonoGame.Extended
-            'MonoGame.Extended',
-            'MonoGame.Extended.Sprites',
-            'MonoGame.Extended.Content',
-            'MonoGame.Extended.Input',
-            'MonoGame.Extended.Tiled',
-            // System
-            'System',
-            'System.Collections.Generic',
-            'System.Collections',
-            'System.Linq',
-            'System.Text',
-            'System.IO',
-            'System.Numerics',
-            'System.Threading.Tasks',
-            'System.Threading',
-        ];
-
-        // Snippet templates
-        var snippets = [
-            { label: 'game class', detail: 'XNA Game class template', text: 'public class ${1:Game1} : Game\n{\n\tGraphicsDeviceManager _graphics;\n\tSpriteBatch _spriteBatch;\n\n\tpublic ${1:Game1}()\n\t{\n\t\t_graphics = new GraphicsDeviceManager(this);\n\t\tIsMouseVisible = true;\n\t}\n\n\tprotected override void LoadContent()\n\t{\n\t\t_spriteBatch = new SpriteBatch(GraphicsDevice);\n\t\t$0\n\t}\n\n\tprotected override void Update(GameTime gameTime)\n\t{\n\t\tbase.Update(gameTime);\n\t}\n\n\tprotected override void Draw(GameTime gameTime)\n\t{\n\t\tGraphicsDevice.Clear(Color.CornflowerBlue);\n\t\tbase.Draw(gameTime);\n\t}\n}' },
-            { label: 'override Initialize', detail: 'Initialize override', text: 'protected override void Initialize()\n{\n\t$0\n\tbase.Initialize();\n}' },
-            { label: 'override LoadContent', detail: 'LoadContent override', text: 'protected override void LoadContent()\n{\n\t$0\n}' },
-            { label: 'override Update', detail: 'Update override', text: 'protected override void Update(GameTime gameTime)\n{\n\t$0\n\tbase.Update(gameTime);\n}' },
-            { label: 'override Draw', detail: 'Draw override', text: 'protected override void Draw(GameTime gameTime)\n{\n\tGraphicsDevice.Clear(Color.CornflowerBlue);\n\t$0\n\tbase.Draw(gameTime);\n}' },
-            { label: 'spritebatch block', detail: 'SpriteBatch Begin/End', text: '_spriteBatch.Begin();\n$0\n_spriteBatch.End();' },
-        ];
-
-        // Build a lookup for dot-completion: word before dot -> suggestions
-        var memberLookup = {};
-        Object.keys(xnaTypes).forEach(function (typeName) {
-            var lower = typeName.toLowerCase();
-            memberLookup[lower] = { typeName: typeName, info: xnaTypes[typeName] };
+    _runDiagnostics: async function () {
+        var interop = window.monacoInterop;
+        var ref = interop._intellisenseRef;
+        if (!ref || !interop._editor) return;
+        var model = interop._editor.getModel();
+        if (!model) return;
+        var source = model.getValue();
+        var diags;
+        try {
+            diags = await ref.invokeMethodAsync('GetDiagnosticsAsync', source);
+        } catch (e) {
+            console.warn('Live diagnostics failed:', e);
+            return;
+        }
+        if (!diags) diags = [];
+        var markers = diags.map(function (d) {
+            var startPos = model.getPositionAt(d.startOffset);
+            var endPos = model.getPositionAt(d.endOffset);
+            var severity = d.severity === 'error'
+                ? monaco.MarkerSeverity.Error
+                : d.severity === 'warning'
+                    ? monaco.MarkerSeverity.Warning
+                    : monaco.MarkerSeverity.Info;
+            return {
+                startLineNumber: startPos.lineNumber,
+                startColumn: startPos.column,
+                endLineNumber: endPos.lineNumber,
+                endColumn: endPos.column,
+                message: d.message,
+                severity: severity,
+                code: d.code
+            };
         });
-        // Common variable name -> type mappings
-        var varAliases = {
-            '_graphics': 'GraphicsDeviceManager', 'graphics': 'GraphicsDeviceManager',
-            '_spritebatch': 'SpriteBatch', 'spritebatch': 'SpriteBatch', '_sb': 'SpriteBatch', 'sb': 'SpriteBatch',
-            'graphicsdevice': 'GraphicsDevice', '_graphicsdevice': 'GraphicsDevice',
-            'content': 'ContentManager', '_content': 'ContentManager',
-            'gametime': 'GameTime', 'gt': 'GameTime',
-            'mouse': 'Mouse', 'keyboard': 'Keyboard',
-            'mousestate': 'MouseState', '_mousestate': 'MouseState',
-            'keyboardstate': 'KeyboardState', '_keyboardstate': 'KeyboardState',
-            'viewport': 'Viewport',
-            '_shapebatch': 'ShapeBatch', 'shapebatch': 'ShapeBatch',
-            '_soundeffect': 'SoundEffect', 'soundeffect': 'SoundEffect',
-            '_sfx': 'SoundEffectInstance', 'sfx': 'SoundEffectInstance',
-            'window': 'GameWindow',
-        };
+        monaco.editor.setModelMarkers(model, 'roslyn', markers);
+    },
 
+    setIntellisenseRef: function (dotNetRef) {
+        window.monacoInterop._intellisenseRef = dotNetRef;
+    },
+
+    // Called from Blazor once IntellisenseService.WarmupAsync completes. Until this is
+    // true, the completion provider skips .NET calls entirely — we don't want to queue
+    // keystroke-driven requests behind the ~5s first-run warmup on the single WASM thread.
+    setIntellisenseReady: function (ready) {
+        window.monacoInterop._isIntellisenseReady = !!ready;
+    },
+
+    // Map a Roslyn completion tag (item.Tags[0]) to a Monaco CompletionItemKind.
+    // Roslyn tag strings come from Microsoft.CodeAnalysis.Tags.WellKnownTags.
+    _mapKind: function (tag) {
+        var Kind = monaco.languages.CompletionItemKind;
+        switch (tag) {
+            case 'Class':     return Kind.Class;
+            case 'Struct':    return Kind.Struct;
+            case 'Interface': return Kind.Interface;
+            case 'Enum':      return Kind.Enum;
+            case 'EnumMember':return Kind.EnumMember;
+            case 'Delegate':  return Kind.Interface;
+            case 'Method':    return Kind.Method;
+            case 'ExtensionMethod': return Kind.Method;
+            case 'Property':  return Kind.Property;
+            case 'Field':     return Kind.Field;
+            case 'Constant':  return Kind.Constant;
+            case 'Event':     return Kind.Event;
+            case 'Local':     return Kind.Variable;
+            case 'Parameter': return Kind.Variable;
+            case 'RangeVariable': return Kind.Variable;
+            case 'Keyword':   return Kind.Keyword;
+            case 'Namespace': return Kind.Module;
+            case 'Module':    return Kind.Module;
+            case 'Label':     return Kind.Text;
+            case 'Snippet':   return Kind.Snippet;
+            case 'TypeParameter': return Kind.TypeParameter;
+            case 'Operator':  return Kind.Operator;
+            default:          return Kind.Text;
+        }
+    },
+
+    _completionDebounceTimer: null,
+    _completionAbortResolve: null,
+    // Debounce values. Note: Monaco reports BOTH explicit Ctrl+Space AND auto-trigger-while-typing
+    // as triggerKind=0 (Invoke) — there is no separate "typing" kind. So we must NOT branch on
+    // triggerKind=Invoke to pick a fast path; instead we branch on what character was just typed
+    // (triggerCharacter === '.') vs. everything else (which falls through to the word-based rules).
+    _completionDebounceTriggerCharMs: 50,
+    _completionDebounceTypingMs: 400,
+    // Ctrl+Space with an empty word ("show me everything in scope") gets its own immediate path.
+    _completionDebounceForceMs: 0,
+    _completionMinAutoTriggerLen: 3,
+    // Client-side cache keyed by {sourcePrefixUpToWordStart, wordStartOffset}.
+    // Monaco filters suggestions client-side as the user types, so as long as the
+    // prefix up to the current word is unchanged we can reuse the last .NET result
+    // and avoid blocking the single WASM thread on every keystroke.
+    _completionCache: null,
+
+    _registerCompletions: function () {
         monaco.languages.registerCompletionItemProvider('csharp', {
             triggerCharacters: ['.'],
-            provideCompletionItems: function (model, position) {
-                var word = model.getWordUntilPosition(position);
-                var range = {
-                    startLineNumber: position.lineNumber,
-                    startColumn: word.startColumn,
-                    endLineNumber: position.lineNumber,
-                    endColumn: word.endColumn
-                };
+            provideCompletionItems: function (model, position, context, token) {
+                var interop = window.monacoInterop;
 
-                // Check if this is dot-completion
-                var lineContent = model.getLineContent(position.lineNumber);
-                var textBefore = lineContent.substring(0, position.column - 1);
-
-                // 'using' directive: complete namespaces
-                var usingPrefixMatch = textBefore.match(/^\s*using\s+/);
-                if (usingPrefixMatch && /^[\w.]*$/.test(textBefore.substring(usingPrefixMatch[0].length))) {
-                    var nsTyped = textBefore.substring(usingPrefixMatch[0].length);
-                    var nsStartColumn = usingPrefixMatch[0].length + 1; // 1-based column where namespace starts
-                    var nsRange = {
+                // Compute cache key. If word-start context matches the last cached call,
+                // return cached suggestions synchronously — no .NET call, no debounce.
+                var wordInfo = model.getWordUntilPosition(position);
+                var wordStartOffset = model.getOffsetAt({
+                    lineNumber: position.lineNumber,
+                    column: wordInfo.startColumn
+                });
+                var sourcePrefix = model.getValue().substring(0, wordStartOffset);
+                var cached = interop._completionCache;
+                var buildCachedResult = function () {
+                    var cachedRange = {
                         startLineNumber: position.lineNumber,
-                        startColumn: nsStartColumn,
+                        startColumn: wordInfo.startColumn,
                         endLineNumber: position.lineNumber,
-                        endColumn: position.column
+                        endColumn: wordInfo.endColumn
                     };
-                    // filterText = only the segment after the last dot, so Monaco's prefix
-                    // filter matches the word at cursor (e.g. "Fr" matches "Framework")
-                    var lastDot = nsTyped.lastIndexOf('.');
-                    var nsPrefix = lastDot >= 0 ? nsTyped.substring(0, lastDot + 1) : '';
-                    var nsSuggestions = knownNamespaces
-                        .filter(function (ns) { return ns.toLowerCase().startsWith(nsTyped.toLowerCase()); })
-                        .map(function (ns) {
-                            return {
-                                label: ns,
-                                kind: Kind.Module,
-                                filterText: ns.substring(nsPrefix.length),
-                                insertText: ns,
-                                range: nsRange,
-                                detail: 'namespace',
-                                sortText: '0' + ns
-                            };
-                        });
-                    return { suggestions: nsSuggestions };
+                    // Rebind range to current cursor position; suggestions are otherwise identical.
+                    var cachedSuggestions = cached.suggestions.map(function (s) {
+                        return {
+                            label: s.label,
+                            insertText: s.insertText,
+                            kind: s.kind,
+                            detail: s.detail,
+                            sortText: s.sortText,
+                            range: cachedRange
+                        };
+                    });
+                    return { suggestions: cachedSuggestions, incomplete: false };
+                };
+                var cacheHit = cached
+                    && cached.wordStartOffset === wordStartOffset
+                    && cached.sourcePrefix === sourcePrefix;
+                if (cacheHit) {
+                    return buildCachedResult();
                 }
 
-                var dotMatch = textBefore.match(/(\w+)\.\s*$/);
+                // Monaco's CompletionTriggerKind: 0 Invoke, 1 TriggerCharacter, 2 TriggerForIncompleteCompletions.
+                // IMPORTANT: Monaco reports BOTH explicit Ctrl+Space AND auto-trigger-from-typing
+                // as triggerKind=Invoke (0). There is no separate "typing" kind. So we branch on
+                // what character was just typed (triggerCharacter) rather than triggerKind alone.
+                // `context` may be undefined in rare edge cases; guard accordingly.
+                var triggerKind = context && typeof context.triggerKind === 'number'
+                    ? context.triggerKind
+                    : undefined;
+                var triggerCharacter = context ? context.triggerCharacter : undefined;
+                var Kinds = monaco.languages.CompletionTriggerKind || {};
+                // Prefer the enum values from monaco; fall back to the documented numerics.
+                var invokeKind = typeof Kinds.Invoke === 'number' ? Kinds.Invoke : 0;
+                var triggerCharKind = typeof Kinds.TriggerCharacter === 'number' ? Kinds.TriggerCharacter : 1;
+                var incompleteKind = typeof Kinds.TriggerForIncompleteCompletions === 'number'
+                    ? Kinds.TriggerForIncompleteCompletions
+                    : 2;
 
-                if (dotMatch) {
-                    var prefix = dotMatch[1].toLowerCase();
-                    var typeName = varAliases[prefix];
-                    var entry = typeName ? memberLookup[typeName.toLowerCase()] : memberLookup[prefix];
-
-                    // Also try: if prefix matches a type property that returns a known type
-                    // e.g., "ElapsedGameTime." -> TimeSpan members
-                    if (!entry) {
-                        var propToType = {
-                            'elapsedgametime': 'TimeSpan', 'totalgametime': 'TimeSpan',
-                            'viewport': 'Viewport', 'graphicsdevice': 'GraphicsDevice',
-                            'bounds': 'Rectangle', 'location': 'Point', 'center': 'Point',
-                        };
-                        var mapped = propToType[prefix];
-                        if (mapped) entry = memberLookup[mapped.toLowerCase()];
-                    }
-
-                    if (entry) {
-                        return {
-                            suggestions: entry.info.members.map(function (m) {
-                                return {
-                                    label: m,
-                                    kind: Kind.Field,
-                                    insertText: m,
-                                    range: range,
-                                    sortText: '0' + m
-                                };
-                            })
-                        };
+                // TriggerForIncompleteCompletions: Monaco re-asks when the last result was
+                // flagged incomplete. Never call .NET here — return cached if available, else empty.
+                if (triggerKind === incompleteKind) {
+                    if (cached) {
+                        cacheHit = true;
+                        return buildCachedResult();
                     }
                     return { suggestions: [] };
                 }
 
-                // General completions: keywords + type names + snippets
-                var suggestions = [];
+                // Readiness gate: if Roslyn warmup hasn't finished, skip .NET entirely
+                // rather than queueing completion work behind the single-threaded warmup.
+                if (!interop._isIntellisenseReady) {
+                    return { suggestions: [] };
+                }
 
-                csharpKeywords.forEach(function (kw) {
-                    suggestions.push({
-                        label: kw,
-                        kind: Kind.Keyword,
-                        insertText: kw,
-                        range: range,
-                        sortText: '2' + kw
+                // Decide debounce by looking at the just-typed character, not just triggerKind.
+                var debounceMs;
+                var currentWordLen = wordInfo.word ? wordInfo.word.length : 0;
+                if (triggerKind === triggerCharKind || triggerCharacter === '.') {
+                    // Member-access path: snappy.
+                    debounceMs = interop._completionDebounceTriggerCharMs;
+                } else if (triggerKind === invokeKind && currentWordLen === 0) {
+                    // Ctrl+Space on empty word — user explicitly asked for "show me everything in scope".
+                    // Fire .NET immediately. (Cursor-is-inside-a-word Ctrl+Space falls through to the
+                    // word-length gate below, which is deliberate per the debounce design.)
+                    debounceMs = interop._completionDebounceForceMs;
+                } else {
+                    // Typing path (also covers Ctrl+Space inside a partial word).
+                    if (currentWordLen < interop._completionMinAutoTriggerLen) {
+                        return { suggestions: [] };
+                    }
+                    debounceMs = interop._completionDebounceTypingMs;
+                }
+
+                // Resolve the prior pending request with empty results so Monaco doesn't hang.
+                if (interop._completionAbortResolve) {
+                    var priorResolve = interop._completionAbortResolve;
+                    interop._completionAbortResolve = null;
+                    priorResolve({ suggestions: [] });
+                }
+                if (interop._completionDebounceTimer) {
+                    clearTimeout(interop._completionDebounceTimer);
+                    interop._completionDebounceTimer = null;
+                }
+
+                return new Promise(function (resolve) {
+                    interop._completionAbortResolve = resolve;
+
+                    var cancelSub = token.onCancellationRequested(function () {
+                        if (interop._completionDebounceTimer) {
+                            clearTimeout(interop._completionDebounceTimer);
+                            interop._completionDebounceTimer = null;
+                        }
+                        if (interop._completionAbortResolve === resolve) {
+                            interop._completionAbortResolve = null;
+                            resolve({ suggestions: [] });
+                        }
                     });
+
+                    interop._completionDebounceTimer = setTimeout(async function () {
+                        interop._completionDebounceTimer = null;
+
+                        if (token.isCancellationRequested) {
+                            if (interop._completionAbortResolve === resolve) {
+                                interop._completionAbortResolve = null;
+                            }
+                            resolve({ suggestions: [] });
+                            return;
+                        }
+
+                        var ref = interop._intellisenseRef;
+                        if (!ref) {
+                            if (interop._completionAbortResolve === resolve) {
+                                interop._completionAbortResolve = null;
+                            }
+                            resolve({ suggestions: [] });
+                            return;
+                        }
+
+                        var word = model.getWordUntilPosition(position);
+                        var range = {
+                            startLineNumber: position.lineNumber,
+                            startColumn: word.startColumn,
+                            endLineNumber: position.lineNumber,
+                            endColumn: word.endColumn
+                        };
+
+                        var source = model.getValue();
+                        var offset = model.getOffsetAt(position);
+
+                        var items;
+                        interop._completionInFlight = true;
+                        try {
+                            items = await ref.invokeMethodAsync('GetCompletionsAsync', source, offset);
+                        } catch (e) {
+                            interop._completionInFlight = false;
+                            console.warn('IntelliSense failed:', e);
+                            if (interop._completionAbortResolve === resolve) {
+                                interop._completionAbortResolve = null;
+                            }
+                            resolve({ suggestions: [] });
+                            return;
+                        }
+
+                        interop._completionInFlight = false;
+                        if (interop._completionAbortResolve === resolve) {
+                            interop._completionAbortResolve = null;
+                        }
+
+                        if (token.isCancellationRequested || !items) {
+                            resolve({ suggestions: [] });
+                            return;
+                        }
+
+                        var suggestions = items.map(function (it) {
+                            return {
+                                label: it.displayText,
+                                insertText: it.insertionText,
+                                kind: interop._mapKind(it.kind),
+                                detail: it.detail,
+                                sortText: it.sortText,
+                                range: range
+                            };
+                        });
+                        // Cache for subsequent keystrokes within the same word.
+                        interop._completionCache = {
+                            wordStartOffset: wordStartOffset,
+                            sourcePrefix: sourcePrefix,
+                            suggestions: suggestions
+                        };
+                        resolve({ suggestions: suggestions, incomplete: false });
+                    }, debounceMs);
+                });
+            }
+        });
+    },
+
+
+    _registerSignatureHelp: function () {
+        monaco.languages.registerSignatureHelpProvider('csharp', {
+            signatureHelpTriggerCharacters: ['(', ','],
+            signatureHelpRetriggerCharacters: [','],
+            provideSignatureHelp: async function (model, position, token, context) {
+                var interop = window.monacoInterop;
+                var ref = interop._intellisenseRef;
+                if (!ref) return null;
+
+                var source = model.getValue();
+                var offset = model.getOffsetAt(position);
+
+                var result;
+                try {
+                    result = await ref.invokeMethodAsync('GetSignatureHelpAsync', source, offset);
+                } catch (e) {
+                    console.warn('Signature help failed:', e);
+                    return null;
+                }
+
+                if (!result || !result.signatures || result.signatures.length === 0) return null;
+
+                var signatures = result.signatures.map(function (sig) {
+                    return {
+                        label: sig.label,
+                        documentation: sig.documentation || '',
+                        parameters: (sig.parameters || []).map(function (p) {
+                            // Use tuple form [startOffset, endOffset] so Monaco can
+                            // unambiguously highlight the active parameter even when
+                            // multiple parameters share the same type name.
+                            return {
+                                label: [p.startOffset, p.endOffset],
+                                documentation: p.documentation || ''
+                            };
+                        })
+                    };
                 });
 
-                Object.keys(xnaTypes).forEach(function (typeName) {
-                    suggestions.push({
-                        label: typeName,
-                        kind: xnaTypes[typeName].kind,
-                        insertText: typeName,
-                        range: range,
-                        detail: 'XNA/KNI',
-                        sortText: '1' + typeName
-                    });
-                });
+                return {
+                    value: {
+                        signatures: signatures,
+                        activeSignature: result.activeSignature || 0,
+                        activeParameter: result.activeParameter || 0
+                    },
+                    dispose: function () {}
+                };
+            }
+        });
+    },
 
-                snippets.forEach(function (s) {
-                    suggestions.push({
-                        label: s.label,
-                        kind: Kind.Snippet,
-                        insertText: s.text,
-                        insertTextRules: Insert,
-                        range: range,
-                        detail: s.detail,
-                        sortText: '0' + s.label
-                    });
-                });
+    _registerHover: function () {
+        monaco.languages.registerHoverProvider('csharp', {
+            provideHover: async function (model, position, token) {
+                var interop = window.monacoInterop;
+                var ref = interop._intellisenseRef;
+                if (!ref) return undefined;
+                // Readiness gate: before Roslyn warmup finishes, skip .NET to avoid
+                // queueing hover work behind the single-threaded warmup.
+                if (!interop._isIntellisenseReady) return undefined;
 
-                return { suggestions: suggestions };
+                var source = model.getValue();
+                var offset = model.getOffsetAt(position);
+
+                var result;
+                try {
+                    result = await ref.invokeMethodAsync('GetHoverAsync', source, offset);
+                } catch (e) {
+                    console.warn('Hover failed:', e);
+                    return undefined;
+                }
+
+                if (!result || token.isCancellationRequested) return undefined;
+
+                var startPos = model.getPositionAt(result.startOffset);
+                var endPos = model.getPositionAt(result.endOffset);
+                return {
+                    range: new monaco.Range(
+                        startPos.lineNumber, startPos.column,
+                        endPos.lineNumber, endPos.column),
+                    contents: [{ value: result.content, isTrusted: false }]
+                };
             }
         });
     },
