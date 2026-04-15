@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
@@ -57,6 +58,18 @@ namespace XnaFiddle
                 {
                     using MemoryStream stream = new(bytes);
                     Texture2D texture = Texture2D.FromStream(GetGraphicsDevice(), stream);
+                    // KNI's FromStream returns straight alpha; XNA-style code (SpriteBatch +
+                    // BlendState.AlphaBlend) expects premultiplied. MonoGame premultiplies
+                    // inside FromStream, KNI does not. XnaFiddle is always KNI so this is
+                    // unconditional here; RawContentManager in exports runtime-detects instead.
+                    Color[] pixels = new Color[texture.Width * texture.Height];
+                    texture.GetData(pixels);
+                    for (int i = 0; i < pixels.Length; i++)
+                    {
+                        byte a = pixels[i].A;
+                        pixels[i] = new Color((byte)(pixels[i].R * a / 255), (byte)(pixels[i].G * a / 255), (byte)(pixels[i].B * a / 255), a);
+                    }
+                    texture.SetData(pixels);
                     _loaded[assetName] = texture;
                     return (T)(object)texture;
                 }

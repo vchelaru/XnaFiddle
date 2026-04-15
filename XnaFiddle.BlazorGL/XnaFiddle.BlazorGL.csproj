@@ -75,6 +75,7 @@
     <PackageReference Include="KernSmith.KniGum" Version="$(KernSmithVersion)" />
     <PackageReference Include="KernSmith.Rasterizers.StbTrueType" Version="$(KernSmithVersion)" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="4.14.0" />
     <PackageReference Include="MetadataReferenceService.BlazorWasm" Version="0.0.1" />
   </ItemGroup>
 

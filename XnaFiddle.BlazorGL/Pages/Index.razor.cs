@@ -26,6 +26,12 @@ namespace XnaFiddle.Pages
 
         Game _game;
 
+        // DotNetObjectReference wrappers for JS interop. Kept as fields so we can
+        // dispose them when this page is torn down (prevents the .NET runtime from
+        // leaking references to this component).
+        DotNetObjectReference<Index> _pageDotNetRef;
+        DotNetObjectReference<IntellisenseService> _intellisenseDotNetRef;
+
         string _diagnosticsOutput = "";
         string _diagnosticsColor = ColorMuted;
         string _statusMessage = "";
@@ -126,12 +132,45 @@ namespace XnaFiddle.Pages
                 string defaultCode = ExampleGallery.Load("BouncingBall") ?? "";
                 await JsRuntime.InvokeVoidAsync("monacoInterop.init", "monacoContainer", defaultCode);
                 _monacoReady = true;
-                var dotNetRef = DotNetObjectReference.Create(this);
+                _pageDotNetRef = DotNetObjectReference.Create(this);
+                var dotNetRef = _pageDotNetRef;
                 await JsRuntime.InvokeAsync<object>("initRenderJS", dotNetRef);
                 await JsRuntime.InvokeVoidAsync("fileDropInterop.init", dotNetRef);
                 await JsRuntime.InvokeVoidAsync("keyboardInterop.init", dotNetRef);
                 try { await JsRuntime.InvokeVoidAsync("monacoInterop.registerChangeCallback", dotNetRef); }
                 catch { /* stale JS cache — hard-reload the page to pick up the new monaco-interop.js */ }
+
+                // Wire Roslyn-backed IntelliSense. The JS side calls
+                // IntellisenseService.GetCompletionsAsync via this reference.
+                _intellisenseDotNetRef = DotNetObjectReference.Create(Intellisense);
+                try { await JsRuntime.InvokeVoidAsync("monacoInterop.setIntellisenseRef", _intellisenseDotNetRef); }
+                catch { /* stale JS cache — hard-reload to pick up setIntellisenseRef */ }
+
+                // Subscribe before kicking off warmup so we don't miss the ReadyChanged event.
+                Intellisense.ReadyChanged += OnIntellisenseReadyChanged;
+                // If warmup already finished (e.g., page re-renders with a singleton service
+                // that was primed earlier), push the ready state immediately.
+                if (Intellisense.IsReady)
+                {
+                    try { await JsRuntime.InvokeVoidAsync("monacoInterop.setIntellisenseReady", true); }
+                    catch { /* stale JS cache */ }
+                }
+
+                // Warm up Roslyn caches (MEF composition + first semantic model) so the
+                // user's first completion doesn't pay the ~5s first-call cost. Run after
+                // a short delay so it doesn't compete with initial page render.
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(500);
+                        await _intellisenseDotNetRef.Value.WarmupAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("IntelliSense warmup failed: " + ex.Message);
+                    }
+                });
 
                 // Detect stale static assets: build-version.js sets window._buildVersion
                 // at load time; if it doesn't match the C# BuildInfo the browser is serving
@@ -542,6 +581,13 @@ namespace XnaFiddle.Pages
             if (_isCompiling)
                 return;
 
+            if (_game != null)
+            {
+                _game = null;
+                LibraryRegistry.RunAllCleanups();
+                _ = JsRuntime.InvokeVoidAsync("clearCanvas");
+            }
+
             _isCompiling = true;
             _compileCts = new CancellationTokenSource();
             _pendingCompile = true;
@@ -557,6 +603,18 @@ namespace XnaFiddle.Pages
         private void StopCompilation()
         {
             _compileCts?.Cancel();
+        }
+
+        private void StopGame()
+        {
+            if (_game == null)
+                return;
+            _game = null;
+            LibraryRegistry.RunAllCleanups();
+            _ = JsRuntime.InvokeVoidAsync("clearCanvas");
+            _statusMessage = "Stopped.";
+            _statusColor = ColorPending;
+            StateHasChanged();
         }
 
         private async Task DoCompileAndRun()
@@ -985,6 +1043,15 @@ namespace XnaFiddle.Pages
                 _selectedPlatforms.Remove(ExportPlatform.BlazorGL);
         }
 
+        private async Task OnExportNameKeyDown(KeyboardEventArgs e)
+        {
+            if (e.Key != "Enter") return;
+            if (_isExporting) return;
+            if (string.IsNullOrWhiteSpace(_exportProjectName)) return;
+            if (_selectedPlatforms.Count == 0) return;
+            await ExportProject();
+        }
+
         private async Task ExportProject()
         {
             string projectName = SanitizeProjectName(
@@ -1131,6 +1198,30 @@ namespace XnaFiddle.Pages
                 catch { }
             }
             return null;
+        }
+
+        void OnIntellisenseReadyChanged()
+        {
+            // ReadyChanged may fire on a background task; marshal back onto the Blazor
+            // sync context via InvokeAsync so StateHasChanged and JS interop are safe.
+            _ = InvokeAsync(async () =>
+            {
+                try { await JsRuntime.InvokeVoidAsync("monacoInterop.setIntellisenseReady", true); }
+                catch { /* stale JS cache */ }
+                StateHasChanged();
+            });
+        }
+
+        public void Dispose()
+        {
+            if (Intellisense != null)
+            {
+                Intellisense.ReadyChanged -= OnIntellisenseReadyChanged;
+            }
+            _pageDotNetRef?.Dispose();
+            _pageDotNetRef = null;
+            _intellisenseDotNetRef?.Dispose();
+            _intellisenseDotNetRef = null;
         }
     }
 }

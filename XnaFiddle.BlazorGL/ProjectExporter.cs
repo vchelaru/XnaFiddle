@@ -879,8 +879,27 @@ public class RawContentManager : ContentManager
     static readonly string[] ImageExtensions = {{ "".png"", "".jpg"", "".jpeg"", "".bmp"" }};
     static readonly string[] AudioExtensions = {{ "".wav"" }};
     static readonly bool IsDesktop = !OperatingSystem.IsAndroid() && !OperatingSystem.IsBrowser();
+    // KNI's Texture2D.FromStream returns straight (non-premultiplied) alpha, but XNA-style
+    // code (SpriteBatch + BlendState.AlphaBlend) expects premultiplied. MonoGame's FromStream
+    // already premultiplies, so we only do it on KNI. Detected at runtime by assembly name
+    // to avoid pushing a #if KNI / csproj DefineConstants flag down to every exported project.
+    // Fragile: fails open (skips premultiply) if KNI ever renames its graphics assembly away
+    // from Xna.Framework.*.
+    static readonly bool NeedsPremultiply = typeof(Texture2D).Assembly.GetName().Name?.StartsWith(""Xna.Framework"") == true;
 
     readonly IGraphicsDeviceService _graphics;
+
+    static void PremultiplyAlpha(Texture2D texture)
+    {{
+        Color[] pixels = new Color[texture.Width * texture.Height];
+        texture.GetData(pixels);
+        for (int i = 0; i < pixels.Length; i++)
+        {{
+            byte a = pixels[i].A;
+            pixels[i] = new Color((byte)(pixels[i].R * a / 255), (byte)(pixels[i].G * a / 255), (byte)(pixels[i].B * a / 255), a);
+        }}
+        texture.SetData(pixels);
+    }}
 
     public RawContentManager(IServiceProvider services, string rootDirectory)
         : base(services, rootDirectory)
@@ -900,14 +919,18 @@ public class RawContentManager : ContentManager
                     if (!File.Exists(path))
                         continue;
                     using var stream = File.OpenRead(path);
-                    return (T)(object)Texture2D.FromStream(_graphics.GraphicsDevice, stream);
+                    var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
+                    if (NeedsPremultiply) PremultiplyAlpha(tex);
+                    return (T)(object)tex;
                 }}
                 else
                 {{
                     try
                     {{
                         using var stream = TitleContainer.OpenStream(path);
-                        return (T)(object)Texture2D.FromStream(_graphics.GraphicsDevice, stream);
+                        var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
+                        if (NeedsPremultiply) PremultiplyAlpha(tex);
+                        return (T)(object)tex;
                     }}
                     catch (FileNotFoundException) {{ }}
                 }}

@@ -16,8 +16,10 @@ public class Game1 : Game
     Texture2D circle;
 
     Vector2 position;
-    Vector2 velocity;
+
     const int Radius = 30;
+    Vector2 velocity = new Vector2(300f, 200f);
+    Color ballColor = Color.Red;
 
     public Game1()
     {
@@ -31,6 +33,10 @@ public class Game1 : Game
     protected override void Initialize()
     {
         base.Initialize();
+
+        position = new Vector2(
+            GraphicsDevice.Viewport.Width / 2f,
+            GraphicsDevice.Viewport.Height / 2f);
     }
 
     protected override void LoadContent()
@@ -48,15 +54,10 @@ public class Game1 : Game
                 float dx = x - Radius + 0.5f;
                 float dy = y - Radius + 0.5f;
                 float dist = MathF.Sqrt(dx * dx + dy * dy);
-                data[y * size + x] = dist <= Radius ? Color.White : Color.Transparent;
+                data[y * size + x] = dist <= Radius ? ballColor : Color.Transparent;
             }
         }
         circle.SetData(data);
-
-        position = new Vector2(
-            GraphicsDevice.Viewport.Width / 2f,
-            GraphicsDevice.Viewport.Height / 2f);
-        velocity = new Vector2(300f, 200f);
     }
 
     protected override void Update(GameTime gameTime)
@@ -80,7 +81,7 @@ public class Game1 : Game
     {
         GraphicsDevice.Clear(Color.CornflowerBlue);
         spriteBatch.Begin();
-        spriteBatch.Draw(circle, position - new Vector2(Radius), Color.Cyan);
+        spriteBatch.Draw(circle, position - new Vector2(Radius), Color.White);
         spriteBatch.End();
         base.Draw(gameTime);
     }
