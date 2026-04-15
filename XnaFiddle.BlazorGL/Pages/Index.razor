@@ -80,9 +80,8 @@
         </button>
         <button @onclick="() => _exportOpen = !_exportOpen" title="Export Project"
                 style="padding: 4px 8px; background: @(_exportOpen ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
-                       border: 1px solid #555; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
+                       border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
             <i class="codicon codicon-package"></i>
-            Export
         </button>
         @if (!string.IsNullOrEmpty(_statusMessage))
         {
@@ -286,6 +285,7 @@
             <div style="display: flex; align-items: center; gap: 12px;">
                 <span style="color: #aaa;">Project name:</span>
                 <input type="text" @bind="_exportProjectName" @bind:event="oninput"
+                       @onkeydown="OnExportNameKeyDown"
                        style="background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px;
                               font-size: 12px; font-family: inherit; width: 150px;" />
                 <button @onclick="ExportProject" disabled="@(_isExporting || string.IsNullOrWhiteSpace(_exportProjectName) || _selectedPlatforms.Count == 0)"

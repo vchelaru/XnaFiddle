@@ -1043,6 +1043,15 @@ namespace XnaFiddle.Pages
                 _selectedPlatforms.Remove(ExportPlatform.BlazorGL);
         }
 
+        private async Task OnExportNameKeyDown(KeyboardEventArgs e)
+        {
+            if (e.Key != "Enter") return;
+            if (_isExporting) return;
+            if (string.IsNullOrWhiteSpace(_exportProjectName)) return;
+            if (_selectedPlatforms.Count == 0) return;
+            await ExportProject();
+        }
+
         private async Task ExportProject()
         {
             string projectName = SanitizeProjectName(

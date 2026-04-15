@@ -545,20 +545,42 @@ window.compileTimerInterop = {
     }
 };
 
-// Prevent KNI from receiving keyboard events when the Monaco editor has focus.
-// KNI registers keydown/keyup on `window` in the bubbling phase. By listening on
-// `document` (one level below window) in the bubbling phase and stopping propagation,
-// events still reach Monaco's own DOM elements normally but never bubble up to KNI.
-(function () {
-    function isEditorFocused() {
-        var active = document.activeElement;
-        return active && active.closest('.monaco-editor');
+// Prevent KNI from receiving keyboard events when a text input (Monaco editor,
+// the export filename box, etc.) has focus.
+//
+// Why not gate on canvas focus instead (the usual pattern)? KNI registers its
+// keydown/keyup on `window`, not on the canvas — the canvas never sees the
+// events as a listener target, so there's nothing to gate there without
+// patching KNI itself. We intercept on `document` in the bubble phase and stop
+// propagation before it reaches `window`. A capture-phase listener on `window`
+// was tried first but fires before Monaco's own handlers, so Monaco never saw
+// the keys. Bubbling on `document` lets Monaco (and any other input) handle
+// first, then we cut off the event before KNI sees it.
+//
+// Consequence: every new text-input-like element must be recognized by
+// isTextInputFocused below, or its keystrokes will leak into the running game.
+function isTextInputFocused() {
+    var active = document.activeElement;
+    if (!active) return false;
+    if (active.closest('.monaco-editor')) return true;
+    var tag = active.tagName;
+    if (tag === 'TEXTAREA') return true;
+    if (tag === 'INPUT') {
+        var type = (active.getAttribute('type') || 'text').toLowerCase();
+        // Treat text-like input types as capturing keyboard.
+        return type === 'text' || type === 'search' || type === 'url' ||
+               type === 'email' || type === 'password' || type === 'tel' ||
+               type === 'number';
     }
+    if (active.isContentEditable) return true;
+    return false;
+}
+(function () {
     document.addEventListener('keydown', function (e) {
-        if (isEditorFocused() && e.key !== 'F5') e.stopPropagation();
+        if (isTextInputFocused() && e.key !== 'F5') e.stopPropagation();
     });
     document.addEventListener('keyup', function (e) {
-        if (isEditorFocused()) e.stopPropagation();
+        if (isTextInputFocused()) e.stopPropagation();
     });
 })();
 
@@ -570,13 +592,13 @@ window.keyboardInterop = {
                 e.preventDefault();
                 dotNetRef.invokeMethodAsync('TriggerCompileAndRun');
             }
-            // Suppress Tab and arrow keys unless focus is inside the Monaco editor,
-            // preventing the browser from cycling focus or scrolling the page while
-            // the game canvas is active.
+            // Suppress Tab and arrow keys unless a text input is focused,
+            // preventing the browser from cycling focus or scrolling the page
+            // while the game canvas is active. Any text-input-like element
+            // (Monaco, <input type=text>, etc.) needs arrows/Tab for caret
+            // movement and field navigation, so let those through.
             if (e.key === 'Tab' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                var active = document.activeElement;
-                var inEditor = active && active.closest('.monaco-editor');
-                if (!inEditor) e.preventDefault();
+                if (!isTextInputFocused()) e.preventDefault();
             }
         });
     }
