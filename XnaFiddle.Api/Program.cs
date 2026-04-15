@@ -1,5 +1,7 @@
+using EntityFramework.Exceptions.SqlServer;
 using Microsoft.EntityFrameworkCore;
 using XnaFiddle.Api.Data;
+using XnaFiddle.Api.Slugs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,8 +11,11 @@ builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-builder.Services.AddDbContext<FiddleDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("FiddleDb")));
+builder.Services.AddDbContext<FiddleDbContext>(options => options
+    .UseSqlServer(builder.Configuration.GetConnectionString("FiddleDb"))
+    .UseExceptionProcessor());
+
+builder.Services.AddSingleton<ISlugGenerator, SlugGenerator>();
 
 var app = builder.Build();
 
@@ -27,3 +32,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Exposed for WebApplicationFactory<Program> in integration tests.
+public partial class Program;

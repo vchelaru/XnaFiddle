@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XnaFiddle.Encoder", "XnaFid
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XnaFiddle.Api", "XnaFiddle.Api\XnaFiddle.Api.csproj", "{7D8974CD-804A-83C2-1E55-C9454068FC05}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XnaFiddle.Api.Tests", "XnaFiddle.Api.Tests\XnaFiddle.Api.Tests.csproj", "{27ABD6E9-6370-4EF5-8301-57FB917F819C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{7D8974CD-804A-83C2-1E55-C9454068FC05}.Release|x64.Build.0 = Release|Any CPU
 		{7D8974CD-804A-83C2-1E55-C9454068FC05}.Release|x86.ActiveCfg = Release|Any CPU
 		{7D8974CD-804A-83C2-1E55-C9454068FC05}.Release|x86.Build.0 = Release|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Debug|x64.Build.0 = Debug|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Debug|x86.Build.0 = Debug|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Release|x64.ActiveCfg = Release|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Release|x64.Build.0 = Release|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Release|x86.ActiveCfg = Release|Any CPU
+		{27ABD6E9-6370-4EF5-8301-57FB917F819C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
