@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.JSInterop;
@@ -24,6 +26,7 @@ namespace XnaFiddle
     public class IntellisenseService
     {
         private readonly CompilationService _compilationService;
+        private readonly IJSRuntime _jsRuntime;
 
         private AdhocWorkspace _workspace;
         private DocumentId _documentId;
@@ -33,10 +36,12 @@ namespace XnaFiddle
         private CancellationTokenSource _currentSignatureHelpCts;
         private CancellationTokenSource _currentHoverCts;
         private CancellationTokenSource _currentDiagnosticsCts;
+        private CancellationTokenSource _currentAddUsingSuggestionsCts;
 
-        public IntellisenseService(CompilationService compilationService)
+        public IntellisenseService(CompilationService compilationService, IJSRuntime jsRuntime)
         {
             _compilationService = compilationService;
+            _jsRuntime = jsRuntime;
         }
 
         /// <summary>
@@ -119,10 +124,13 @@ namespace XnaFiddle
         /// Builds <see cref="MefHostServices"/> from the Roslyn default assemblies, but
         /// filters out <c>Microsoft.CodeAnalysis.Host.DefaultPersistentStorageConfiguration</c>.
         /// That type's static ctor calls <c>System.Diagnostics.Process.GetCurrentProcess()</c>,
-        /// which throws <see cref="PlatformNotSupportedException"/> on Blazor WASM. Removing the
-        /// part is safe: Roslyn's workspace services fall back to <c>NoOpPersistentStorageService</c>
-        /// when no <c>IPersistentStorageConfiguration</c> is composed, which is exactly what we want
-        /// in-browser (there's no real disk to cache to anyway).
+        /// which throws <see cref="PlatformNotSupportedException"/> on Blazor WASM. We then
+        /// substitute our own WASM-safe implementation (see
+        /// <see cref="WasmSafePersistentStorageProvider"/>) so code paths that explicitly
+        /// request <c>IPersistentStorageConfiguration</c> — notably
+        /// <c>SymbolFinder.FindDeclarationsAsync</c>, which backs the Add-using code action —
+        /// don't throw "Service ... is required" on our 'Custom' workspace. Paths that don't
+        /// touch the config (completion, hover, live diagnostics) behave the same as before.
         /// </summary>
         private static MefHostServices CreateWasmSafeHostServices()
         {
@@ -147,6 +155,15 @@ namespace XnaFiddle
                     if (type.FullName == blockedTypeFullName) continue;
                     parts.Add(type);
                 }
+            }
+
+            // Emit and add our WASM-safe replacement. If emission fails (e.g., Roslyn
+            // renamed the internal type on a future upgrade), fall back to the old
+            // behavior — completion/hover still work; only the code-action path fails.
+            var wasmSafeConfig = WasmSafePersistentStorageProvider.GetOrCreateConfigurationType();
+            if (wasmSafeConfig != null)
+            {
+                parts.Add(wasmSafeConfig);
             }
 
             var compositionContext = new ContainerConfiguration()
@@ -480,13 +497,13 @@ namespace XnaFiddle
         }
 
         /// <summary>
-        /// Returns Roslyn-backed hover (QuickInfo) content for the symbol at
+        /// Returns Roslyn-backed hover content for the symbol at
         /// <paramref name="position"/>. Uses the SemanticModel directly because
         /// <c>Microsoft.CodeAnalysis.QuickInfo.QuickInfoService</c> is internal in
-        /// Roslyn 4.14. The content is the symbol's MinimallyQualifiedFormat display
-        /// on the first line followed by the raw XML doc comment (if any) — we don't
-        /// parse the XML yet, so docs render as plain text in Monaco. Good enough for
-        /// a first pass; revisit if we want nicer markdown.
+        /// Roslyn 4.14. The content is the formatted signature plus parsed XML doc
+        /// markdown. When the identifier is unresolved, any applicable "Add using
+        /// ...;" suggestions are appended as clickable <c>command:</c>-URI markdown
+        /// links (see <see cref="BuildAddUsingMarkdown"/>).
         /// </summary>
         [JSInvokable]
         public async Task<HoverResult> GetHoverAsync(string source, int position)
@@ -540,15 +557,37 @@ namespace XnaFiddle
                         ?? (symbolInfo.CandidateSymbols.Length > 0 ? symbolInfo.CandidateSymbols[0] : null);
                 }
 
-                if (symbol == null) return null;
+                string content = null;
+                if (symbol != null)
+                {
+                    var signature = symbol.ToDisplayString(HoverFormat);
+                    var xmlDocs = symbol.GetDocumentationCommentXml(cancellationToken: token) ?? "";
+                    var formatted = XmlDocFormatter.Format(xmlDocs);
+                    content = string.IsNullOrWhiteSpace(formatted)
+                        ? signature
+                        : signature + "\n\n" + formatted;
+                }
 
-                var signature = symbol.ToDisplayString(HoverFormat);
-                var xmlDocs = symbol.GetDocumentationCommentXml(cancellationToken: token) ?? "";
-                var formatted = XmlDocFormatter.Format(xmlDocs);
+                // If the name at this position is unresolved (or resolves to an error symbol),
+                // try to offer "Add using ...;" links. We only bother when there's no resolved
+                // symbol, since a resolved symbol implies the namespace is already imported or
+                // fully-qualified and no import is needed.
+                bool symbolUnresolved = symbol == null
+                    || symbol.Kind == SymbolKind.ErrorType;
+                if (symbolUnresolved)
+                {
+                    var suggestions = await ComputeAddUsingSuggestionsAsync(
+                        document, syntaxRoot, semanticModel, position, token);
+                    if (suggestions.Count > 0)
+                    {
+                        var addUsingMarkdown = BuildAddUsingMarkdown(suggestions);
+                        content = string.IsNullOrEmpty(content)
+                            ? addUsingMarkdown
+                            : content + "\n\n---\n\n" + addUsingMarkdown;
+                    }
+                }
 
-                var content = string.IsNullOrWhiteSpace(formatted)
-                    ? signature
-                    : signature + "\n\n" + formatted;
+                if (string.IsNullOrEmpty(content)) return null;
 
                 return new HoverResult
                 {
@@ -642,6 +681,229 @@ namespace XnaFiddle
             {
                 return [];
             }
+        }
+
+
+        public class AddUsingSuggestion
+        {
+            /// <summary>Human-readable title, e.g. <c>"using Microsoft.Xna.Framework;"</c>.</summary>
+            public string Title { get; set; }
+            /// <summary>Namespace to import (no trailing semicolon).</summary>
+            public string NamespaceToImport { get; set; }
+            /// <summary>Zero-based offset at which to insert the new <c>using</c> line.</summary>
+            public int InsertOffset { get; set; }
+            /// <summary>Exact text to insert (ends with <c>"\n"</c>).</summary>
+            public string InsertText { get; set; }
+        }
+
+        /// <summary>
+        /// Returns <c>using</c>-import suggestions for an unresolved identifier at
+        /// <paramref name="position"/>. Surfaced to users via clickable
+        /// <c>command:</c>-URI links in the hover tooltip (see <see cref="GetHoverAsync"/>).
+        /// Kept as a JSInvokable entry point so a follow-up surface (e.g. a
+        /// right-click menu) can reuse it without duplicating Roslyn work.
+        ///
+        /// Why hand-rolled instead of <c>CSharpAddImportCodeFixProvider</c>: the full
+        /// Features assembly is large, the provider is internal, and MEF-composing all
+        /// code-fix providers would leak dozens of unwanted quick-fixes. See
+        /// <see cref="AddUsingSuggester"/> for detail.
+        /// </summary>
+        [JSInvokable]
+        public async Task<AddUsingSuggestion[]> GetAddUsingSuggestionsAsync(string source, int position)
+        {
+            if (!IsReady) return [];
+
+            var previousCts = _currentAddUsingSuggestionsCts;
+            previousCts?.Cancel();
+            previousCts?.Dispose();
+
+            var cts = new CancellationTokenSource();
+            _currentAddUsingSuggestionsCts = cts;
+            var token = cts.Token;
+
+            try
+            {
+                await EnsureInitializedAsync(token);
+
+                var newSolution = _workspace.CurrentSolution.WithDocumentText(
+                    _documentId, SourceText.From(source ?? ""));
+                _workspace.TryApplyChanges(newSolution);
+
+                token.ThrowIfCancellationRequested();
+
+                var document = _workspace.CurrentSolution.GetDocument(_documentId);
+                if (document == null) return [];
+
+                var syntaxRoot = await document.GetSyntaxRootAsync(token);
+                if (syntaxRoot == null) return [];
+
+                var semanticModel = await document.GetSemanticModelAsync(token);
+                if (semanticModel == null) return [];
+
+                if (position < 0) position = 0;
+                int textLen = (source ?? "").Length;
+                if (position > textLen) position = textLen;
+
+                var suggestions = await ComputeAddUsingSuggestionsAsync(
+                    document, syntaxRoot, semanticModel, position, token);
+                return suggestions.ToArray();
+            }
+            catch (OperationCanceledException)
+            {
+                return [];
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    await _jsRuntime.InvokeVoidAsync("console.warn",
+                        "[AddUsingSuggestions] " + ex.GetType().Name + ": " + ex.Message);
+                }
+                catch
+                {
+                    // Logging must never break the feature.
+                }
+                return [];
+            }
+        }
+
+        /// <summary>
+        /// Shared implementation for the JSInvokable
+        /// <see cref="GetAddUsingSuggestionsAsync"/> entry point and the inline
+        /// append-to-hover path in <see cref="GetHoverAsync"/>. Assumes the document,
+        /// syntax root, and semantic model have already been obtained for
+        /// <paramref name="position"/>. Callers decide how to surface the result.
+        /// </summary>
+        private static async Task<List<AddUsingSuggestion>> ComputeAddUsingSuggestionsAsync(
+            Document document,
+            SyntaxNode syntaxRoot,
+            SemanticModel semanticModel,
+            int position,
+            CancellationToken token)
+        {
+            var empty = new List<AddUsingSuggestion>();
+
+            var nameNode = AddUsingSuggester.FindNameAtPosition(syntaxRoot, position);
+            if (nameNode == null) return empty;
+
+            // If the name already resolves to a non-error symbol, no import action is needed.
+            // An IErrorTypeSymbol (Kind == ErrorType) means Roslyn couldn't bind — we SHOULD
+            // still try to suggest imports in that case.
+            var symbolInfo = semanticModel.GetSymbolInfo(nameNode, token);
+            if (symbolInfo.Symbol != null && symbolInfo.Symbol.Kind != SymbolKind.ErrorType)
+            {
+                return empty;
+            }
+
+            // Use the simple identifier (drop any generic arity). SymbolFinder matches
+            // by metadata name, which for generics includes a backtick arity suffix —
+            // it will still find `List<T>` when queried for "List".
+            string identifier = nameNode switch
+            {
+                IdentifierNameSyntax id => id.Identifier.Text,
+                GenericNameSyntax gen => gen.Identifier.Text,
+                _ => null
+            };
+            if (string.IsNullOrEmpty(identifier)) return empty;
+
+            // Gather namespaces already imported by the document so we don't suggest
+            // redundant usings.
+            var existingUsings = new HashSet<string>(StringComparer.Ordinal);
+            if (syntaxRoot is CompilationUnitSyntax cu)
+            {
+                foreach (var usingDirective in cu.Usings)
+                {
+                    if (usingDirective.Alias != null) continue;
+                    if (usingDirective.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)) continue;
+                    var name = usingDirective.Name?.ToString();
+                    if (!string.IsNullOrEmpty(name)) existingUsings.Add(name);
+                }
+            }
+
+            token.ThrowIfCancellationRequested();
+
+            // First call is slow (hundreds of ms) as Roslyn builds its symbol index
+            // across the project references. Acceptable: this path is only hit on
+            // hover, which is already user-driven and low-frequency.
+            var declarations = await SymbolFinder.FindDeclarationsAsync(
+                document.Project,
+                identifier,
+                ignoreCase: false,
+                filter: SymbolFilter.Type,
+                cancellationToken: token);
+            if (declarations == null) return empty;
+
+            var declList = declarations as IList<ISymbol> ?? declarations.ToList();
+            if (declList.Count == 0) return empty;
+
+            var seenNamespaces = new HashSet<string>(StringComparer.Ordinal);
+            var results = new List<AddUsingSuggestion>();
+            foreach (var symbol in declList)
+            {
+                if (symbol is not INamedTypeSymbol typeSymbol) continue;
+                if (typeSymbol.DeclaredAccessibility != Accessibility.Public) continue;
+
+                var containing = typeSymbol.ContainingNamespace;
+                if (containing == null || containing.IsGlobalNamespace) continue;
+
+                string ns = containing.ToDisplayString();
+                if (!AddUsingSuggester.IsAllowedNamespace(ns, AddUsingSuggester.NamespaceAllowlist)) continue;
+                if (existingUsings.Contains(ns)) continue;
+                if (!seenNamespaces.Add(ns)) continue;
+
+                var (offset, text) = AddUsingSuggester.ComputeInsertion(syntaxRoot, ns);
+                results.Add(new AddUsingSuggestion
+                {
+                    Title = "using " + ns + ";",
+                    NamespaceToImport = ns,
+                    InsertOffset = offset,
+                    InsertText = text,
+                });
+
+                if (results.Count >= 10) break;
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Formats a list of add-using suggestions as a markdown fragment appended to
+        /// the hover tooltip. Each entry is a clickable <c>command:</c>-URI link that
+        /// invokes the JS-side <c>xnafiddle.addUsing</c> command.
+        ///
+        /// Command arguments are JSON-encoded per Monaco's command-URI contract:
+        /// <c>command:id?["arg1","arg2",...]</c>. We pass a <c>__ACTIVE_MODEL__</c>
+        /// placeholder for the model URI — the JS handler resolves that to the current
+        /// editor's active model so .NET doesn't need a round-trip just to learn the
+        /// URI.
+        ///
+        /// The hover content must be wrapped in a Monaco <c>MarkdownString</c> with
+        /// <c>isTrusted: true</c> or Monaco will silently strip the <c>command:</c>
+        /// links. That trust flag is set in the JS hover provider.
+        /// </summary>
+        private static string BuildAddUsingMarkdown(List<AddUsingSuggestion> suggestions)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("**Add using:**\n\n");
+            foreach (var suggestion in suggestions)
+            {
+                // Command argument is a JSON array matching the JS command signature
+                // [modelUri, insertOffset, insertText]. URL-encode the JSON so Monaco's
+                // command-URI parser accepts it.
+                string json = System.Text.Json.JsonSerializer.Serialize(new object[]
+                {
+                    "__ACTIVE_MODEL__",
+                    suggestion.InsertOffset,
+                    suggestion.InsertText,
+                });
+                string encoded = Uri.EscapeDataString(json);
+                sb.Append("- [`using ");
+                sb.Append(suggestion.NamespaceToImport);
+                sb.Append(";`](command:xnafiddle.addUsing?");
+                sb.Append(encoded);
+                sb.Append(")\n");
+            }
+            return sb.ToString();
         }
 
     }

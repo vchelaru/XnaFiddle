@@ -26,6 +26,7 @@ window.monacoInterop = {
                 window.monacoInterop._registerCompletions();
                 window.monacoInterop._registerSignatureHelp();
                 window.monacoInterop._registerHover();
+                window.monacoInterop._registerAddUsingCommand();
 
                 window.monacoInterop._editor = monaco.editor.create(
                     document.getElementById(containerId),
@@ -464,14 +465,105 @@ window.monacoInterop = {
 
                 var startPos = model.getPositionAt(result.startOffset);
                 var endPos = model.getPositionAt(result.endOffset);
+                // isTrusted: true is REQUIRED for Monaco to honor `command:` URIs in
+                // markdown links. Without it the "Add using ...;" links produced by
+                // IntellisenseService.BuildAddUsingMarkdown would render as plain,
+                // non-clickable text (Monaco strips untrusted command links silently).
                 return {
                     range: new monaco.Range(
                         startPos.lineNumber, startPos.column,
                         endPos.lineNumber, endPos.column),
-                    contents: [{ value: result.content, isTrusted: false }]
+                    contents: [{ value: result.content, isTrusted: true, supportHtml: false }]
                 };
             }
         });
+    },
+
+    // Registers the `xnafiddle.addUsing` command invoked by `command:` URIs in the
+    // hover-tooltip markdown produced by IntellisenseService.BuildAddUsingMarkdown.
+    // The original Monaco code-action-provider path was abandoned: in this CDN-loaded
+    // standalone build the action-widget's ListWidget virtualization allocates height
+    // but renders zero visible rows, so users never see the quick-fix items. The
+    // hover-tooltip path below works reliably and reuses this command for the actual
+    // edit application.
+    //
+    // Command signature (from BuildAddUsingMarkdown): [modelUri, insertOffset, insertText].
+    // The .NET side doesn't know the model URI, so it passes the sentinel
+    // '__ACTIVE_MODEL__' and we resolve to the current editor's model here.
+    _registerAddUsingCommand: function () {
+        try {
+            if (!monaco.editor || typeof monaco.editor.registerCommand !== 'function') {
+                console.warn('[AddUsing] monaco.editor.registerCommand not available; "Add using" hover links will be inert');
+                return;
+            }
+            monaco.editor.registerCommand('xnafiddle.addUsing', function (_accessor, uriRaw, insertOffset, insertText) {
+                try {
+                    var model = null;
+                    if (uriRaw === '__ACTIVE_MODEL__') {
+                        var editor = window.monacoInterop._editor
+                            || (monaco.editor.getEditors && monaco.editor.getEditors()[0]);
+                        model = editor ? editor.getModel() : null;
+                    } else {
+                        var uri = (uriRaw && uriRaw.scheme) ? uriRaw : monaco.Uri.parse(String(uriRaw));
+                        model = monaco.editor.getModel(uri);
+                    }
+                    if (!model) return;
+                    var pos = model.getPositionAt(insertOffset);
+                    model.pushEditOperations(
+                        [],
+                        [{
+                            range: {
+                                startLineNumber: pos.lineNumber,
+                                startColumn: pos.column,
+                                endLineNumber: pos.lineNumber,
+                                endColumn: pos.column
+                            },
+                            text: insertText,
+                            forceMoveMarkers: true
+                        }],
+                        function () { return null; }
+                    );
+
+                    // Dismiss the hover tooltip: focus the editor and fire an
+                    // Escape keydown, which Monaco treats as the canonical
+                    // close-all-floating-widgets signal.
+                    //
+                    // FRAGILE: this is the only sequence that reliably dismisses
+                    // the hover in Monaco 0.45 (CDN) after a command-link click.
+                    // Things that do NOT work and should NOT be reintroduced:
+                    //   - hover contribution methods (hideContentHover / hide) — no-op in this build
+                    //   - ed.trigger('source', 'closeHover', {}) — no matching action
+                    //   - setting display:none on .monaco-hover — kills all FUTURE hovers
+                    //     because Monaco reuses the same DOM node
+                    //   - ed.focus() alone — doesn't dismiss when hover is in sticky-interaction mode
+                    // See .claude/skills/intellisense/SKILL.md, "Hover dismiss after click".
+                    try {
+                        var ed = window.monacoInterop._editor
+                            || (monaco.editor.getEditors && monaco.editor.getEditors()[0]);
+                        if (ed) {
+                            if (typeof ed.focus === 'function') ed.focus();
+                            var domNode = ed.getDomNode && ed.getDomNode();
+                            var target = (domNode && domNode.querySelector && domNode.querySelector('textarea'))
+                                || domNode;
+                            if (target && typeof target.dispatchEvent === 'function') {
+                                target.dispatchEvent(new KeyboardEvent('keydown', {
+                                    key: 'Escape',
+                                    code: 'Escape',
+                                    keyCode: 27,
+                                    which: 27,
+                                    bubbles: true,
+                                    cancelable: true
+                                }));
+                            }
+                        }
+                    } catch (_) { /* best-effort dismiss */ }
+                } catch (e) {
+                    console.warn('xnafiddle.addUsing failed:', e);
+                }
+            });
+        } catch (e) {
+            console.warn('[AddUsing] registerCommand threw:', e);
+        }
     },
 
     registerChangeCallback: function (dotNetRef) {
