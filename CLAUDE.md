@@ -2,7 +2,9 @@
 
 ## What Is This?
 
-XnaFiddle is a standalone KNI game runner with an in-browser C# editor. It is a Blazor WASM app with a WebGL canvas and Monaco code editor that lets users write, compile, and run XNA/KNI game code directly in the browser.
+XnaFiddle is a standalone KNI game runner with an in-browser C# editor. It is a Blazor WASM app with a WebGL canvas and Monaco code editor that lets users write, compile, and run XNA/KNI game code directly in the browser. A separate ASP.NET Core Web API (`XnaFiddle.Api`) provides fiddle storage (save/load by slug) backed by PostgreSQL.
+
+See [docs/backend-plan.md](docs/backend-plan.md) for backend architecture decisions, progress, concepts covered, and next steps.
 
 ## Agent Workflow
 

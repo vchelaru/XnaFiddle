@@ -237,7 +237,7 @@ Notable restrictions:
 
 ## Development
 
-### Setup
+### Setup (Frontend Only)
 
 ```bash
 git clone --recursive https://github.com/your-org/XnaFiddle.git
@@ -251,6 +251,32 @@ git submodule update --init --recursive
 ```
 
 Opens at **https://localhost:60440** (HTTP: 60441).
+
+### Setup (API Backend)
+
+The API (`XnaFiddle.Api`) requires PostgreSQL. Install Postgres locally or run it via Docker:
+
+```bash
+docker run -p 5432:5432 -e POSTGRES_PASSWORD=postgres -d postgres:17
+```
+
+Restore the local `dotnet-ef` tool and apply the database migration:
+
+```bash
+dotnet tool restore
+dotnet ef database update --project XnaFiddle.Api/XnaFiddle.Api.csproj
+dotnet run --project XnaFiddle.Api/XnaFiddle.Api.csproj
+```
+
+The default connection string in `appsettings.Development.json` expects Postgres at `localhost` with username/password `postgres`. Override via [User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) if your setup differs.
+
+### Running Tests
+
+```bash
+dotnet test XnaFiddle.Api.Tests/XnaFiddle.Api.Tests.csproj
+```
+
+Tests use SQLite in-memory and do not require a Postgres instance.
 
 ### Adding Examples
 

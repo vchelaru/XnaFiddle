@@ -1,4 +1,4 @@
-using EntityFramework.Exceptions.SqlServer;
+using EntityFramework.Exceptions.PostgreSQL;
 using Microsoft.EntityFrameworkCore;
 using XnaFiddle.Api.Data;
 using XnaFiddle.Api.Slugs;
@@ -12,7 +12,7 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<FiddleDbContext>(options => options
-    .UseSqlServer(builder.Configuration.GetConnectionString("FiddleDb"))
+    .UseNpgsql(builder.Configuration.GetConnectionString("FiddleDb"))
     .UseExceptionProcessor());
 
 builder.Services.AddSingleton<ISlugGenerator, SlugGenerator>();
