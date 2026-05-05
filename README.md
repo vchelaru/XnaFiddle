@@ -41,13 +41,18 @@ Pass any of these names to `?example=`:
 
 | Name | Description |
 |---|---|
-| `ColorCycle` | Cycles the background color (default) |
-| `BouncingBall` | Physics bouncing ball with SpriteBatch |
-| `Checkerboard` | SpriteBatch tile rendering |
-| `MouseTrail` | Mouse input tracking |
-| `AposShapes` | Vector shapes with Apos.Shapes |
-| `GumUI` | UI controls with Gum |
-| `Camera2D (MonoGame.Extended)` | 2D camera pan with MonoGame.Extended |
+| `BouncingBall` | A ball that bounces off the edges of the screen |
+| `MouseTrail` | Trail of circles that follow the mouse cursor |
+| `SoundPlayback` | Load and play a WAV sound effect with keyboard controls |
+| `TextureLoading` | Load and display a texture from a file |
+| `AetherPhysics` | 2D physics simulation with a bouncing ball and keyboard controls |
+| `AposShapes` | Draw shapes with the Apos.Shapes library |
+| `FontStashSharp` | Dynamic text rendering with multiple sizes and colors |
+| `DynamicFonts` | Runtime font generation with KernSmith — pick family, size, bold, italic, and outline |
+| `GumUI` | UI layout with buttons and text using Gum |
+| `MlemTextFormatting` | Text formatting using MLEM, which supports coloring, in-text icons, text animations and more |
+| `MlemUi` | A mouse, keyboard, gamepad and touch ready Ui system that features automatic anchoring, sizing and several ready-to-use element types |
+| `Camera2D (MonoGame.Extended)` | Pan and zoom a 2D camera with keyboard and mouse |
 
 ---
 

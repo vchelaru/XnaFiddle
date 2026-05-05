@@ -99,7 +99,7 @@ Create an example `.cs` file in `XnaFiddle.BlazorGL/Examples/`. The file:
 - Should guard `GraphicsProfile.HiDef` with `IsProfileSupported` if used
 - Should demonstrate the library's key features with minimal, clear code
 
-Register the example in `ExampleGallery.cs` so it appears in the dropdown.
+Register the example in `ExampleGallery.cs` so it appears in the dropdown. You can also add them to the table of examples in the [README](README.md).
 
 #### 5. Welcome Page Library List (`Pages/Index.razor`)
 
