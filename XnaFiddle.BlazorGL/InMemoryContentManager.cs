@@ -54,7 +54,13 @@ namespace XnaFiddle
 
             if (_files.TryGetValue(assetName, out byte[] bytes))
             {
-                if (typeof(T) == typeof(Texture2D))
+                // XNB files start with magic bytes 'X','N','B'. When present, skip the
+                // raw-stream decode branches and fall through to base.Load<T>, which uses
+                // KNI's standard ContentManager pipeline (OpenStream resolves via the JS
+                // XHR intercept that serves these cached bytes back).
+                bool isXnb = bytes.Length >= 3 && bytes[0] == (byte)'X' && bytes[1] == (byte)'N' && bytes[2] == (byte)'B';
+
+                if (!isXnb && typeof(T) == typeof(Texture2D))
                 {
                     using MemoryStream stream = new(bytes);
                     Texture2D texture = Texture2D.FromStream(GetGraphicsDevice(), stream);
@@ -74,7 +80,7 @@ namespace XnaFiddle
                     return (T)(object)texture;
                 }
 
-                if (typeof(T) == typeof(SoundEffect))
+                if (!isXnb && typeof(T) == typeof(SoundEffect))
                 {
                     using MemoryStream stream = new(bytes);
                     SoundEffect sfx = SoundEffect.FromStream(stream);
