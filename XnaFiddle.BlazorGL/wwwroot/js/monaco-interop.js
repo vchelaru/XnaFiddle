@@ -684,6 +684,12 @@ window.keyboardInterop = {
                 e.preventDefault();
                 dotNetRef.invokeMethodAsync('TriggerCompileAndRun');
             }
+            // Ctrl+S / Cmd+S: re-route the browser's "Save Page" shortcut to
+            // compile-and-run, matching user muscle memory in a live editor.
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                dotNetRef.invokeMethodAsync('TriggerCompileAndRun');
+            }
             // Suppress Tab and arrow keys unless a text input is focused,
             // preventing the browser from cycling focus or scrolling the page
             // while the game canvas is active. Any text-input-like element
