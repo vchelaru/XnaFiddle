@@ -914,26 +914,15 @@ public class RawContentManager : ContentManager
             foreach (var ext in ImageExtensions)
             {{
                 string path = Path.Combine(RootDirectory, assetName + ext);
-                if (IsDesktop)
-                {{
-                    if (!File.Exists(path))
-                        continue;
-                    using var stream = File.OpenRead(path);
-                    var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
-                    if (NeedsPremultiply) PremultiplyAlpha(tex);
-                    return (T)(object)tex;
-                }}
-                else
-                {{
-                    try
-                    {{
-                        using var stream = TitleContainer.OpenStream(path);
-                        var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
-                        if (NeedsPremultiply) PremultiplyAlpha(tex);
-                        return (T)(object)tex;
-                    }}
-                    catch (FileNotFoundException) {{ }}
-                }}
+                byte[] bytes = TryReadAllBytes(path);
+                if (bytes == null) continue;
+                // If the user dropped an .xnb in disguise (or any XNB-headered blob), skip
+                // raw decode and fall through to the pipeline-based base.Load<T>.
+                if (IsXnb(bytes)) break;
+                using var stream = new MemoryStream(bytes);
+                var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
+                if (NeedsPremultiply) PremultiplyAlpha(tex);
+                return (T)(object)tex;
             }}
         }}
 
@@ -942,26 +931,35 @@ public class RawContentManager : ContentManager
             foreach (var ext in AudioExtensions)
             {{
                 string path = Path.Combine(RootDirectory, assetName + ext);
-                if (IsDesktop)
-                {{
-                    if (!File.Exists(path))
-                        continue;
-                    using var stream = File.OpenRead(path);
-                    return (T)(object)SoundEffect.FromStream(stream);
-                }}
-                else
-                {{
-                    try
-                    {{
-                        using var stream = TitleContainer.OpenStream(path);
-                        return (T)(object)SoundEffect.FromStream(stream);
-                    }}
-                    catch (FileNotFoundException) {{ }}
-                }}
+                byte[] bytes = TryReadAllBytes(path);
+                if (bytes == null) continue;
+                if (IsXnb(bytes)) break;
+                using var stream = new MemoryStream(bytes);
+                return (T)(object)SoundEffect.FromStream(stream);
             }}
         }}
 
         return base.Load<T>(assetName);
+    }}
+
+    static bool IsXnb(byte[] bytes) =>
+        bytes != null && bytes.Length >= 3 && bytes[0] == (byte)'X' && bytes[1] == (byte)'N' && bytes[2] == (byte)'B';
+
+    static byte[] TryReadAllBytes(string path)
+    {{
+        if (IsDesktop)
+        {{
+            if (!File.Exists(path)) return null;
+            return File.ReadAllBytes(path);
+        }}
+        try
+        {{
+            using var stream = TitleContainer.OpenStream(path);
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            return ms.ToArray();
+        }}
+        catch (FileNotFoundException) {{ return null; }}
     }}
 }}
 ";
