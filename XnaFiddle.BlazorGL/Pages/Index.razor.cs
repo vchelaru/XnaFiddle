@@ -440,6 +440,8 @@ namespace XnaFiddle.Pages
                 return;
             }
 
+            url = GitHubUrlNormalizer.Normalize(url);
+
             await FetchAndAddAssetUrl(url);
             if (_statusColor == ColorSuccess)
                 _assetUrlInput = "";
