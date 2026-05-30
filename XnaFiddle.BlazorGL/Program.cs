@@ -33,6 +33,7 @@ namespace XnaFiddle
             libraryRegistry.Register(new GumPlugin());
             libraryRegistry.Register(new MlemPlugin());
             libraryRegistry.Register(new AposShapesPlugin());
+            libraryRegistry.Register(new FlatRedBallAnimationChainPlugin());
             libraryRegistry.Register(new FontStashSharpPlugin());
             libraryRegistry.Register(new MonoGameExtendedPlugin());
             libraryRegistry.Register(new AetherPhysicsPlugin());

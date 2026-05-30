@@ -252,7 +252,7 @@ namespace XnaFiddle.Pages
 
         static readonly HashSet<string> SupportedAssetExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".png", ".fnt", ".ttf", ".ember", ".wav", ".xnb"
+            ".achx", ".png", ".fnt", ".ttf", ".ember", ".wav", ".xnb"
         };
 
         static readonly string SupportedExtensionsDisplay =

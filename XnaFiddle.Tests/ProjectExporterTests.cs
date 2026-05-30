@@ -21,6 +21,7 @@ public class ProjectExporterTests
         registry.Register(new MonoGameExtendedPlugin());
         registry.Register(new AetherPhysicsPlugin());
         registry.Register(new KernSmithPlugin());
+        registry.Register(new FlatRedBallAnimationChainPlugin());
         return registry;
     }
 
@@ -46,6 +47,15 @@ public class Game1 : Game
     const string GumCode = @"
 using Microsoft.Xna.Framework;
 using MonoGameGum;
+public class Game1 : Game
+{
+     protected override void Draw(GameTime gt) { }
+}";
+
+    // Game code that references FlatRedBall.AnimationChain
+    const string FlatRedBallAnimationChainCode = @"
+using Microsoft.Xna.Framework;
+using FlatRedBall.AnimationChain;
 public class Game1 : Game
 {
     protected override void Draw(GameTime gt) { }
@@ -396,6 +406,45 @@ public class Game1 : Game
         // Should NOT be in platform projects
         string desktop = files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"];
         Assert.DoesNotContain("Gum", desktop);
+    }
+
+    // ── FlatRedBallAnimationChain ────────────────────────────────────────────
+
+    [Fact]
+    public void FlatRedBallAnimationChain_Kni_IncludesKniPackage()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+        Assert.Contains("FlatRedBall.AnimationChain.KNI", common);
+        Assert.DoesNotContain("FlatRedBall.AnimationChain.MonoGame", common);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_MonoGame_IncludesMonoGamePackage()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameAndroid };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+        Assert.Contains("FlatRedBall.AnimationChain.MonoGame", common);
+        Assert.DoesNotContain("FlatRedBall.AnimationChain.KNI", common);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_Kni_CorrectVersion()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        // Verify version from PackageVersions (0.3.1-preview.1)
+        Assert.Contains("FlatRedBall.AnimationChain.KNI", csproj);
+        Assert.Contains("0.3.1-preview.1", csproj);
     }
 
     // ── BlazorGL multi-platform entry points ─────────────────────────────────
