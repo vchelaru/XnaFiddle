@@ -197,6 +197,14 @@
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0;">
             <div style="padding: 6px 12px; display: flex; flex-direction: column; gap: 6px;">
                 <div style="color: #6a9955; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Export to Gist</div>
+                @if (_shaderTabs.Count > 0)
+                {
+                    <div style="color: #dcdcaa; font-size: 12px; line-height: 1.5; background: #2d2a1e; border: 1px solid #5c5320; border-radius: 3px; padding: 6px 8px;">
+                        &#9888; This fiddle has @_shaderTabs.Count shader file(s): <b>@string.Join(", ", _shaderTabs)</b>.
+                        The clipboard holds only the C# &mdash; add each <b>.fx</b> as a separate file in the gist (keep the same filename).
+                        They'll re-open automatically when the gist is imported.
+                    </div>
+                }
                 @if (!_gistCodeCopied)
                 {
                     <div style="color: #888; font-size: 12px; line-height: 1.6;">
@@ -233,6 +241,13 @@
     @if (_exportOpen)
     {
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
+            @if (_shaderTabs.Count > 0)
+            {
+                <div style="color: #dcdcaa; font-size: 12px; line-height: 1.5; background: #2d2a1e; border: 1px solid #5c5320; border-radius: 3px; padding: 6px 8px;">
+                    &#9888; Shaders aren't included in exports yet &mdash; the exported project won't contain your
+                    @_shaderTabs.Count <b>.fx</b> file(s) (exporting shaders needs the MGCB content pipeline; tracked separately).
+                </div>
+            }
             @* Row 1: Runtime + Platform *@
             <div style="display: flex; align-items: flex-start; gap: 20px;">
                 @* Runtime radio buttons *@

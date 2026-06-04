@@ -68,6 +68,9 @@ namespace XnaFiddle.Pages
         string _shareCodeEncoded;
         string _shareCodeUrl;
         SnippetRevertResult _revertResult;
+        // Shader tab sources collected when the share dialog opens / content changes, so the
+        // synchronous snippet preview (RecomputeSnippetPreview) can include them. Issue #26.
+        List<ShaderFile> _shareShaders = new();
         bool _snipMembers, _snipInitialize, _snipLoadContent, _snipUpdate, _snipDraw;
         string _snippetPreviewJson;
         string _snippetPreviewUrl;
@@ -281,19 +284,17 @@ technique BasicColorDrawing
                 }
                 else if (hash.StartsWith("#code="))
                 {
-                    // Parse #code=...&assets=... — the assets portion is optional
-                    string codeAndRest = hash.Substring(6);
-                    string codePart = codeAndRest;
-                    string assetsPart = null;
-                    int assetsIdx = codeAndRest.IndexOf("&assets=", StringComparison.Ordinal);
-                    if (assetsIdx >= 0)
-                    {
-                        codePart = codeAndRest.Substring(0, assetsIdx);
-                        assetsPart = codeAndRest.Substring(assetsIdx + 8);
-                    }
+                    // #code=<code>[&shaders=<...>][&assets=<...>] — shaders and assets optional.
+                    string fragment = hash.Substring(1); // drop '#', keeps "code=..."
+                    string codePart = ExtractFragmentParam(fragment, "code");
+                    string shadersPart = ExtractFragmentParam(fragment, "shaders");
+                    string assetsPart = ExtractFragmentParam(fragment, "assets");
 
                     if (await LoadFromCode(codePart))
                         autoCompile = true;
+
+                    if (shadersPart != null)
+                        await ApplyShadersFragmentAsync(shadersPart);
 
                     if (assetsPart != null)
                     {
@@ -348,6 +349,71 @@ technique BasicColorDrawing
             return "&assets=" + UrlCodec.Encode(json);
         }
 
+        // ---- Shader round-trip in share / snippet / gist payloads (issue #26 phase 2b) ----
+
+        // Reads each open shader tab's current source from its Monaco model.
+        private async Task<List<ShaderFile>> CollectShaderFilesAsync()
+        {
+            var list = new List<ShaderFile>();
+            foreach (string name in _shaderTabs)
+            {
+                string source = await JsRuntime.InvokeAsync<string>("monacoInterop.getModelValue", name);
+                list.Add(new ShaderFile { Name = name, Source = source });
+            }
+            return list;
+        }
+
+        // Replaces the current shader tabs with the given set (used when loading a share link,
+        // snippet, or gist). Null/empty just clears existing tabs.
+        private async Task ApplyShaderFilesAsync(List<ShaderFile> shaders)
+        {
+            await ResetShaderTabsAsync();
+            if (shaders == null) return;
+            foreach (var s in shaders)
+            {
+                if (s == null || string.IsNullOrWhiteSpace(s.Name)) continue;
+                string name = s.Name.EndsWith(".fx", StringComparison.OrdinalIgnoreCase) ? s.Name : s.Name + ".fx";
+                await OpenShaderTabFromSourceAsync(name, s.Source ?? "", select: false);
+            }
+        }
+
+        // The "&shaders=<encoded JSON>" fragment for a share-code URL, or "" when no shader tabs
+        // are open. Refreshes _shareShaders as a side effect so the snippet preview stays in sync.
+        private async Task<string> BuildShadersFragmentAsync()
+        {
+            _shareShaders = await CollectShaderFilesAsync();
+            if (_shareShaders.Count == 0) return "";
+            string json = JsonSerializer.Serialize(_shareShaders);
+            return "&shaders=" + UrlCodec.Encode(json);
+        }
+
+        // Decodes a "&shaders=" fragment value and re-opens the shader tabs it carries.
+        private async Task ApplyShadersFragmentAsync(string encoded)
+        {
+            try
+            {
+                string json = UrlCodec.Decode(encoded);
+                var shaders = JsonSerializer.Deserialize<List<ShaderFile>>(json);
+                await ApplyShaderFilesAsync(shaders);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[XnaFiddle] Failed to parse shaders fragment: {e.Message}");
+            }
+        }
+
+        // Extracts a single "key=value" parameter from a URL fragment of base64url-encoded values
+        // joined by '&' (e.g. "code=..&shaders=..&assets=.."). Safe because UrlCodec output never
+        // contains '&' or '='. Returns null when the key is absent.
+        private static string ExtractFragmentParam(string fragment, string key)
+        {
+            int i = fragment.IndexOf(key + "=", StringComparison.Ordinal);
+            if (i < 0) return null;
+            int start = i + key.Length + 1;
+            int amp = fragment.IndexOf('&', start);
+            return amp < 0 ? fragment.Substring(start) : fragment.Substring(start, amp - start);
+        }
+
         [JSInvokable]
         public async Task OnEditorContentChanged()
         {
@@ -356,7 +422,8 @@ technique BasicColorDrawing
             string code = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
 
             _shareCodeEncoded = UrlCodec.Encode(code);
-            _shareCodeUrl = "https://xnafiddle.net/#code=" + _shareCodeEncoded + GetAssetUrlsFragment();
+            string shadersFragment = await BuildShadersFragmentAsync();
+            _shareCodeUrl = "https://xnafiddle.net/#code=" + _shareCodeEncoded + shadersFragment + GetAssetUrlsFragment();
 
             var newResult = SnippetReverter.Revert(code);
 
@@ -1063,7 +1130,8 @@ technique BasicColorDrawing
                 string code = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
 
                 _shareCodeEncoded = UrlCodec.Encode(code);
-                _shareCodeUrl = "https://xnafiddle.net/#code=" + _shareCodeEncoded + GetAssetUrlsFragment();
+                string shadersFragment = await BuildShadersFragmentAsync();
+                _shareCodeUrl = "https://xnafiddle.net/#code=" + _shareCodeEncoded + shadersFragment + GetAssetUrlsFragment();
 
                 _revertResult = SnippetReverter.Revert(code);
                 _snipMembers     = !string.IsNullOrWhiteSpace(_revertResult?.Members);
@@ -1104,6 +1172,7 @@ technique BasicColorDrawing
                 LoadContent = _snipLoadContent ? _revertResult.LoadContent : null,
                 Update      = _snipUpdate      ? _revertResult.Update      : null,
                 Draw        = _snipDraw        ? _revertResult.Draw        : null,
+                Shaders     = _shareShaders.Count > 0 ? _shareShaders : null,
             };
 
             var ignoreDefaults = new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault };
@@ -1117,11 +1186,15 @@ technique BasicColorDrawing
 
         private async Task CopyShareUrl()
         {
-            string url = _shareAsSnippet ? _snippetPreviewUrl : _shareCodeUrl;
-            if (url == null) return;
+            // Refresh shader sources first: a shader tab may have been edited since the dialog
+            // opened, and shader edits don't fire the C#-only content callback that rebuilds the
+            // share URLs. Collect now and build the URL fresh so the copied link is current.
+            _shareShaders = await CollectShaderFilesAsync();
+            string url;
 
             if (_shareAsSnippet)
             {
+                if (_revertResult == null || !_revertResult.Success) return;
                 // Compact JSON (no indentation) for the actual URL encoding
                 var opts = new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault };
                 var model = new SnippetModel
@@ -1135,14 +1208,21 @@ technique BasicColorDrawing
                     LoadContent = _snipLoadContent ? _revertResult.LoadContent : null,
                     Update      = _snipUpdate      ? _revertResult.Update      : null,
                     Draw        = _snipDraw        ? _revertResult.Draw        : null,
+                    Shaders     = _shareShaders.Count > 0 ? _shareShaders : null,
                 };
                 string encoded = UrlCodec.Encode(JsonSerializer.Serialize(model, opts));
+                url = "https://xnafiddle.net/#snippet=" + encoded;
                 await JsRuntime.InvokeVoidAsync("eval", $"history.replaceState(null,'','#snippet={encoded}')");
             }
             else
             {
+                string shadersFragment = _shareShaders.Count > 0
+                    ? "&shaders=" + UrlCodec.Encode(JsonSerializer.Serialize(_shareShaders))
+                    : "";
                 string assetsFragment = GetAssetUrlsFragment();
-                await JsRuntime.InvokeVoidAsync("eval", $"history.replaceState(null,'','#code={_shareCodeEncoded}{assetsFragment}')");
+                string fragment = $"#code={_shareCodeEncoded}{shadersFragment}{assetsFragment}";
+                url = "https://xnafiddle.net/" + fragment;
+                await JsRuntime.InvokeVoidAsync("eval", $"history.replaceState(null,'','{fragment}')");
             }
 
             await CopyToClipboard(url);
@@ -1153,10 +1233,16 @@ technique BasicColorDrawing
             try
             {
                 string json = UrlCodec.Decode(encoded);
-                string code = SnippetExpander.Expand(json);
+                var model = JsonSerializer.Deserialize<SnippetModel>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                string code = SnippetExpander.Expand(model);
 
                 if (_monacoReady)
+                {
                     await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
+                    // Re-open any shaders carried in the snippet (issue #26 phase 2b).
+                    await ApplyShaderFilesAsync(model.Shaders);
+                }
 
                 _statusMessage = "Loaded from snippet link.";
                 _statusColor = ColorSuccess;
@@ -1272,18 +1358,19 @@ technique BasicColorDrawing
                 using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                 var files = doc.RootElement.GetProperty("files");
 
-                // Find first .cs file, fall back to first .txt file
+                // First .cs file (fall back to first .txt) is the program; every .fx file is a
+                // shader tab (issue #26 phase 2b). Don't break early — we must see all files.
                 string code = null;
                 string txtFallback = null;
+                var shaderFiles = new List<ShaderFile>();
                 foreach (var file in files.EnumerateObject())
                 {
                     string content = file.Value.GetProperty("content").GetString();
-                    if (file.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-                    {
+                    if (file.Name.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+                        shaderFiles.Add(new ShaderFile { Name = file.Name, Source = content });
+                    else if (code == null && file.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                         code = content;
-                        break;
-                    }
-                    if (txtFallback == null && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                    else if (txtFallback == null && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
                         txtFallback = content;
                 }
                 code ??= txtFallback;
@@ -1298,10 +1385,10 @@ technique BasicColorDrawing
 
                 if (_monacoReady)
                 {
-                    // Loading a gist replaces the fiddle — drop any open shader tabs (shaders
-                    // aren't carried in shared/gist payloads yet; issue #26 phase 2b).
-                    await ResetShaderTabsAsync();
+                    // Loading a gist replaces the fiddle. Set the C# program, then re-open any
+                    // .fx files as shader tabs (ApplyShaderFilesAsync clears stale tabs first).
                     await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
+                    await ApplyShaderFilesAsync(shaderFiles);
                 }
 
                 await JsRuntime.InvokeVoidAsync("eval",
