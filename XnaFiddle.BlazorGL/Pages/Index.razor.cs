@@ -611,6 +611,12 @@ technique BasicColorDrawing
 
         private async Task CloseShaderTab(string fileName)
         {
+            // Closing disposes the Monaco model — the shader source is gone with no undo, so
+            // confirm first. (A dropped/example shader can be re-added, but hand-edited code can't.)
+            bool confirmed = await JsRuntime.InvokeAsync<bool>("confirm",
+                $"Close {fileName}? Its shader code will be discarded and can't be recovered.");
+            if (!confirmed)
+                return;
             await JsRuntime.InvokeVoidAsync("monacoInterop.disposeModel", fileName);
             _shaderTabs.RemoveAll(t => string.Equals(t, fileName, StringComparison.OrdinalIgnoreCase));
             if (string.Equals(_activeTab, fileName, StringComparison.OrdinalIgnoreCase))
