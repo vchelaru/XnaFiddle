@@ -1,7 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- net8.0-browser (NOT plain net8.0): required to reference ShadowDusk.Wasm, whose
+         [JSImport] shader backends target net8.0-browser (a plain net8.0 reference fails
+         NU1201). Needs the wasm-tools workload installed. See issue #26.
+         NOTE: XnaFiddle.Tests (net8.0) cannot reference a browser-targeted project. That test
+         reference is handled separately (extract the tested logic into a net8.0 XnaFiddle.Core
+         library), NOT by multi-targeting this app — multi-targeting breaks VS restore because
+         the KNI/ShadowDusk ProjectReferences aren't solution members. -->
+    <TargetFramework>net8.0-browser</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>XnaFiddle</RootNamespace>
@@ -13,6 +20,12 @@
     <!-- Disable trimming: user code is compiled by Roslyn at runtime and
          needs the full public API surface of all assemblies (BCL + KNI). -->
     <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <!-- SHADOWDUSK gates the in-browser shader-compile code to the real (browser) build only,
+       so the test-only net8.0 build compiles without the ShadowDusk.Wasm reference. -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net8.0-browser' ">
+    <DefineConstants>$(DefineConstants);SHADOWDUSK</DefineConstants>
   </PropertyGroup>
 
   <!--
@@ -57,8 +70,10 @@
   </PropertyGroup>
 
   <!-- Game libraries that XnaFiddle references directly (KNI variants).
-       Versions come from the properties above — do NOT hardcode here. -->
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net8.0' ">
+       Versions come from the properties above — do NOT hardcode here.
+       Unconditioned: both the net8.0-browser (real) and net8.0 (test-only) builds compile the
+       same shared classes, which reference these packages. -->
+  <ItemGroup>
     <PackageReference Include="Aether.Physics2D.KNI" Version="$(AetherPhysicsVersion)" />
     <PackageReference Include="Apos.Shapes.KNI" Version="$(AposShapesVersion)" />
     <PackageReference Include="FontStashSharp.Kni" Version="$(FontStashSharpVersion)" />
@@ -81,6 +96,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Submodules\KniSB\Platforms\Kni.Platform.Blazor.GL.csproj" />
+    <!-- In-browser HLSL .fx -> .mgfx compiler (issue #26). References the sibling ShadowDusk
+         clone from source (no NuGet release yet); transitively brings the DXC + SPIRV-Cross
+         WASM modules as static web assets served at _content/ShadowDusk.Wasm/. The ~17 MB
+         dxcompiler.wasm is gitignored in ShadowDusk and must be restored before build (copy
+         .wasm-build/dxc-wasm-out/dxcompiler.wasm into src/ShadowDusk.Wasm/wwwroot/dxc/).
+         Browser-only: ShadowDusk.Wasm targets net8.0-browser, so a net8.0 reference fails
+         NU1201. The test-only net8.0 build #if-s out the shader code instead. -->
+    <ProjectReference Include="..\..\ShadowDusk\src\ShadowDusk.Wasm\ShadowDusk.Wasm.csproj"
+                      Condition=" '$(TargetFramework)' == 'net8.0-browser' " />
   </ItemGroup>
 
   <ItemGroup>

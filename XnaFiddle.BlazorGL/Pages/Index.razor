@@ -404,6 +404,53 @@
         </div>
     }
 
+    @* Editor tab strip (issue #26 phase 2): C# program tab + one tab per shader (.fx). *@
+    <div style="display: flex; align-items: stretch; background: #252526; border-bottom: 1px solid #1a1a1a;
+                flex-shrink: 0; height: 30px; overflow-x: auto; overflow-y: hidden;">
+        @{ var csActive = _activeTab == CSharpTabName; }
+        <div @onclick="() => SelectTab(CSharpTabName)"
+             style="display: flex; align-items: center; gap: 6px; padding: 0 12px; cursor: pointer;
+                    font-size: 12px; white-space: nowrap; user-select: none;
+                    color: @(csActive ? "#fff" : "#969696"); background: @(csActive ? "#1e1e1e" : "transparent");
+                    border-right: 1px solid #1a1a1a; border-top: 2px solid @(csActive ? "#007acc" : "transparent");">
+            <i class="codicon codicon-symbol-class" style="font-size: 13px;"></i>
+            @CSharpTabName
+        </div>
+        @foreach (var tab in _shaderTabs)
+        {
+            var t = tab;
+            var active = _activeTab == t;
+            <div @onclick="() => SelectTab(t)" @ondblclick="() => BeginRename(t)" title="Double-click to rename"
+                 style="display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; cursor: pointer;
+                        font-size: 12px; white-space: nowrap; user-select: none;
+                        color: @(active ? "#fff" : "#969696"); background: @(active ? "#1e1e1e" : "transparent");
+                        border-right: 1px solid #1a1a1a; border-top: 2px solid @(active ? "#007acc" : "transparent");">
+                @if (_renamingTab == t)
+                {
+                    <input @bind="_renameValue" @bind:event="oninput"
+                           @onkeydown="OnRenameKeyDown" @onblur="CommitRenameAsync"
+                           @onclick:stopPropagation="true" autofocus
+                           style="width: 100px; background: #3c3c3c; color: #fff; border: 1px solid #007acc;
+                                  font-size: 12px; padding: 1px 4px; font-family: Consolas, monospace;" />
+                }
+                else
+                {
+                    <i class="codicon codicon-file-code" style="font-size: 13px;"></i>
+                    <span>@t</span>
+                    <span @onclick="() => CloseShaderTab(t)" @onclick:stopPropagation="true" title="Close"
+                          style="padding: 0 3px; color: #888; font-size: 14px; line-height: 1;"
+                          onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'">&times;</span>
+                }
+            </div>
+        }
+        <div @onclick="AddShaderTab" title="Add shader (.fx)"
+             style="display: flex; align-items: center; padding: 0 10px; cursor: pointer; color: #969696;
+                    font-size: 14px; user-select: none;"
+             onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#969696'">
+            <i class="codicon codicon-add"></i>
+        </div>
+    </div>
+
     <div style="flex: 1; min-height: 0; position: relative; overflow: hidden;">
         <div id="monacoContainer" style="width: 100%; height: 100%;"></div>
         @if (!Intellisense.IsReady)

@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
@@ -103,6 +105,60 @@ namespace XnaFiddle.Pages
         List<AssetInfo> _assets = new();
         string _assetUrlInput = "";
         bool _isFetchingAssetUrl;
+
+        // ---- Tabbed editor (issue #26 phase 2) ----
+        // The C# program is always the first tab; shader (.fx) tabs follow. A tab's filename is
+        // the Content.Load<Effect>("Name") key. Shader sources live in their Monaco models and
+        // are pulled + compiled on Run (see CompileRegisteredShadersAsync). Must match
+        // monacoInterop.CSHARP_TAB in monaco-interop.js.
+        const string CSharpTabName = "Game.cs";
+        readonly List<string> _shaderTabs = new();              // shader filenames, e.g. "Grayscale.fx"
+        string _activeTab = CSharpTabName;
+        string _renamingTab;                                    // shader tab being inline-renamed, or null
+        string _renameValue = "";
+        // Bare shader names registered as compiled effects on the previous Run, so the next Run
+        // can drop ones whose tab was removed/renamed (stale Content.Load<Effect> entries).
+        HashSet<string> _lastCompiledShaders = new(StringComparer.OrdinalIgnoreCase);
+
+        // Starter content for a new shader tab: a pass-through SpriteBatch pixel shader that
+        // compiles as-is (Reach/WebGL1). The user edits MainPS to change pixels.
+        const string DefaultShaderTemplate = @"#if OPENGL
+	#define SV_POSITION POSITION
+	#define VS_SHADERMODEL vs_3_0
+	#define PS_SHADERMODEL ps_3_0
+#else
+	#define VS_SHADERMODEL vs_4_0_level_9_1
+	#define PS_SHADERMODEL ps_4_0_level_9_1
+#endif
+
+Texture2D SpriteTexture;
+sampler2D SpriteTextureSampler = sampler_state
+{
+    Texture = <SpriteTexture>;
+};
+
+struct VertexShaderOutput
+{
+	float4 Position : SV_POSITION;
+	float4 Color : COLOR0;
+	float2 TextureCoordinates : TEXCOORD0;
+};
+
+float4 MainPS(VertexShaderOutput input) : COLOR
+{
+	float4 col = tex2D(SpriteTextureSampler, input.TextureCoordinates) * input.Color;
+	// TODO: transform col.rgb here (e.g. col.rgb = 1.0 - col.rgb; to invert).
+	return col;
+}
+
+technique BasicColorDrawing
+{
+	pass P0
+	{
+		PixelShader = compile PS_SHADERMODEL MainPS();
+	}
+};
+";
 
         protected override void OnInitialized()
         {
@@ -207,7 +263,7 @@ namespace XnaFiddle.Pages
                     {
                         await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", exCode);
                         _selectedExample = exampleFromQuery;
-                        LoadExampleAssets(exampleFromQuery);
+                        await LoadExampleAssetsAsync(exampleFromQuery);
                         autoCompile = true;
                     }
                 }
@@ -425,6 +481,175 @@ namespace XnaFiddle.Pages
         {
             InMemoryContentManager.RemoveFile(fileName);
             ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.unregister", fileName);
+        }
+
+        // Compiles every registered HLSL .fx file to .mgfx via the in-browser ShadowDusk
+        // compiler and re-registers the result under the bare shader name, so user code can
+        // load it idiomatically with Content.Load<Effect>("Name"). Returns null on success, or
+        // an already-formatted error describing the first failing shader. When no .fx files are
+        // registered it returns immediately without touching the WASM compiler (so the heavy DXC
+        // module is never downloaded for non-shader runs). See issue #26.
+        private async Task<string> CompileRegisteredShadersAsync()
+        {
+#if !SHADOWDUSK
+            // Test-only net8.0 build: ShadowDusk isn't referenced, so there is no shader
+            // compiler. This path never runs as an app; return a no-op result.
+            await Task.CompletedTask;
+            return null;
+#else
+            var current = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (_shaderTabs.Count > 0)
+            {
+                var compiler = new ShadowDusk.Wasm.WasmShaderCompiler();
+                foreach (string fileName in _shaderTabs)
+                {
+                    string bareName = System.IO.Path.GetFileNameWithoutExtension(fileName);
+                    current.Add(bareName);
+                    string source = await JsRuntime.InvokeAsync<string>("monacoInterop.getModelValue", fileName);
+                    var options = new ShadowDusk.Core.CompilerOptions
+                    {
+                        // ShadowDusk emits WebGL1 / GLSL ES 1.00, matching KNI's Reach profile. A
+                        // shader game must therefore run as Reach today (issue #26).
+                        Target = ShadowDusk.Core.PlatformTarget.OpenGL,
+                        SourceFileName = fileName,
+                    };
+
+                    var result = await compiler.CompileAsync(source, options, _compileCts.Token);
+                    if (result.IsFailure)
+                    {
+                        string detail = string.Join("\n",
+                            System.Linq.Enumerable.Select(result.Error, e => e.FxcFormattedMessage));
+                        return $"{fileName}:\n{detail}";
+                    }
+
+                    // Register the compiled .mgfx under the bare name (no extension) so
+                    // Content.Load<Effect>("Name") resolves it through the Effect branch.
+                    RegisterContentFile(bareName, result.Value.Data);
+                }
+            }
+
+            // Drop compiled effects whose shader tab was removed/renamed since the last Run, so a
+            // stale Content.Load<Effect>("Name") can't resolve old bytes.
+            foreach (string old in _lastCompiledShaders)
+                if (!current.Contains(old))
+                    InMemoryContentManager.RemoveFile(old);
+            _lastCompiledShaders = current;
+            return null;
+#endif
+        }
+
+        // ---- Tabbed editor: tab operations (issue #26 phase 2) ----
+
+        private bool TabNameExists(string fileName) =>
+            string.Equals(fileName, CSharpTabName, StringComparison.OrdinalIgnoreCase)
+            || _shaderTabs.Any(t => string.Equals(t, fileName, StringComparison.OrdinalIgnoreCase));
+
+        // Creates (or replaces) a shader tab's Monaco model and tracks it, optionally activating
+        // it. Used by the [+] button, example loading, and (later) drag-and-drop of a .fx.
+        private async Task OpenShaderTabFromSourceAsync(string fileName, string source, bool select)
+        {
+            await JsRuntime.InvokeVoidAsync("monacoInterop.createModel", fileName, source, "hlsl");
+            if (!_shaderTabs.Any(t => string.Equals(t, fileName, StringComparison.OrdinalIgnoreCase)))
+                _shaderTabs.Add(fileName);
+            if (select)
+            {
+                _activeTab = fileName;
+                await JsRuntime.InvokeVoidAsync("monacoInterop.switchToModel", fileName);
+            }
+        }
+
+        // Disposes all shader tabs and shows the C# tab. Used when loading an example/fiddle that
+        // brings its own (or no) shaders.
+        private async Task ResetShaderTabsAsync()
+        {
+            if (_shaderTabs.Count > 0)
+                await JsRuntime.InvokeVoidAsync("monacoInterop.resetToCSharpOnly");
+            _shaderTabs.Clear();
+            _lastCompiledShaders.Clear();
+            _activeTab = CSharpTabName;
+        }
+
+        private async Task SelectTab(string name)
+        {
+            if (string.Equals(_activeTab, name, StringComparison.OrdinalIgnoreCase)) return;
+            _activeTab = name;
+            await JsRuntime.InvokeVoidAsync("monacoInterop.switchToModel", name);
+        }
+
+        private async Task AddShaderTab()
+        {
+            if (!_monacoReady) return;
+            string fileName = "Shader.fx";
+            int n = 1;
+            while (TabNameExists(fileName)) fileName = $"Shader{n++}.fx";
+            await OpenShaderTabFromSourceAsync(fileName, DefaultShaderTemplate, select: true);
+            StateHasChanged();
+        }
+
+        private async Task CloseShaderTab(string fileName)
+        {
+            await JsRuntime.InvokeVoidAsync("monacoInterop.disposeModel", fileName);
+            _shaderTabs.RemoveAll(t => string.Equals(t, fileName, StringComparison.OrdinalIgnoreCase));
+            if (string.Equals(_activeTab, fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                _activeTab = CSharpTabName;
+                await JsRuntime.InvokeVoidAsync("monacoInterop.switchToModel", CSharpTabName);
+            }
+            StateHasChanged();
+        }
+
+        private void BeginRename(string fileName)
+        {
+            _renamingTab = fileName;
+            _renameValue = fileName;
+            StateHasChanged();
+        }
+
+        private void CancelRename()
+        {
+            _renamingTab = null;
+            StateHasChanged();
+        }
+
+        private async Task OnRenameKeyDown(KeyboardEventArgs e)
+        {
+            if (e.Key == "Enter") await CommitRenameAsync();
+            else if (e.Key == "Escape") CancelRename();
+        }
+
+        // Applies an inline tab rename. The filename (minus .fx) is the Content.Load<Effect> key,
+        // so renaming changes how user code references the shader.
+        private async Task CommitRenameAsync()
+        {
+            string oldName = _renamingTab;
+            if (oldName == null) return;          // already committed/cancelled (e.g. Enter then blur)
+            _renamingTab = null;
+
+            string newName = (_renameValue ?? "").Trim();
+            if (string.IsNullOrEmpty(newName) || string.Equals(newName, oldName, StringComparison.OrdinalIgnoreCase))
+            {
+                StateHasChanged();
+                return;
+            }
+            if (!newName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+                newName += ".fx";
+            if (TabNameExists(newName))
+            {
+                SetError("Rename failed.", $"A tab named \"{newName}\" already exists.");
+                StateHasChanged();
+                return;
+            }
+
+            await JsRuntime.InvokeVoidAsync("monacoInterop.renameModel", oldName, newName);
+            int idx = _shaderTabs.FindIndex(t => string.Equals(t, oldName, StringComparison.OrdinalIgnoreCase));
+            if (idx >= 0) _shaderTabs[idx] = newName;
+            if (string.Equals(_activeTab, oldName, StringComparison.OrdinalIgnoreCase))
+                _activeTab = newName;
+            // Drop the stale compiled effect registered under the old bare name.
+            string oldBare = System.IO.Path.GetFileNameWithoutExtension(oldName);
+            InMemoryContentManager.RemoveFile(oldBare);
+            _lastCompiledShaders.Remove(oldBare);
+            StateHasChanged();
         }
 
         private void RemoveAsset(string fileName)
@@ -677,6 +902,21 @@ namespace XnaFiddle.Pages
 
                     if (gameType != null)
                     {
+                        // Compile any registered HLSL .fx shaders to .mgfx in-browser BEFORE the
+                        // game runs, so user code can Content.Load<Effect>("Name") the result. This
+                        // runs while the old game may still be ticking (the await is intentionally
+                        // OUTSIDE the synchronous swap window below). The ~17 MB DXC wasm is fetched
+                        // lazily on the first shader compile only — non-shader runs never touch it.
+                        // See issue #26.
+                        string shaderError = await CompileRegisteredShadersAsync();
+                        if (shaderError != null)
+                        {
+                            SetError("Shader compilation failed.", shaderError);
+                            _isCompiling = false;
+                            StateHasChanged();
+                            return;
+                        }
+
                         // Drop the old game without calling Dispose(). Dispose() invalidates
                         // the GraphicsDevice textures which breaks Gum on the next run.
                         // GC will reclaim the old game eventually; this is acceptable in a fiddle context.
@@ -1028,7 +1268,12 @@ namespace XnaFiddle.Pages
                 }
 
                 if (_monacoReady)
+                {
+                    // Loading a gist replaces the fiddle — drop any open shader tabs (shaders
+                    // aren't carried in shared/gist payloads yet; issue #26 phase 2b).
+                    await ResetShaderTabsAsync();
                     await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
+                }
 
                 await JsRuntime.InvokeVoidAsync("eval",
                     $"history.replaceState(null,'','?gist={Uri.EscapeDataString(gistId)}')");
@@ -1173,6 +1418,8 @@ namespace XnaFiddle.Pages
             {
                 _selectedExample = name;
                 _exampleBrowserOpen = false;
+                // Drop any shader tabs from the previous fiddle before loading this one's.
+                await ResetShaderTabsAsync();
                 await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);
                 await JsRuntime.InvokeVoidAsync("eval",
                     $"history.replaceState(null,'','?example={Uri.EscapeDataString(name)}')");
@@ -1183,13 +1430,13 @@ namespace XnaFiddle.Pages
                 _diagnosticsOutput = "";
                 await JsRuntime.InvokeVoidAsync("clearCanvas");
 
-                LoadExampleAssets(name);
+                await LoadExampleAssetsAsync(name);
 
                 CompileAndRun();
             }
         }
 
-        private void LoadExampleAssets(string exampleName)
+        private async Task LoadExampleAssetsAsync(string exampleName)
         {
             // Clear previous content files from both InMemoryContentManager and the JS XHR cache
             InMemoryContentManager.ClearFiles();
@@ -1197,10 +1444,17 @@ namespace XnaFiddle.Pages
             _assets.Clear();
 
             ExampleAsset[] assets = ExampleGallery.LoadAssets(exampleName);
-            if (assets.Length == 0) return;
 
             for (int i = 0; i < assets.Length; i++)
             {
+                // Shader sources open in their own editor tab, not the asset panel.
+                if (assets[i].FileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+                {
+                    string fxSource = Encoding.UTF8.GetString(assets[i].Data);
+                    await OpenShaderTabFromSourceAsync(assets[i].FileName, fxSource, select: false);
+                    continue;
+                }
+
                 RegisterContentFile(assets[i].FileName, assets[i].Data);
 
                 // Update the UI asset list (same as drag-and-drop path)
@@ -1208,7 +1462,7 @@ namespace XnaFiddle.Pages
                 string sourceUrl = $"{Navigation.BaseUri}examples/{exampleName}/{assets[i].FileName}";
                 _assets.Add(new AssetInfo { FileName = assets[i].FileName, Size = assets[i].Data.Length, SourceUrl = sourceUrl });
             }
-            _assetsOpen = true;
+            if (_assets.Count > 0) _assetsOpen = true;
         }
 
 
