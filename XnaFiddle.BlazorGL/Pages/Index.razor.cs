@@ -121,7 +121,7 @@ namespace XnaFiddle.Pages
         HashSet<string> _lastCompiledShaders = new(StringComparer.OrdinalIgnoreCase);
 
         // Starter content for a new shader tab: a pass-through SpriteBatch pixel shader that
-        // compiles as-is (Reach/WebGL1). The user edits MainPS to change pixels.
+        // compiles as-is. The user edits MainPS to change pixels.
         const string DefaultShaderTemplate = @"#if OPENGL
 	#define SV_POSITION POSITION
 	#define VS_SHADERMODEL vs_3_0
@@ -508,8 +508,9 @@ technique BasicColorDrawing
                     string source = await JsRuntime.InvokeAsync<string>("monacoInterop.getModelValue", fileName);
                     var options = new ShadowDusk.Core.CompilerOptions
                     {
-                        // ShadowDusk emits WebGL1 / GLSL ES 1.00, matching KNI's Reach profile. A
-                        // shader game must therefore run as Reach today (issue #26).
+                        // ShadowDusk's OpenGL target emits a profile-agnostic .mgfx that loads under
+                        // KNI's Reach (WebGL1), HiDef (WebGL2), and desktop GL alike, so a single
+                        // compile works regardless of the game's GraphicsProfile (issue #26).
                         Target = ShadowDusk.Core.PlatformTarget.OpenGL,
                         SourceFileName = fileName,
                     };

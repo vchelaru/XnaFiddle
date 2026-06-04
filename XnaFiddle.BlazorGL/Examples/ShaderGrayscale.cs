@@ -12,8 +12,8 @@ public class Game1 : Game
     public Game1()
     {
         graphics = new GraphicsDeviceManager(this);
-        // Leave the default Reach (WebGL1) profile. Shaders compiled in-browser by
-        // ShadowDusk emit GLSL ES 1.00, which only runs under Reach — do NOT request HiDef.
+        if (GraphicsAdapter.DefaultAdapter.IsProfileSupported(GraphicsProfile.HiDef))
+            graphics.GraphicsProfile = GraphicsProfile.HiDef;
         IsMouseVisible = true;
         Window.AllowUserResizing = true;
     }
