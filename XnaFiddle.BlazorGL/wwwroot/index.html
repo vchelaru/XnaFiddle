@@ -344,13 +344,17 @@
         window.clearCanvas = function () {
             var canvas = document.getElementById('theCanvas');
             if (!canvas) return;
-            var gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+            // A canvas permanently binds to one WebGL context type the first time getContext is
+            // called (issue #25). Only clear through the type a game already bound it to —
+            // window._canvasContextType is set by .NET after a game runs. If unset, the canvas
+            // is unbound and there is nothing to clear; calling getContext here would wrongly
+            // bind it (e.g. to webgl2) and break a later game that needs the other type.
+            var type = window._canvasContextType;
+            if (!type) return;
+            var gl = canvas.getContext(type);
             if (gl) {
                 gl.clearColor(0, 0, 0, 1);
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-            } else {
-                var ctx = canvas.getContext('2d');
-                if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
         };
 
