@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace XnaFiddle.Pages
 {
@@ -25,6 +26,19 @@ namespace XnaFiddle.Pages
         static readonly string ColorMuted   = "#888";
 
         Game _game;
+
+        // The GraphicsProfile the shared canvas's WebGL context is currently bound to, or
+        // null until the first game of this page-load runs. A canvas permanently binds to one
+        // context type on its first getContext (Reach→WebGL1, HiDef→WebGL2) and can't be
+        // rebound, so a profile change requires a page reload with a fresh canvas. See issue #25.
+        GraphicsProfile? _canvasProfile;
+
+        // Profile-switch confirmation dialog state (#25). When a game needs a different WebGL
+        // version than the canvas is bound to, we show a notice (rather than reloading silently)
+        // because the reload required to switch loses locally uploaded files.
+        bool _profileSwitchPending;
+        GraphicsProfile _pendingProfile;
+        List<string> _assetsLostOnReload = new();
 
         // DotNetObjectReference wrappers for JS interop. Kept as fields so we can
         // dispose them when this page is torn down (prevents the .NET runtime from
@@ -674,6 +688,23 @@ namespace XnaFiddle.Pages
 
                         Game newGame = (Game)Activator.CreateInstance(gameType);
                         newGame.Content = new InMemoryContentManager(newGame.Services);
+
+                        // The game's GraphicsProfile (set in its constructor, which has now run)
+                        // decides the canvas's WebGL context type. If a previous game this session
+                        // bound the shared canvas to the other type, KNI's getContext returns null
+                        // and crashes — so reload onto a fresh canvas instead. See issue #25.
+                        GraphicsProfile desiredProfile = GetGameProfile(newGame);
+                        if (_canvasProfile.HasValue && _canvasProfile.Value != desiredProfile)
+                        {
+                            // The canvas can't change WebGL version in place, so switching needs a
+                            // full page reload — which loses locally uploaded files. Don't do that
+                            // silently: ask the user first and explain. See issue #25.
+                            PromptProfileSwitch(desiredProfile);
+                            _isCompiling = false;
+                            StateHasChanged();
+                            return;
+                        }
+
                         try
                         {
                             // Force a DOM render flush so the "Loading game..." status appears
@@ -688,6 +719,13 @@ namespace XnaFiddle.Pages
                             throw new Exception("Game crashed during initialization: " + runEx.Message, runEx);
                         }
                         _game = newGame;
+                        // Re-read after Run so the tracked profile reflects any change made in
+                        // Initialize()/LoadContent(), not just the constructor.
+                        _canvasProfile = GetGameProfile(newGame);
+                        // Tell clearCanvas which context type the canvas is now bound to, so it
+                        // clears through the right context instead of binding a fresh one (#25).
+                        await JsRuntime.InvokeVoidAsync("eval",
+                            $"window._canvasContextType='{(_canvasProfile == GraphicsProfile.HiDef ? "webgl2" : "webgl")}'");
                         _statusMessage = "Running.";
                         _statusColor = ColorSuccess;
                     }
@@ -1184,6 +1222,67 @@ namespace XnaFiddle.Pages
             _statusColor = ColorError;
             _diagnosticsOutput = diagnosticsDetail;
             _diagnosticsColor = ColorError;
+        }
+
+        // Reads the GraphicsProfile a constructed (but not yet Run) game will use. A
+        // GraphicsDeviceManager registers itself in game.Services from its constructor, so this
+        // is available before Run() creates the device. Falls back to Reach — KNI's default —
+        // when the game configures no manager.
+        private static GraphicsProfile GetGameProfile(Game game)
+        {
+            if (game.Services.GetService(typeof(IGraphicsDeviceManager)) is GraphicsDeviceManager gdm)
+                return gdm.GraphicsProfile;
+            return GraphicsProfile.Reach;
+        }
+
+        // Human-readable name for the profile/WebGL pairing, shown in the switch dialog.
+        private static string ProfileName(GraphicsProfile p) =>
+            p == GraphicsProfile.HiDef ? "HiDef (WebGL2)" : "Reach (WebGL1)";
+
+        // Opens the profile-switch confirmation dialog and works out which uploaded files would be
+        // lost on reload — i.e. those not backed by a URL we can re-fetch. See issue #25.
+        private void PromptProfileSwitch(GraphicsProfile target)
+        {
+            _pendingProfile = target;
+            _assetsLostOnReload.Clear();
+            foreach (var asset in _assets)
+            {
+                if (string.IsNullOrEmpty(asset.SourceUrl))
+                    _assetsLostOnReload.Add(asset.FileName);
+            }
+            _profileSwitchPending = true;
+            _statusMessage = "Graphics mode switch needed.";
+            _statusColor = ColorPending;
+        }
+
+        private void CancelProfileSwitch()
+        {
+            _profileSwitchPending = false;
+            _statusMessage = "Graphics mode switch cancelled — game not started.";
+            _statusColor = ColorMuted;
+            StateHasChanged();
+        }
+
+        private async Task ConfirmProfileSwitch()
+        {
+            _profileSwitchPending = false;
+            await ReloadForProfileChange();
+        }
+
+        // The shared canvas can't switch WebGL context type, so a GraphicsProfile change is
+        // handled by reloading onto a fresh canvas. Code (and URL-backed assets) are preserved in
+        // the URL fragment so the reloaded page auto-loads and re-runs. Locally dropped assets are
+        // not carried across the reload. See issue #25.
+        private async Task ReloadForProfileChange()
+        {
+            string code = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
+            string encoded = UrlCodec.Encode(code);
+            string assetsFragment = GetAssetUrlsFragment();
+            _statusMessage = "Switching graphics profile — reloading...";
+            _statusColor = ColorPending;
+            StateHasChanged();
+            await JsRuntime.InvokeVoidAsync("eval",
+                $"location.hash='#code={encoded}{assetsFragment}';location.reload();");
         }
 
         private static Type FindGameType(Assembly assembly)
