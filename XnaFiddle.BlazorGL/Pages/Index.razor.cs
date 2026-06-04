@@ -385,8 +385,30 @@ technique BasicColorDrawing
         }
 
         [JSInvokable]
-        public void OnFileDropped(string fileName, string base64Data)
+        public async Task OnFileDropped(string fileName, string base64Data)
         {
+            // A dropped .fx is shader source, not a content asset: open it in its own editor
+            // tab (HLSL highlighting, compiled on Run) instead of routing it to the asset list.
+            // Mirrors how example .fx files load (see LoadExampleAssetsAsync). Issue #26.
+            if (fileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_monacoReady)
+                    return;
+                byte[] fxData = Convert.FromBase64String(base64Data);
+                if (fxData.Length > 10 * 1024 * 1024)
+                {
+                    SetError("File too large.", $"{fileName} exceeds the 10 MB limit.");
+                    StateHasChanged();
+                    return;
+                }
+                string fxSource = Encoding.UTF8.GetString(fxData);
+                await OpenShaderTabFromSourceAsync(fileName, fxSource, select: true);
+                _statusMessage = "Opened shader tab: " + fileName;
+                _statusColor = ColorSuccess;
+                StateHasChanged();
+                return;
+            }
+
             string ext = System.IO.Path.GetExtension(fileName);
             if (!SupportedAssetExtensions.Contains(ext))
             {
