@@ -18,6 +18,7 @@ namespace XnaFiddle
             // #code= links that reference Gum, Shapes, or Extended.
             _ = typeof(MonoGameGum.GumService);          // Gum.KNI
             _ = typeof(Apos.Shapes.ShapeBatch);           // Apos.Shapes.KNI
+            _ = typeof(FlatRedBall.AnimationChain.AnimationChainList); // FlatRedBall.AnimationChain.KNI
             _ = typeof(MonoGame.Extended.OrthographicCamera); // KNI.Extended
 
             // Force-load StbTrueType rasterizer so KernSmith can discover it at runtime.

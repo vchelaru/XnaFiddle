@@ -275,7 +275,7 @@ public class PluginTests
     {
         var plugin = new FlatRedBallAnimationChainPlugin();
         Assert.Single(plugin.RequiredAssemblies);
-        Assert.Contains("FlatRedBall.AnimationChain", plugin.RequiredAssemblies);
+        Assert.Contains("AnimationChain.KNI", plugin.RequiredAssemblies);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class PluginTests
     public void FlatRedBallAnimationChainPlugin_VersionInfo_AssemblyNames()
     {
         var plugin = new FlatRedBallAnimationChainPlugin();
-        Assert.Equal(new[] { "FlatRedBall.AnimationChain" }, plugin.VersionInfo.AssemblyNames);
+        Assert.Equal(new[] { "AnimationChain.KNI" }, plugin.VersionInfo.AssemblyNames);
     }
 
     [Fact]
