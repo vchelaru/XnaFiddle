@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Platform-agnostic logic shared by the XnaFiddle.BlazorGL app (net8.0-browser) and the
+       XnaFiddle.Tests project (net8.0). A net8.0 test project cannot reference a net8.0-browser
+       project, so the tested, browser-free logic (URL/snippet codecs, Roslyn-based security and
+       IntelliSense helpers, library plugins, project exporter) lives here. See issue #26. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>XnaFiddle</RootNamespace>
+    <AssemblyName>XnaFiddle.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Roslyn — SecurityChecker and the IntelliSense formatters analyze user C#. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Android project template assets streamed into exported .Android projects by ProjectExporter
+         (which reads them from this assembly's manifest resources). LogicalName is set explicitly so
+         folder names with hyphens (drawable-hdpi) survive — MSBuild's default naming replaces hyphens
+         with underscores. -->
+    <EmbeddedResource Include="AndroidTemplate\**\*.*">
+      <LogicalName>AndroidTemplate/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Generate PackageVersions.g.cs from the shared version properties in Directory.Build.props.
+       ProjectExporter (in this project) uses these constants to emit correct NuGet versions in
+       exported projects. The generated file lives in obj/ and is never checked in. -->
+  <Target Name="GeneratePackageVersions" BeforeTargets="CoreCompile">
+    <WriteLinesToFile File="$(IntermediateOutputPath)PackageVersions.g.cs" Overwrite="true" Lines="
+namespace XnaFiddle {
+    /// &lt;summary&gt;
+    /// Auto-generated from MSBuild properties in Directory.Build.props.
+    /// Do not edit — update the version properties in Directory.Build.props instead.
+    /// &lt;/summary&gt;
+    public static class PackageVersions {
+        // KNI
+        public const string KniFramework = &quot;$(KniFrameworkVersion)&quot;%3B
+        public const string KniPlatformDesktopGL = &quot;$(KniPlatformDesktopGLVersion)&quot;%3B
+        public const string KniPlatformWindowsDX = &quot;$(KniPlatformWindowsDXVersion)&quot;%3B
+        public const string KniPlatformAndroid = &quot;$(KniPlatformAndroidVersion)&quot;%3B
+        public const string KniPlatformBlazorGL = &quot;$(KniPlatformBlazorGLVersion)&quot;%3B
+        public const string KniContentPipeline = &quot;$(KniContentPipelineVersion)&quot;%3B
+        public const string KniWasmJs = &quot;$(KniWasmJsVersion)&quot;%3B
+        // MonoGame
+        public const string MonoGameFramework = &quot;$(MonoGameFrameworkVersion)&quot;%3B
+        // Third-party libraries
+        public const string AetherPhysics = &quot;$(AetherPhysicsVersion)&quot;%3B
+        public const string AposShapes = &quot;$(AposShapesVersion)&quot;%3B
+        public const string FontStashSharp = &quot;$(FontStashSharpVersion)&quot;%3B
+        public const string Gum = &quot;$(GumVersion)&quot;%3B
+        public const string KniExtended = &quot;$(KniExtendedVersion)&quot;%3B
+        public const string KernSmith = &quot;$(KernSmithVersion)&quot;%3B
+        public const string Mlem = &quot;$(MlemVersion)&quot;%3B
+    }
+}" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)PackageVersions.g.cs" />
+    </ItemGroup>
+  </Target>
+
+</Project>

@@ -60,16 +60,6 @@ namespace XnaFiddle
             "TextCopy",
         ];
 
-        public class DiagnosticInfo
-        {
-            public int StartLine { get; set; }
-            public int StartCol { get; set; }
-            public int EndLine { get; set; }
-            public int EndCol { get; set; }
-            public string Message { get; set; }
-            public string Severity { get; set; } // "error", "warning", "info"
-        }
-
         public class CompilationResult
         {
             public byte[] ILBytes { get; set; }

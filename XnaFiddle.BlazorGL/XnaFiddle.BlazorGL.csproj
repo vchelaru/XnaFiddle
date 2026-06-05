@@ -28,46 +28,9 @@
     <DefineConstants>$(DefineConstants);SHADOWDUSK</DefineConstants>
   </PropertyGroup>
 
-  <!--
-    ╔══════════════════════════════════════════════════════════════════════╗
-    ║  LIBRARY VERSIONS — single source of truth                           ║
-    ║                                                                      ║
-    ║  These properties drive both the PackageReferences below AND the     ║
-    ║  generated PackageVersions class (used by ProjectExporter to emit    ║
-    ║  correct NuGet versions in exported projects).                       ║
-    ║                                                                      ║
-    ║  To update a library version, change it HERE — everything else       ║
-    ║  flows automatically. See GeneratePackageVersions target at bottom.  ║
-    ╚══════════════════════════════════════════════════════════════════════╝
-  -->
-  <PropertyGroup>
-    <!-- KNI framework — 10 core packages all share this version.
-         Update when the KniSB submodule is updated (XnaFiddle builds KNI from source,
-         but exported projects reference these NuGet packages). -->
-    <KniFrameworkVersion>4.2.9001</KniFrameworkVersion>
-
-    <!-- KNI platform packages — each platform may ship on its own release cadence -->
-    <KniPlatformDesktopGLVersion>4.2.9001.1</KniPlatformDesktopGLVersion>
-    <KniPlatformWindowsDXVersion>4.2.9001</KniPlatformWindowsDXVersion>
-    <KniPlatformAndroidVersion>4.2.9001.1</KniPlatformAndroidVersion>
-    <KniPlatformBlazorGLVersion>4.2.9001.2</KniPlatformBlazorGLVersion>
-    <KniContentPipelineVersion>4.2.9001</KniContentPipelineVersion>
-    <!-- JS version shipped by the nkast.Wasm.* transitive packages.
-         Update when KNI platform NuGet packages bump their Wasm dependency. -->
-    <KniWasmJsVersion>8.0.11</KniWasmJsVersion>
-
-    <!-- MonoGame framework — not used by XnaFiddle itself, only in exported projects -->
-    <MonoGameFrameworkVersion>3.8.4.1</MonoGameFrameworkVersion>
-
-    <!-- Third-party game libraries -->
-    <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
-    <AposShapesVersion>0.6.8</AposShapesVersion>
-    <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
-    <GumVersion>2026.4.28.1-preview.9</GumVersion>
-    <KniExtendedVersion>5.5.0</KniExtendedVersion>
-    <KernSmithVersion>0.12.3</KernSmithVersion>
-    <MlemVersion>8.1.0</MlemVersion>
-  </PropertyGroup>
+  <!-- Library versions are defined in Directory.Build.props (shared with XnaFiddle.Core, which
+       generates the PackageVersions class from them). They are available here as MSBuild
+       properties for the PackageReference versions below. -->
 
   <!-- Game libraries that XnaFiddle references directly (KNI variants).
        Versions come from the properties above — do NOT hardcode here.
@@ -95,6 +58,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Platform-agnostic logic shared with XnaFiddle.Tests (issue #26). -->
+    <ProjectReference Include="..\XnaFiddle.Core\XnaFiddle.Core.csproj" />
     <ProjectReference Include="..\Submodules\KniSB\Platforms\Kni.Platform.Blazor.GL.csproj" />
     <!-- In-browser HLSL .fx -> .mgfx compiler (issue #26). References the sibling ShadowDusk
          clone from source (no NuGet release yet); transitively brings the DXC + SPIRV-Cross
@@ -113,51 +78,6 @@
     <!-- Embed non-code assets alongside examples (e.g. TextureLoading.KniIcon.png) -->
     <EmbeddedResource Include="Examples\*.*" Exclude="Examples\*.cs" />
   </ItemGroup>
-
-  <ItemGroup>
-    <!-- Android project template assets streamed into exported .Android projects by ProjectExporter.
-         LogicalName is set explicitly so folder names with hyphens (drawable-hdpi) survive — MSBuild's
-         default naming replaces hyphens with underscores. -->
-    <EmbeddedResource Include="AndroidTemplate\**\*.*">
-      <LogicalName>AndroidTemplate/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
-
-  <!-- Generate PackageVersions.g.cs — makes the version properties above available to C#.
-       ProjectExporter uses these constants to emit correct NuGet versions in exported projects.
-       The generated file lives in obj/ and is never checked in. -->
-  <Target Name="GeneratePackageVersions" BeforeTargets="CoreCompile">
-    <WriteLinesToFile File="$(IntermediateOutputPath)PackageVersions.g.cs" Overwrite="true" Lines="
-namespace XnaFiddle {
-    /// &lt;summary&gt;
-    /// Auto-generated from MSBuild properties in XnaFiddle.BlazorGL.csproj.
-    /// Do not edit — update the version properties in the csproj instead.
-    /// &lt;/summary&gt;
-    public static class PackageVersions {
-        // KNI
-        public const string KniFramework = &quot;$(KniFrameworkVersion)&quot;%3B
-        public const string KniPlatformDesktopGL = &quot;$(KniPlatformDesktopGLVersion)&quot;%3B
-        public const string KniPlatformWindowsDX = &quot;$(KniPlatformWindowsDXVersion)&quot;%3B
-        public const string KniPlatformAndroid = &quot;$(KniPlatformAndroidVersion)&quot;%3B
-        public const string KniPlatformBlazorGL = &quot;$(KniPlatformBlazorGLVersion)&quot;%3B
-        public const string KniContentPipeline = &quot;$(KniContentPipelineVersion)&quot;%3B
-        public const string KniWasmJs = &quot;$(KniWasmJsVersion)&quot;%3B
-        // MonoGame
-        public const string MonoGameFramework = &quot;$(MonoGameFrameworkVersion)&quot;%3B
-        // Third-party libraries
-        public const string AetherPhysics = &quot;$(AetherPhysicsVersion)&quot;%3B
-        public const string AposShapes = &quot;$(AposShapesVersion)&quot;%3B
-        public const string FontStashSharp = &quot;$(FontStashSharpVersion)&quot;%3B
-        public const string Gum = &quot;$(GumVersion)&quot;%3B
-        public const string KniExtended = &quot;$(KniExtendedVersion)&quot;%3B
-        public const string KernSmith = &quot;$(KernSmithVersion)&quot;%3B
-        public const string Mlem = &quot;$(MlemVersion)&quot;%3B
-    }
-}" />
-    <ItemGroup>
-      <Compile Include="$(IntermediateOutputPath)PackageVersions.g.cs" />
-    </ItemGroup>
-  </Target>
 
   <!-- Generate BuildInfo.g.cs with the UTC build timestamp into obj/ -->
   <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">

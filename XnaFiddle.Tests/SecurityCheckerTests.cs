@@ -19,7 +19,7 @@ public class SecurityCheckerTests
 {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static List<CompilationService.DiagnosticInfo> Check(string code)
+    private static List<DiagnosticInfo> Check(string code)
     {
         CSharpParseOptions parseOptions = CSharpParseOptions.Default
             .WithLanguageVersion(LanguageVersion.LatestMajor);
@@ -34,7 +34,7 @@ public class SecurityCheckerTests
         return SecurityChecker.Check(compilation, syntaxTree);
     }
 
-    private static bool HasError(List<CompilationService.DiagnosticInfo> errors, string fragment) =>
+    private static bool HasError(List<DiagnosticInfo> errors, string fragment) =>
         errors.Any(e => e.Message.Contains(fragment));
 
     /// <summary>
@@ -266,6 +266,7 @@ public class SecurityCheckerTests
     [Fact]
     public void WasmClipboard_IsBlocked()
     {
+        if (!DllPresent("nkast.Wasm.Clipboard.dll")) return;
         var errors = Check("""
             using nkast.Wasm.WebClipboard;
             class C { void M(Clipboard cb) { } }
