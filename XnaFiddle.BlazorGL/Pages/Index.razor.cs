@@ -1022,6 +1022,17 @@ technique BasicColorDrawing
                         // no awaits, so TickDotNet() cannot be called in this window (WASM is single-threaded).
                         LibraryRegistry.RunAllCleanups();
 
+                        // Prevent a per-run WebGL context leak. KNI's BlazorGL adapter validates
+                        // HiDef support by creating a 1x1 OffscreenCanvas + WebGL2 context on every
+                        // game init (ConcreteGraphicsAdapter.Platform_IsProfileSupported) and never
+                        // frees it, so each run leaks one context until the browser's ~16-context
+                        // cap force-loses contexts and the next game crashes (CONTEXT_LOST_WEBGL /
+                        // "Shader Compilation Failed."). UseReferenceDevice makes that probe return
+                        // true without creating the OffscreenCanvas — its ONLY effect on BlazorGL.
+                        // The real device still gets a genuine WebGL2 context when it runs.
+                        // Idempotent static; setting it each run is harmless.
+                        GraphicsAdapter.UseReferenceDevice = true;
+
                         Game newGame = (Game)Activator.CreateInstance(gameType);
                         newGame.Content = new InMemoryContentManager(newGame.Services);
 
