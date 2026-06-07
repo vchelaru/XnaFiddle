@@ -61,14 +61,12 @@
     <!-- Platform-agnostic logic shared with XnaFiddle.Tests (issue #26). -->
     <ProjectReference Include="..\XnaFiddle.Core\XnaFiddle.Core.csproj" />
     <ProjectReference Include="..\Submodules\KniSB\Platforms\Kni.Platform.Blazor.GL.csproj" />
-    <!-- In-browser HLSL .fx -> .mgfx compiler (issue #26). References the sibling ShadowDusk
-         clone from source (no NuGet release yet); transitively brings the DXC + SPIRV-Cross
-         WASM modules as static web assets served at _content/ShadowDusk.Wasm/. The ~17 MB
-         dxcompiler.wasm is gitignored in ShadowDusk and must be restored before build (copy
-         .wasm-build/dxc-wasm-out/dxcompiler.wasm into src/ShadowDusk.Wasm/wwwroot/dxc/).
-         Browser-only: ShadowDusk.Wasm targets net8.0-browser, so a net8.0 reference fails
-         NU1201. The test-only net8.0 build #if-s out the shader code instead. -->
-    <ProjectReference Include="..\..\ShadowDusk\src\ShadowDusk.Wasm\ShadowDusk.Wasm.csproj"
+    <!-- In-browser HLSL .fx -> .mgfx compiler (issue #26). The DXC + SPIRV-Cross WASM modules
+         ship inside this package as static web assets, served automatically at
+         _content/ShadowDusk.Wasm/ — nothing to copy or configure. Browser-only: it targets
+         net8.0-browser, so a plain net8.0 reference fails NU1201, which is why this is
+         conditioned out of the test-only net8.0 build (which #if-s out the shader code). -->
+    <PackageReference Include="ShadowDusk.Wasm" Version="$(ShadowDuskWasmVersion)"
                       Condition=" '$(TargetFramework)' == 'net8.0-browser' " />
   </ItemGroup>
 

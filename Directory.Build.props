@@ -48,6 +48,10 @@
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
     <KernSmithVersion>0.12.3</KernSmithVersion>
     <MlemVersion>8.1.0</MlemVersion>
+    <!-- In-browser HLSL .fx -> .mgfx compiler (ShadowDusk.Wasm NuGet). Build-time/runtime
+         tool only — intentionally NOT added to the generated PackageVersions class, since
+         exported projects ship pre-compiled .mgfx and don't need the compiler. -->
+    <ShadowDuskWasmVersion>0.1.0</ShadowDuskWasmVersion>
   </PropertyGroup>
 
 </Project>
