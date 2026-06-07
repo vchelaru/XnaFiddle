@@ -1,0 +1,84 @@
+---
+description: The compile-to-run pipeline and WebGL/GraphicsDevice resource lifecycle in XnaFiddle — how a Run rebuilds the game, the per-run WebGL context leak and its UseReferenceDevice fix, Roslyn metadata-reference caching, and documented dead-ends. Load when working on DoCompileAndRun, game restart/lifecycle, GraphicsDevice/WebGL/canvas issues, "Shader Compilation Failed"/CONTEXT_LOST_WEBGL/"Too many active WebGL contexts" crashes, compile performance, or CompilationService.
+---
+
+# Game Lifecycle
+
+## The Run flow (`Index.razor.cs` -> `DoCompileAndRun`)
+
+`CompileAndRun()` sets `_pendingCompile`; `TickDotNet()` (driven by JS requestAnimationFrame) picks it up and calls `DoCompileAndRun()`, so compilation runs in the rAF context rather than the Blazor sync context — this avoids a `Monitor` deadlock on the single WASM thread. Order inside `DoCompileAndRun`:
+
+1. Get C# source from Monaco; `CompilationService.CompileAsync` (Roslyn) -> IL bytes.
+2. `Assembly.Load(result.ILBytes)`; `FindGameType` locates the `Game` subclass.
+3. `CompileRegisteredShadersAsync()` — compiles any `.fx` tabs to `.mgfx` via ShadowDusk. No-ops (and never downloads the ~17 MB DXC wasm) when no shader tabs exist. This `await` is **outside** the synchronous swap window below, on purpose.
+4. Drop the old game: `_game = null` (NOT `Dispose()` — see below), then `LibraryRegistry.RunAllCleanups()`.
+5. `GraphicsAdapter.UseReferenceDevice = true` (the leak fix — see below), then `Activator.CreateInstance(gameType)`, then `newGame.Run()` which creates the GraphicsDevice + WebGL context.
+
+The window between `_game = null` and `_game = newGame` is deliberately await-free. WASM is single-threaded, so the only interleaving points are `await` boundaries; with none in that window, `TickDotNet()` cannot run mid-swap and its `if (_game == null) return;` guard is sufficient (no locking needed). The one `await Task.Delay(1)` before `Run()` only flushes the "Loading game..." status to the DOM.
+
+## Each Run rebuilds the whole game
+
+A fresh `Game`/`GraphicsDevice` is created every Run. The old game is dropped **without** `Dispose()` on purpose: disposing the old `GraphicsDevice` invalidates textures that the Gum UI library caches in static fields, breaking Gum on the next run. GC reclaims the old game eventually — acceptable in a fiddle.
+
+`LibraryRegistry.RunAllCleanups()` (`XnaFiddle.Core/LibraryRegistry.cs`) calls `CleanUp()` on every plugin to reset static state between runs. Notably `GameWindowPlugin` (`XnaFiddle.Core/Plugins/GameWindowPlugin.cs`) reflectively clears KNI's static `BlazorGameWindow._instances` dictionary (the type lives in the browser-only KNI assembly, so it is resolved by name, not a compile-time reference).
+
+## WebGL context model (what leaks and what does not)
+
+| Fact | Where |
+|---|---|
+| `theCanvas` is a single shared DOM `<canvas>` in `Index.razor` markup. | `Index.razor` |
+| KNI's `BlazorGameWindow` ctor resolves it per game via `Document.GetElementById<Canvas>("theCanvas")`. | `BlazorGameWindow.cs:114` |
+| `Document.GetElementById` **caches** the managed `Canvas` wrapper by id (a `WeakReference` in `_elementsCache`). | `Wasm.Dom/Dom/Document.cs` (`GetElementById`/`FromId`) |
+| `canvas.getContext(type)` on the same DOM element returns the same underlying WebGL context; KNI's `Canvas.GetContext` also caches the context per wrapper instance. | `Wasm.Canvas/Canvas/Canvas.cs` (`GetContext`) |
+
+Conclusion: `theCanvas` does **not** leak contexts across runs — it reuses one. A profile change (Reach<->HiDef) still needs a full page reload because a canvas's context **type** (webgl vs webgl2) locks on first `getContext` and can't change in place (issue #25; tracked via `_canvasProfile` + `PromptProfileSwitch` in `Index.razor.cs`).
+
+## THE per-run leak and the fix
+
+KNI's `ConcreteGraphicsAdapter.Platform_IsProfileSupported(HiDef)` (`Platforms/Graphics/.BlazorGL/ConcreteGraphicsAdapter.cs:120`) validates HiDef by creating a throwaway `new OffscreenCanvas(1,1)` and calling `GetContext<IWebGL2RenderingContext>()`. The OffscreenCanvas wrapper IS wrapped in a `using` block, but the returned WebGL2 context is a **separate JSObject constructed with a null parent**, so disposing the OffscreenCanvas never frees it — its handle stays pinned in the JS `nkJSObject` registry. So **every HiDef game init leaks one WebGL2 context**. After ~10-16 runs Chrome hits its context cap (~16), force-loses the oldest, and the next game's device setup / SpriteEffect compile fails with `CONTEXT_LOST_WEBGL` or `InvalidOperationException: Shader Compilation Failed.` — often with an **empty GLSL info log**, the signature of context loss (not bad shader code). XnaFiddle examples are HiDef, so normal use hits this.
+
+**Diagnostic.** Console warning `WARNING: Too many active WebGL contexts. Oldest context will be lost.` plus which `getContext` it points at. The probe uses the no-attribs path `OffscreenCanvas.GetContext<IWebGL2>()` -> `nkCanvas.CreateWebGL2Context` (`OffscreenCanvas.cs:81`). The game's real device uses the **with-attribs** path `nkOffscreenCanvas.CreateWebGL2Context1` (`OffscreenCanvas.cs:147`). A warning at the no-attribs `nkCanvas.CreateWebGL2Context` site = the **probe** leaking, not the game canvas.
+
+**The fix** (`DoCompileAndRun`, set before the game's device is created):
+
+```csharp
+GraphicsAdapter.UseReferenceDevice = true;
+```
+
+In the BlazorGL platform this flag is read in **exactly one place** — the `Platform_IsProfileSupported` short-circuit `if (GraphicsAdapter.UseReferenceDevice) return true;` (`ConcreteGraphicsAdapter.cs:122`) — so it skips the OffscreenCanvas probe and has no other BlazorGL effect. The real device still gets a genuine WebGL2 context when it runs. KNI's own test runner sets the same flag (`Tests/Runner/GameBase/TestGameBase.cs:37`). Verified by grep: `UseReferenceDevice` has no other BlazorGL reference (other hits are the property definition, the other platforms' adapters, and the test runner). Trade-off: HiDef "supported" is no longer empirically probed; a browser truly lacking WebGL2 would fail at device creation with a clear error instead — acceptable, every browser running this app has WebGL2.
+
+## Compile pipeline & performance (`CompilationService.cs`)
+
+`CompileAsync` = parse -> `GetMetadataReferencesAsync` -> `CSharpCompilation.Create` -> `Emit`. `concurrentBuild: false` because parallel Roslyn workers deadlock on `Monitor.Wait` in single-threaded WASM.
+
+`GetMetadataReferencesAsync` resolves ~40+ assemblies (BCL + KNI + active plugins) via `BlazorWasmMetadataReferenceService`, which re-parses each PE's metadata — historically the dominant cost. Cross-compile cache rules (`_referenceCache`, a persistent `Dictionary<string, MetadataReference>` keyed by assembly name):
+
+- **Successes only** are cached; failures stay uncached and retry next compile, so an assembly loaded later isn't permanently hidden.
+- The reference service is reconstructed **only when there are cache misses** (warm compiles create no service and re-parse nothing).
+- `"UserAssembly"` is always excluded so user code never enters the cache.
+
+Reusing the same `MetadataReference` instances also lets Roslyn reuse decoded symbol tables across compilations, helping `Emit` too. `IntellisenseService` shares `GetMetadataReferencesAsync`, so its completion surface matches the compile surface and it benefits from the same cache.
+
+Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit now dominates**. `LogTiming` writes a `[XnaFiddle][timing] refs: …ms, emit: …ms (…refs, …cached)` line to the console and the diagnostics panel (`Stopwatch`, monotonic).
+
+## Why the leak "suddenly appeared"
+
+It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced only after the metadata-reference cache made compiles fast (~0.7s vs several seconds): fast iteration means a user naturally does 10+ Runs in one page session before refreshing, which is what reaches the context cap. It is **not** a GC-churn regression (see dead end #1).
+
+## Dead ends — DO NOT retry
+
+1. **`GC.Collect()` / `GC.WaitForPendingFinalizers()` to reclaim leaked GL resources.** Useless: the leaked WebGL contexts are JS-side objects pinned in the `nkJSObject` registry, not .NET objects — GC can't touch them. (KNI's `GraphicsResource` finalizer does delete GL handles, but that was never the leak.)
+2. **Recreating `theCanvas` per run for a fresh context.** Fails three ways: (a) `theCanvas` was never the leak (the OffscreenCanvas probe is); (b) `Document.GetElementById` caches the `Canvas` wrapper by id, so a swapped-in element leaves the new game rendering into the old **detached** canvas -> black screen; (c) `theCanvas` is Blazor-rendered with dynamic siblings, so manually removing it desyncs Blazor's DOM diffing.
+3. **`WEBGL_lose_context.loseContext()` on the old context.** In Chrome this can reset the whole GPU process; a context created in the same synchronous turn comes up already-lost -> `CONTEXT_LOST_WEBGL` on the new device's first GL call.
+
+## Key files
+
+| File | Role |
+|---|---|
+| `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `DoCompileAndRun`, `CompileAndRun`, `TickDotNet`, swap window, `UseReferenceDevice` fix, `_canvasProfile`/`PromptProfileSwitch` |
+| `XnaFiddle.BlazorGL/CompilationService.cs` | Roslyn compile, `_referenceCache`, `GetMetadataReferencesAsync`, `LogTiming` |
+| `XnaFiddle.Core/LibraryRegistry.cs` | `RunAllCleanups` — per-run plugin static-state reset |
+| `XnaFiddle.Core/Plugins/GameWindowPlugin.cs` | Clears KNI's static `BlazorGameWindow._instances` by reflection |
+| `Submodules/KniSB/Platforms/Graphics/.BlazorGL/ConcreteGraphicsAdapter.cs` | `Platform_IsProfileSupported` — the leaking HiDef probe + the `UseReferenceDevice` short-circuit |
+| `Submodules/KniSB/.../Wasm.Canvas/Canvas/OffscreenCanvas.cs` | Probe's WebGL2 context creation (no-attribs path leaks) |
+| `Submodules/KniSB/Platforms/Game/.Blazor/BlazorGameWindow.cs` | Resolves `theCanvas`; static `_instances` dictionary |
