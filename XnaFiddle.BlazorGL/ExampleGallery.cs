@@ -34,7 +34,8 @@ namespace XnaFiddle
             new ExampleInfo { Name = "SoundPlayback",   Category = "Basics", Description = "Load and play a WAV sound effect with keyboard controls" },
             new ExampleInfo { Name = "TextureLoading",  Category = "Basics", Description = "Load and display a texture from a file" },
 
-            // Shaders (compiled in-browser from HLSL .fx via ShadowDusk; run as Reach/WebGL1)
+            // Shaders (compiled in-browser from HLSL .fx via ShadowDusk; HiDef, but the OpenGL
+            // .mgfx is profile-agnostic so it loads under Reach/WebGL1 too)
             new ExampleInfo { Name = "ShaderGrayscale", Category = "Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
             new ExampleInfo { Name = "ShaderInvert",    Category = "Shaders", Description = "Invert an image's colors" },
             new ExampleInfo { Name = "ShaderSepia",     Category = "Shaders", Description = "Sepia tone, with a tint parameter set from C#" },
