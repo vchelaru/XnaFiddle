@@ -31,7 +31,18 @@ A fresh `Game`/`GraphicsDevice` is created every Run. The old game is dropped **
 | `Document.GetElementById` **caches** the managed `Canvas` wrapper by id (a `WeakReference` in `_elementsCache`). | `Wasm.Dom/Dom/Document.cs` (`GetElementById`/`FromId`) |
 | `canvas.getContext(type)` on the same DOM element returns the same underlying WebGL context; KNI's `Canvas.GetContext` also caches the context per wrapper instance. | `Wasm.Canvas/Canvas/Canvas.cs` (`GetContext`) |
 
-Conclusion: `theCanvas` does **not** leak contexts across runs — it reuses one. A profile change (Reach<->HiDef) still needs a full page reload because a canvas's context **type** (webgl vs webgl2) locks on first `getContext` and can't change in place (issue #25; tracked via `_canvasProfile` + `PromptProfileSwitch` in `Index.razor.cs`).
+Conclusion: `theCanvas` does **not** leak contexts across runs — it reuses one.
+
+## Profile switch (Reach<->HiDef) — canvas swap, no reload (issue #25)
+
+A canvas's context **type** (webgl vs webgl2) locks on first `getContext` and can't change in place, so a Reach<->HiDef switch needs a brand-new `<canvas>` element. This is detected in `DoCompileAndRun` (`_canvasProfile` vs `GetGameProfile(newGame)`) and handled **without a page reload**:
+
+1. Drop the just-created (mismatched) game; `LibraryRegistry.RunAllCleanups()`.
+2. Bump `_canvasGen` (the canvas has `@key="_canvasGen"` in `Index.razor`) + `StateHasChanged()` + `await Task.Delay(1)` so **Blazor** recreates the `<canvas>` (Blazor owns the DOM swap — don't do it with raw JS, that desyncs the renderer).
+3. `setupCanvas` (JS) re-wires the fresh element; `window._canvasContextType = null` (it's unbound).
+4. Rebuild the game (`Activator.CreateInstance` again, re-assign `InMemoryContentManager`) so its `BlazorGameWindow` binds the fresh canvas; fall through to `Run()`.
+
+The critical enabler: `GameWindowPlugin.CleanUp` (run by `RunAllCleanups`) reflectively clears KNI's `Document._elementsCache`. Without that, `GetElementById("theCanvas")` returns the **stale cached `Canvas` wrapper** pointing at the detached old element -> black screen (this is what broke the earlier per-run canvas-swap attempt). Profile switches are rare (examples are all HiDef), so the double game-construction on a switch is fine.
 
 ## THE per-run leak and the fix
 
@@ -68,7 +79,7 @@ It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced o
 ## Dead ends — DO NOT retry
 
 1. **`GC.Collect()` / `GC.WaitForPendingFinalizers()` to reclaim leaked GL resources.** Useless: the leaked WebGL contexts are JS-side objects pinned in the `nkJSObject` registry, not .NET objects — GC can't touch them. (KNI's `GraphicsResource` finalizer does delete GL handles, but that was never the leak.)
-2. **Recreating `theCanvas` per run for a fresh context.** Fails three ways: (a) `theCanvas` was never the leak (the OffscreenCanvas probe is); (b) `Document.GetElementById` caches the `Canvas` wrapper by id, so a swapped-in element leaves the new game rendering into the old **detached** canvas -> black screen; (c) `theCanvas` is Blazor-rendered with dynamic siblings, so manually removing it desyncs Blazor's DOM diffing.
+2. **Recreating `theCanvas` *every run* to fix the leak.** Pointless: `theCanvas` was never the leak (the OffscreenCanvas probe is — use `UseReferenceDevice`). Recreating it per run only adds the swap's failure modes. (Recreating it *on a profile switch* is correct — see that section — but only because two specific things are handled: clear `Document._elementsCache` so the stale `Canvas` wrapper isn't reused (else black screen), and recreate via Blazor `@key` rather than raw JS removal (else Blazor DOM-diff desync). Doing a raw JS swap without those two is the dead end.)
 3. **`WEBGL_lose_context.loseContext()` on the old context.** In Chrome this can reset the whole GPU process; a context created in the same synchronous turn comes up already-lost -> `CONTEXT_LOST_WEBGL` on the new device's first GL call.
 
 ## Key files

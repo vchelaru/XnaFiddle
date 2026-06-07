@@ -29,18 +29,19 @@ namespace XnaFiddle.Pages
 
         Game _game;
 
-        // The GraphicsProfile the shared canvas's WebGL context is currently bound to, or
+        // The GraphicsProfile the current canvas's WebGL context is currently bound to, or
         // null until the first game of this page-load runs. A canvas permanently binds to one
         // context type on its first getContext (Reach→WebGL1, HiDef→WebGL2) and can't be
-        // rebound, so a profile change requires a page reload with a fresh canvas. See issue #25.
+        // rebound, so a profile change swaps in a brand-new canvas element (see _canvasGen and
+        // DoCompileAndRun's profile-mismatch branch). See issue #25.
         GraphicsProfile? _canvasProfile;
 
-        // Profile-switch confirmation dialog state (#25). When a game needs a different WebGL
-        // version than the canvas is bound to, we show a notice (rather than reloading silently)
-        // because the reload required to switch loses locally uploaded files.
-        bool _profileSwitchPending;
-        GraphicsProfile _pendingProfile;
-        List<string> _assetsLostOnReload = new();
+        // Bumped (via @key on the <canvas> in Index.razor) to make Blazor discard and recreate the
+        // canvas element. A DOM canvas permanently locks its WebGL context TYPE (webgl=Reach /
+        // webgl2=HiDef) on its first getContext, so a Reach<->HiDef switch needs a brand-new
+        // element. Incrementing this swaps in a fresh, unbound canvas in place — no page reload, no
+        // loss of locally dropped files. See issue #25 and DoCompileAndRun's profile-mismatch branch.
+        int _canvasGen;
 
         // DotNetObjectReference wrappers for JS interop. Kept as fields so we can
         // dispose them when this page is torn down (prevents the .NET runtime from
@@ -1038,18 +1039,39 @@ technique BasicColorDrawing
 
                         // The game's GraphicsProfile (set in its constructor, which has now run)
                         // decides the canvas's WebGL context type. If a previous game this session
-                        // bound the shared canvas to the other type, KNI's getContext returns null
-                        // and crashes — so reload onto a fresh canvas instead. See issue #25.
+                        // bound the shared canvas to the other type, KNI's getContext would return
+                        // null and crash — so swap in a fresh, unbound canvas instead. See issue #25.
                         GraphicsProfile desiredProfile = GetGameProfile(newGame);
                         if (_canvasProfile.HasValue && _canvasProfile.Value != desiredProfile)
                         {
-                            // The canvas can't change WebGL version in place, so switching needs a
-                            // full page reload — which loses locally uploaded files. Don't do that
-                            // silently: ask the user first and explain. See issue #25.
-                            PromptProfileSwitch(desiredProfile);
-                            _isCompiling = false;
+                            // The canvas permanently locks its WebGL context type on first
+                            // getContext, so a Reach<->HiDef switch needs a brand-new <canvas>.
+                            // Swap one in place (no page reload, no loss of dropped files) and
+                            // rebuild the game against it, then fall through to the normal Run path.
+                            // The game just created is bound to nothing yet; drop it and rebuild
+                            // after the swap so its BlazorGameWindow resolves the fresh element.
+                            newGame = null;
+                            // Clears KNI's BlazorGameWindow._instances AND the Document element-id
+                            // cache (see GameWindowPlugin) so the new canvas is re-resolved instead
+                            // of serving the stale wrapper pointing at the detached old element.
+                            LibraryRegistry.RunAllCleanups();
+                            // Bump @key so Blazor discards the old canvas and renders a fresh one.
+                            // The await lets that render flush before we wire/bind the new element.
+                            _canvasGen++;
                             StateHasChanged();
-                            return;
+                            await Task.Delay(1);
+                            // Re-apply per-canvas wiring (sizing, focus, Alt handling) to the new
+                            // element, and clear the bound-context-type hint: the fresh canvas is
+                            // unbound, so clearCanvas must not touch it until a game binds it.
+                            await JsRuntime.InvokeVoidAsync("setupCanvas");
+                            await JsRuntime.InvokeVoidAsync("eval", "window._canvasContextType=null");
+                            // Rebuild against the fresh, unbound canvas. Run() below now calls
+                            // getContext(desiredType) on a virgin element, which succeeds; afterward
+                            // _canvasProfile updates to desiredProfile so there is no re-loop.
+                            // These awaits are safe: _game stays null until the end, so TickDotNet
+                            // early-returns (its `if (_game == null) return;`).
+                            newGame = (Game)Activator.CreateInstance(gameType);
+                            newGame.Content = new InMemoryContentManager(newGame.Services);
                         }
 
                         try
@@ -1614,56 +1636,6 @@ technique BasicColorDrawing
             if (game.Services.GetService(typeof(IGraphicsDeviceManager)) is GraphicsDeviceManager gdm)
                 return gdm.GraphicsProfile;
             return GraphicsProfile.Reach;
-        }
-
-        // Human-readable name for the profile/WebGL pairing, shown in the switch dialog.
-        private static string ProfileName(GraphicsProfile p) =>
-            p == GraphicsProfile.HiDef ? "HiDef (WebGL2)" : "Reach (WebGL1)";
-
-        // Opens the profile-switch confirmation dialog and works out which uploaded files would be
-        // lost on reload — i.e. those not backed by a URL we can re-fetch. See issue #25.
-        private void PromptProfileSwitch(GraphicsProfile target)
-        {
-            _pendingProfile = target;
-            _assetsLostOnReload.Clear();
-            foreach (var asset in _assets)
-            {
-                if (string.IsNullOrEmpty(asset.SourceUrl))
-                    _assetsLostOnReload.Add(asset.FileName);
-            }
-            _profileSwitchPending = true;
-            _statusMessage = "Graphics mode switch needed.";
-            _statusColor = ColorPending;
-        }
-
-        private void CancelProfileSwitch()
-        {
-            _profileSwitchPending = false;
-            _statusMessage = "Graphics mode switch cancelled — game not started.";
-            _statusColor = ColorMuted;
-            StateHasChanged();
-        }
-
-        private async Task ConfirmProfileSwitch()
-        {
-            _profileSwitchPending = false;
-            await ReloadForProfileChange();
-        }
-
-        // The shared canvas can't switch WebGL context type, so a GraphicsProfile change is
-        // handled by reloading onto a fresh canvas. Code (and URL-backed assets) are preserved in
-        // the URL fragment so the reloaded page auto-loads and re-runs. Locally dropped assets are
-        // not carried across the reload. See issue #25.
-        private async Task ReloadForProfileChange()
-        {
-            string code = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
-            string encoded = UrlCodec.Encode(code);
-            string assetsFragment = GetAssetUrlsFragment();
-            _statusMessage = "Switching graphics profile — reloading...";
-            _statusColor = ColorPending;
-            StateHasChanged();
-            await JsRuntime.InvokeVoidAsync("eval",
-                $"location.hash='#code={encoded}{assetsFragment}';location.reload();");
         }
 
         private static Type FindGameType(Assembly assembly)
