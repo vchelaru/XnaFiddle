@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -19,6 +20,13 @@ namespace XnaFiddle
         private readonly NavigationManager _navigationManager;
         private readonly LibraryRegistry _libraryRegistry;
         private BlazorWasmMetadataReferenceService _referenceService;
+
+        // Persistent success-only cache of resolved metadata references, keyed by assembly
+        // name. Parsing each assembly's PE metadata is the dominant cost of a recompile in
+        // single-threaded WASM, so once an assembly resolves we keep its MetadataReference
+        // for all subsequent compiles. Only successes are cached; failures are left out so
+        // they are retried (an assembly absent on one compile may be loaded by the next).
+        private readonly Dictionary<string, MetadataReference> _referenceCache = [];
 
         public CompilationService(NavigationManager navigationManager, LibraryRegistry libraryRegistry)
         {
@@ -79,10 +87,6 @@ namespace XnaFiddle
         public async Task<(List<MetadataReference> References, List<string> FailedAssemblies, string VersionInfo)>
             GetMetadataReferencesAsync(Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
         {
-            // Always create a fresh service so cached failure results from a previous
-            // compile don't permanently hide assemblies that are now loaded.
-            _referenceService = new(_navigationManager);
-
             ForceLoadAssemblies();
 
             IReadOnlyList<ILibraryPlugin> plugins = _libraryRegistry.Plugins;
@@ -129,23 +133,54 @@ namespace XnaFiddle
             int resolved = 0;
             int total = assembliesRequired.Count;
 
+            // First pass: serve everything already in the success cache and collect the
+            // misses. After warm-up this typically leaves zero misses, so no PE metadata
+            // is re-parsed and no reference service is even created.
+            List<string> missingAssemblies = [];
             foreach (string assemblyName in assembliesRequired)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                AssemblyDetails assemblyDetails = new() { Name = assemblyName };
-                try
+                if (_referenceCache.TryGetValue(assemblyName, out MetadataReference cached))
                 {
-                    MetadataReference metadataReference = await _referenceService.CreateAsync(assemblyDetails);
-                    if (metadataReference != null)
-                        metadataReferences.Add(metadataReference);
-                    else
+                    metadataReferences.Add(cached);
+                    onProgress?.Invoke(++resolved, total);
+                }
+                else
+                {
+                    missingAssemblies.Add(assemblyName);
+                }
+            }
+
+            // Second pass: resolve only the misses. Create a fresh service so a stale
+            // failure cached inside the service can't permanently hide an assembly that
+            // is now loaded; the success cache (not the service) is what makes warm
+            // compiles skip resolution entirely.
+            if (missingAssemblies.Count > 0)
+            {
+                _referenceService = new(_navigationManager);
+                for (int i = 0; i < missingAssemblies.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string assemblyName = missingAssemblies[i];
+                    AssemblyDetails assemblyDetails = new() { Name = assemblyName };
+                    try
+                    {
+                        MetadataReference metadataReference = await _referenceService.CreateAsync(assemblyDetails);
+                        if (metadataReference != null)
+                        {
+                            metadataReferences.Add(metadataReference);
+                            _referenceCache[assemblyName] = metadataReference; // cache successes only
+                        }
+                        else
+                        {
+                            failedAssemblies.Add(assemblyName);
+                        }
+                    }
+                    catch
+                    {
                         failedAssemblies.Add(assemblyName);
+                    }
+                    onProgress?.Invoke(++resolved, total);
                 }
-                catch
-                {
-                    failedAssemblies.Add(assemblyName);
-                }
-                onProgress?.Invoke(++resolved, total);
             }
 
             if (failedAssemblies.Count > 0)
@@ -193,8 +228,14 @@ namespace XnaFiddle
 
             SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
 
+            // Phase timing: reference resolution vs. parse+emit. Stopwatch is monotonic and
+            // works in single-threaded Blazor WASM; DateTime.Now is too coarse for this.
+            Stopwatch refsStopwatch = Stopwatch.StartNew();
             (List<MetadataReference> metadataReferences, List<string> failedAssemblies, string versionInfo) =
                 await GetMetadataReferencesAsync(onProgress, cancellationToken);
+            refsStopwatch.Stop();
+
+            Stopwatch emitStopwatch = Stopwatch.StartNew();
 
             // Compile
             CSharpCompilationOptions compilationOptions = new(
@@ -213,10 +254,12 @@ namespace XnaFiddle
             List<DiagnosticInfo> securityErrors = SecurityChecker.Check(compilation, syntaxTree);
             if (securityErrors.Count > 0)
             {
+                emitStopwatch.Stop();
+                string securityTiming = LogTiming(refsStopwatch, emitStopwatch, metadataReferences.Count);
                 return new CompilationResult
                 {
                     ILBytes = null,
-                    Log = string.Join("\n", securityErrors.Select(e => e.Message)),
+                    Log = string.Join("\n", securityErrors.Select(e => e.Message)) + "\n" + securityTiming,
                     Success = false,
                     Diagnostics = securityErrors,
                     FailedAssemblies = failedAssemblies,
@@ -226,6 +269,10 @@ namespace XnaFiddle
 
             using MemoryStream ILMemoryStream = new();
             EmitResult emitResult = compilation.Emit(ILMemoryStream);
+            emitStopwatch.Stop();
+
+            string timingSummary = LogTiming(refsStopwatch, emitStopwatch, metadataReferences.Count);
+            log += timingSummary + "\n";
 
             List<DiagnosticInfo> diagnosticInfos = [];
             for (int i = 0; i < emitResult.Diagnostics.Length; i++)
@@ -262,6 +309,16 @@ namespace XnaFiddle
                 FailedAssemblies = failedAssemblies,
                 VersionInfo = versionInfo
             };
+        }
+
+        // Logs the per-phase compile breakdown to the browser console and returns a compact
+        // one-line summary for the diagnostics panel. "cached" reflects the persistent
+        // success cache size, so warm compiles read close to "refs: 0ms".
+        private string LogTiming(Stopwatch refsStopwatch, Stopwatch emitStopwatch, int referenceCount)
+        {
+            string summary = $"refs: {refsStopwatch.ElapsedMilliseconds}ms, emit: {emitStopwatch.ElapsedMilliseconds}ms ({referenceCount} refs, {_referenceCache.Count} cached)";
+            Console.WriteLine($"[XnaFiddle][timing] {summary}");
+            return summary;
         }
 
         private static string GetAssemblyVersion(string assemblyName)
