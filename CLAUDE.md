@@ -4,6 +4,10 @@
 
 XnaFiddle is a standalone KNI game runner with an in-browser C# editor. It is a Blazor WASM app with a WebGL canvas and Monaco code editor that lets users write, compile, and run XNA/KNI game code directly in the browser.
 
+## Skills
+
+On **any** task — research, maintenance, new features, bug fixes, refactors, docs, reviews — first check whether an available skill applies, and load it before proceeding. Skills (e.g. `file-loading`, `intellisense`, `verify`, `run`, `code-review`) carry condensed, repo-specific knowledge that prevents rediscovering subsystem details from scratch. When a skill matches the work, invoke it; if none fit, say so briefly and continue. This check is in addition to, not a replacement for, the Agent Workflow below.
+
 ## Agent Workflow
 
 For every task, invoke the appropriate agent from `.claude/agents/` before proceeding. The agent's instructions provide guidelines for how the task should be performed. Before doing any work, announce which agent you are using such as "Invoking coder agent for this task..."

@@ -3,6 +3,18 @@
 window.monacoInterop = {
     _editor: null,
 
+    // Multi-model support (tabbed editor, issue #26 phase 2). The editor instance is
+    // single; each tab is a separate monaco model swapped in via editor.setModel().
+    //   _models:        name -> monaco.ITextModel (includes the C# tab + each .fx tab)
+    //   _csharpModel:   the C# program model. getValue/setValue ALWAYS target this one
+    //                   (not the active model) so the ~14 existing call sites that mean
+    //                   "the C# program" keep working regardless of which tab is showing.
+    //   _activeName:    name of the currently shown tab.
+    _models: {},
+    _csharpModel: null,
+    _activeName: null,
+    CSHARP_TAB: 'Game.cs',
+
     init: function (containerId, initialCode) {
         return new Promise(function (resolve) {
             require.config({
@@ -28,11 +40,18 @@ window.monacoInterop = {
                 window.monacoInterop._registerHover();
                 window.monacoInterop._registerAddUsingCommand();
 
+                // Create the C# program model up front and keep a dedicated reference to it.
+                var interop = window.monacoInterop;
+                var csModel = monaco.editor.createModel(initialCode, 'csharp');
+                interop._models = {};
+                interop._models[interop.CSHARP_TAB] = csModel;
+                interop._csharpModel = csModel;
+                interop._activeName = interop.CSHARP_TAB;
+
                 window.monacoInterop._editor = monaco.editor.create(
                     document.getElementById(containerId),
                     {
-                        value: initialCode,
-                        language: 'csharp',
+                        model: csModel,
                         theme: 'xnafiddle-dark',
                         fontSize: 14,
                         fontFamily: "Consolas, 'Courier New', monospace",
@@ -53,6 +72,10 @@ window.monacoInterop = {
                 );
 
                 window.monacoInterop._editor.onDidChangeModelContent(function () {
+                    // Roslyn diagnostics and the C#-only change callback apply to the C#
+                    // program only — skip when a shader (.fx) tab is the active model.
+                    if (window.monacoInterop._editor.getModel() !== window.monacoInterop._csharpModel) return;
+
                     // Live diagnostics (squiggles) — debounced, readiness-gated.
                     window.monacoInterop._scheduleDiagnostics();
 
@@ -103,6 +126,9 @@ window.monacoInterop = {
         if (!ref || !interop._editor) return;
         var model = interop._editor.getModel();
         if (!model) return;
+        // Roslyn diagnostics are for C# only; a diagnostics run scheduled before the user
+        // switched to a shader (.fx) tab must not send HLSL to Roslyn.
+        if (model !== interop._csharpModel) return;
         var source = model.getValue();
         var diags;
         try {
@@ -571,23 +597,94 @@ window.monacoInterop = {
         window.monacoInterop._changeTimer = null;
     },
 
+    // getValue/setValue target the C# program model specifically (NOT the active tab),
+    // so existing callers that mean "the C# code" work no matter which tab is showing.
     getValue: function () {
-        if (window.monacoInterop._editor) {
-            return window.monacoInterop._editor.getValue();
-        }
-        return '';
+        var m = window.monacoInterop._csharpModel;
+        return m ? m.getValue() : '';
     },
 
     setValue: function (code) {
-        if (window.monacoInterop._editor) {
-            window.monacoInterop._editor.setValue(code);
+        var m = window.monacoInterop._csharpModel;
+        if (m) m.setValue(code);
+    },
+
+    // ---- Tabbed editor: model management (issue #26 phase 2) ----
+
+    // Create (or replace the content of) a named model and give it a language.
+    // Used for shader (.fx, language 'hlsl') tabs. The C# tab is created in init().
+    createModel: function (name, content, language) {
+        var interop = window.monacoInterop;
+        var existing = interop._models[name];
+        if (existing) {
+            existing.setValue(content);
+            return;
+        }
+        interop._models[name] = monaco.editor.createModel(content, language);
+    },
+
+    // Show the named tab's model in the editor.
+    switchToModel: function (name) {
+        var interop = window.monacoInterop;
+        var model = interop._models[name];
+        if (model && interop._editor) {
+            interop._editor.setModel(model);
+            interop._activeName = name;
+        }
+    },
+
+    getModelValue: function (name) {
+        var model = window.monacoInterop._models[name];
+        return model ? model.getValue() : '';
+    },
+
+    // Dispose a tab's model. If it was active, the caller is expected to switchToModel
+    // to another tab immediately afterward.
+    disposeModel: function (name) {
+        var interop = window.monacoInterop;
+        var model = interop._models[name];
+        if (!model) return;
+        // Never dispose the model currently bound to the editor without rebinding first,
+        // or Monaco throws; rebind to the C# model defensively.
+        if (interop._editor && interop._editor.getModel() === model) {
+            interop._editor.setModel(interop._csharpModel);
+            interop._activeName = interop.CSHARP_TAB;
+        }
+        model.dispose();
+        delete interop._models[name];
+    },
+
+    // Re-key a model under a new name (tab rename). The model and its language are
+    // unchanged; only our name->model map and active-name bookkeeping move.
+    renameModel: function (oldName, newName) {
+        var interop = window.monacoInterop;
+        var model = interop._models[oldName];
+        if (!model || oldName === newName) return;
+        interop._models[newName] = model;
+        delete interop._models[oldName];
+        if (interop._activeName === oldName) interop._activeName = newName;
+    },
+
+    // Dispose every shader model and reset to just the C# tab (used when loading an
+    // example / shared fiddle that brings its own — or no — shader tabs).
+    resetToCSharpOnly: function () {
+        var interop = window.monacoInterop;
+        if (interop._editor) interop._editor.setModel(interop._csharpModel);
+        interop._activeName = interop.CSHARP_TAB;
+        var names = Object.keys(interop._models);
+        for (var i = 0; i < names.length; i++) {
+            if (names[i] === interop.CSHARP_TAB) continue;
+            interop._models[names[i]].dispose();
+            delete interop._models[names[i]];
         }
     },
 
     setDiagnostics: function (markers) {
         // markers: array of { startLine, startCol, endLine, endCol, message, severity }
-        if (window.monacoInterop._editor) {
-            var model = window.monacoInterop._editor.getModel();
+        // Compile diagnostics are for the C# program — always mark the C# model, even if
+        // a shader tab is currently showing.
+        if (window.monacoInterop._csharpModel) {
+            var model = window.monacoInterop._csharpModel;
             var monacoMarkers = markers.map(function (m) {
                 return {
                     startLineNumber: m.startLine,
@@ -607,9 +704,8 @@ window.monacoInterop = {
     },
 
     clearDiagnostics: function () {
-        if (window.monacoInterop._editor) {
-            var model = window.monacoInterop._editor.getModel();
-            monaco.editor.setModelMarkers(model, 'compilation', []);
+        if (window.monacoInterop._csharpModel) {
+            monaco.editor.setModelMarkers(window.monacoInterop._csharpModel, 'compilation', []);
         }
     }
 };

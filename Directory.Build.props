@@ -7,4 +7,51 @@
     <NoWarn>$(NoWarn);CS8500;CS3001;CS3002;CS3003;CS3008;CS3009;CS0108;CS0162;CS0168;CS0169;CS0219;CS0414;CS0618;CS0649;CS0660;CS0661;CS1066;CS1572;CS1573;CS1734;CS4014;CS8981;IL2057;IL2067;IL2070;IL2087</NoWarn>
   </PropertyGroup>
 
+  <!--
+    ╔══════════════════════════════════════════════════════════════════════╗
+    ║  LIBRARY VERSIONS — single source of truth                           ║
+    ║                                                                      ║
+    ║  These properties drive both the PackageReferences in                ║
+    ║  XnaFiddle.BlazorGL AND the generated PackageVersions class (emitted  ║
+    ║  by XnaFiddle.Core, used by ProjectExporter to write correct NuGet   ║
+    ║  versions into exported projects). They live here so both the        ║
+    ║  net8.0-browser app and the net8.0 Core library share one source.    ║
+    ║                                                                      ║
+    ║  To update a library version, change it HERE — everything else       ║
+    ║  flows automatically. See GeneratePackageVersions in Core.csproj.    ║
+    ╚══════════════════════════════════════════════════════════════════════╝
+  -->
+  <PropertyGroup>
+    <!-- KNI framework — 10 core packages all share this version.
+         Update when the KniSB submodule is updated (XnaFiddle builds KNI from source,
+         but exported projects reference these NuGet packages). -->
+    <KniFrameworkVersion>4.2.9001</KniFrameworkVersion>
+
+    <!-- KNI platform packages — each platform may ship on its own release cadence -->
+    <KniPlatformDesktopGLVersion>4.2.9001.1</KniPlatformDesktopGLVersion>
+    <KniPlatformWindowsDXVersion>4.2.9001</KniPlatformWindowsDXVersion>
+    <KniPlatformAndroidVersion>4.2.9001.1</KniPlatformAndroidVersion>
+    <KniPlatformBlazorGLVersion>4.2.9001.2</KniPlatformBlazorGLVersion>
+    <KniContentPipelineVersion>4.2.9001</KniContentPipelineVersion>
+    <!-- JS version shipped by the nkast.Wasm.* transitive packages.
+         Update when KNI platform NuGet packages bump their Wasm dependency. -->
+    <KniWasmJsVersion>8.0.11</KniWasmJsVersion>
+
+    <!-- MonoGame framework — not used by XnaFiddle itself, only in exported projects -->
+    <MonoGameFrameworkVersion>3.8.4.1</MonoGameFrameworkVersion>
+
+    <!-- Third-party game libraries -->
+    <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
+    <AposShapesVersion>0.6.8</AposShapesVersion>
+    <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
+    <GumVersion>2026.4.28.1-preview.9</GumVersion>
+    <KniExtendedVersion>5.5.0</KniExtendedVersion>
+    <KernSmithVersion>0.12.3</KernSmithVersion>
+    <MlemVersion>8.1.0</MlemVersion>
+    <!-- In-browser HLSL .fx -> .mgfx compiler (ShadowDusk.Wasm NuGet). Build-time/runtime
+         tool only — intentionally NOT added to the generated PackageVersions class, since
+         exported projects ship pre-compiled .mgfx and don't need the compiler. -->
+    <ShadowDuskWasmVersion>0.1.0</ShadowDuskWasmVersion>
+  </PropertyGroup>
+
 </Project>
