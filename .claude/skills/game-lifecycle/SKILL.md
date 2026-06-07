@@ -59,7 +59,7 @@ In the BlazorGL platform this flag is read in **exactly one place** — the `Pla
 
 Reusing the same `MetadataReference` instances also lets Roslyn reuse decoded symbol tables across compilations, helping `Emit` too. `IntellisenseService` shares `GetMetadataReferencesAsync`, so its completion surface matches the compile surface and it benefits from the same cache.
 
-Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit now dominates**. `LogTiming` writes a `[XnaFiddle][timing] refs: …ms, emit: …ms (…refs, …cached)` line to the console and the diagnostics panel (`Stopwatch`, monotonic).
+Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit now dominates** (the cache turned the reference step from the bottleneck into a rounding error). The user-facing "Compiled in Xs" message in `DoCompileAndRun` reflects the total.
 
 ## Why the leak "suddenly appeared"
 

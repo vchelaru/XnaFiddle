@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -228,14 +227,8 @@ namespace XnaFiddle
 
             SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
 
-            // Phase timing: reference resolution vs. parse+emit. Stopwatch is monotonic and
-            // works in single-threaded Blazor WASM; DateTime.Now is too coarse for this.
-            Stopwatch refsStopwatch = Stopwatch.StartNew();
             (List<MetadataReference> metadataReferences, List<string> failedAssemblies, string versionInfo) =
                 await GetMetadataReferencesAsync(onProgress, cancellationToken);
-            refsStopwatch.Stop();
-
-            Stopwatch emitStopwatch = Stopwatch.StartNew();
 
             // Compile
             CSharpCompilationOptions compilationOptions = new(
@@ -254,12 +247,10 @@ namespace XnaFiddle
             List<DiagnosticInfo> securityErrors = SecurityChecker.Check(compilation, syntaxTree);
             if (securityErrors.Count > 0)
             {
-                emitStopwatch.Stop();
-                string securityTiming = LogTiming(refsStopwatch, emitStopwatch, metadataReferences.Count);
                 return new CompilationResult
                 {
                     ILBytes = null,
-                    Log = string.Join("\n", securityErrors.Select(e => e.Message)) + "\n" + securityTiming,
+                    Log = string.Join("\n", securityErrors.Select(e => e.Message)),
                     Success = false,
                     Diagnostics = securityErrors,
                     FailedAssemblies = failedAssemblies,
@@ -269,10 +260,6 @@ namespace XnaFiddle
 
             using MemoryStream ILMemoryStream = new();
             EmitResult emitResult = compilation.Emit(ILMemoryStream);
-            emitStopwatch.Stop();
-
-            string timingSummary = LogTiming(refsStopwatch, emitStopwatch, metadataReferences.Count);
-            log += timingSummary + "\n";
 
             List<DiagnosticInfo> diagnosticInfos = [];
             for (int i = 0; i < emitResult.Diagnostics.Length; i++)
@@ -309,16 +296,6 @@ namespace XnaFiddle
                 FailedAssemblies = failedAssemblies,
                 VersionInfo = versionInfo
             };
-        }
-
-        // Logs the per-phase compile breakdown to the browser console and returns a compact
-        // one-line summary for the diagnostics panel. "cached" reflects the persistent
-        // success cache size, so warm compiles read close to "refs: 0ms".
-        private string LogTiming(Stopwatch refsStopwatch, Stopwatch emitStopwatch, int referenceCount)
-        {
-            string summary = $"refs: {refsStopwatch.ElapsedMilliseconds}ms, emit: {emitStopwatch.ElapsedMilliseconds}ms ({referenceCount} refs, {_referenceCache.Count} cached)";
-            Console.WriteLine($"[XnaFiddle][timing] {summary}");
-            return summary;
         }
 
         private static string GetAssemblyVersion(string assemblyName)
