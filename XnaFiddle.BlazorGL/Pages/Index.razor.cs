@@ -587,6 +587,11 @@ technique BasicColorDrawing
             await Task.CompletedTask;
             return null;
 #else
+            // Clear stale shader markers on every current tab so squiggles from a previous failed
+            // run never linger after the offending line is fixed.
+            foreach (string tab in _shaderTabs)
+                await JsRuntime.InvokeVoidAsync("monacoInterop.clearShaderDiagnostics", tab);
+
             var current = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (_shaderTabs.Count > 0)
             {
@@ -608,6 +613,12 @@ technique BasicColorDrawing
                     var result = await compiler.CompileAsync(source, options, _compileCts.Token);
                     if (result.IsFailure)
                     {
+                        // Inline Monaco squiggles on the failing shader, mirroring C# compile
+                        // diagnostics, then bring that tab into view so they're visible (the text
+                        // panel alone doesn't reveal which line broke). See issue #26.
+                        var markers = MapShaderErrors(result.Error);
+                        await JsRuntime.InvokeVoidAsync("monacoInterop.setShaderDiagnostics", fileName, markers);
+                        await SelectTab(fileName);
                         string detail = string.Join("\n",
                             System.Linq.Enumerable.Select(result.Error, e => e.FxcFormattedMessage));
                         return $"{fileName}:\n{detail}";
@@ -626,8 +637,40 @@ technique BasicColorDrawing
                     InMemoryContentManager.RemoveFile(old);
             _lastCompiledShaders = current;
             return null;
-#endif
         }
+
+        // Converts ShadowDusk's ShaderError[] into the editor's DiagnosticInfo DTO so the same
+        // Monaco marker path used for C# can render inline shader squiggles. Include-not-found and
+        // circular-include errors can report Line/Column 0; clamp to 1 so they still anchor to a
+        // valid position. Each error stays a bare point — the JS side widens it to the word under
+        // the position so the squiggle is visible.
+        private static List<DiagnosticInfo> MapShaderErrors(ShadowDusk.Core.ShaderError[] errors)
+        {
+            var list = new List<DiagnosticInfo>(errors.Length);
+            foreach (var e in errors)
+            {
+                int line = e.Line > 0 ? e.Line : 1;
+                int col = e.Column > 0 ? e.Column : 1;
+                string severity = e.Severity switch
+                {
+                    ShadowDusk.Core.ShaderErrorSeverity.Error => "error",
+                    ShadowDusk.Core.ShaderErrorSeverity.Warning => "warning",
+                    _ => "info",
+                };
+                string message = string.IsNullOrEmpty(e.Code) ? e.Message : $"{e.Code}: {e.Message}";
+                list.Add(new DiagnosticInfo
+                {
+                    StartLine = line,
+                    StartCol = col,
+                    EndLine = line,
+                    EndCol = col, // bare point; JS widens to the word at this position
+                    Message = message,
+                    Severity = severity,
+                });
+            }
+            return list;
+        }
+#endif
 
         // ---- Tabbed editor: tab operations (issue #26 phase 2) ----
 
