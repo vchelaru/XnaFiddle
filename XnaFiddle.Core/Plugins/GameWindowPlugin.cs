@@ -32,6 +32,34 @@ namespace XnaFiddle.Plugins
                 // Intentionally swallowed. The only realistic failure is a rename of the type or
                 // field, which would surface immediately in development. Nothing actionable at runtime.
             }
+
+            try
+            {
+                // Clear KNI's Document element-id cache so a swapped/recreated canvas is re-resolved
+                // rather than served the stale Canvas wrapper (which points at the now-detached old
+                // <canvas> -> black screen). A Reach<->HiDef profile switch recreates theCanvas to
+                // get a fresh WebGL context type (see Index.razor.cs DoCompileAndRun). Resolved by
+                // name for the same reason as above: nkast.Wasm.Dom lives in the browser-only
+                // assembly. Clearing this every run is harmless — a same-element run just re-resolves
+                // the same context. Wrapped in its own try/catch with the same swallow rationale.
+                Type windowDomType = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(a => a.GetType("nkast.Wasm.Dom.Window"))
+                    .FirstOrDefault(t => t != null);
+                var currentProp = windowDomType?.GetProperty("Current",
+                    BindingFlags.Static | BindingFlags.Public);
+                object window = currentProp?.GetValue(null);
+                var documentProp = window?.GetType().GetProperty("Document",
+                    BindingFlags.Instance | BindingFlags.Public);
+                object document = documentProp?.GetValue(window);
+                var cacheField = document?.GetType().GetField("_elementsCache",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                if (cacheField?.GetValue(document) is IDictionary cache)
+                    cache.Clear();
+            }
+            catch
+            {
+                // Intentionally swallowed — same rationale as the _instances clear above.
+            }
         }
     }
 }

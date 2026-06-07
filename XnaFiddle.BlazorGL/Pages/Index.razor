@@ -605,7 +605,7 @@
     right: 0;
     bottom: 0;
     left: @(_embedMode ? "0" : "calc(45vw + 2px)");">
-    <canvas id="theCanvas" style="touch-action:none;"></canvas>
+    <canvas @key="_canvasGen" id="theCanvas" style="touch-action:none;"></canvas>
     @if (_embedMode && _isCompiling)
     {
         var embedAssemblyDone = _compileTotal > 0 && _compileProgress >= _compileTotal;
@@ -654,7 +654,7 @@
             <i class="codicon codicon-edit" style="font-size: 11px;"></i> Edit in XnaFiddle
         </a>
     }
-    @if (_game == null && !_isCompiling && !_profileSwitchPending)
+    @if (_game == null && !_isCompiling)
     {
         <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;">
             <div style="text-align: center; color: #888; font-family: 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.8; user-select: none;">
@@ -709,55 +709,3 @@
     }
 </div>
 
-@* Profile-switch confirmation (#25). A canvas can't change WebGL version in place, so switching
-   between Reach/HiDef requires a full page reload. We surface that explicitly — and warn about
-   any uploaded files that won't survive the reload — instead of reloading silently. *@
-@if (_profileSwitchPending)
-{
-    <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200;
-                display: flex; align-items: center; justify-content: center;">
-        <div style="background: #252526; border: 1px solid #444; border-radius: 6px;
-                    width: 90%; max-width: 460px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-                    overflow: hidden; font-family: 'Segoe UI', sans-serif;">
-            <div style="padding: 10px 16px; background: #2d2d2d; border-bottom: 1px solid #333;">
-                <span style="color: #dcdcaa; font-size: 14px; font-weight: 500;">Graphics mode switch required</span>
-            </div>
-            <div style="padding: 16px; color: #d4d4d4; font-size: 13px; line-height: 1.6;">
-                @if (_assetsLostOnReload.Count > 0)
-                {
-                    <p style="margin: 0 0 6px; color: #f48771; font-weight: 600;">
-                        @(_assetsLostOnReload.Count == 1 ? "This uploaded file" : "These uploaded files")
-                        will be lost — not loaded from a URL, so it can't be restored after the reload:
-                    </p>
-                    <ul style="margin: 0 0 6px; padding-left: 22px; color: #f48771;">
-                        @foreach (var name in _assetsLostOnReload)
-                        {
-                            <li>@name</li>
-                        }
-                    </ul>
-                    <p style="margin: 0 0 12px; color: #888; font-size: 12px;">
-                        Tip: Cancel and re-add them via &ldquo;from URL&rdquo; if you want them to survive the switch.
-                    </p>
-                }
-                <p style="margin: 0 0 10px;">
-                    This game uses <b>@ProfileName(_pendingProfile)</b>, but the page is currently
-                    running in <b>@ProfileName(_canvasProfile ?? Microsoft.Xna.Framework.Graphics.GraphicsProfile.Reach)</b>.
-                </p>
-                <p style="margin: 0;">
-                    A browser canvas can't change graphics mode once it has started, so XnaFiddle must
-                    <b>reload the whole page</b> to switch. Your code is kept, and assets loaded from a
-                    URL are re-fetched automatically.
-                </p>
-            </div>
-            <div style="padding: 12px 16px; background: #2d2d2d; border-top: 1px solid #333;
-                        display: flex; justify-content: flex-end; gap: 8px;">
-                <button @onclick="CancelProfileSwitch"
-                        style="padding: 5px 14px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555;
-                               cursor: pointer; font-size: 13px;">Cancel</button>
-                <button @onclick="ConfirmProfileSwitch"
-                        style="padding: 5px 14px; background: #0e639c; color: white; border: none;
-                               cursor: pointer; font-size: 13px;">Reload &amp; Run</button>
-            </div>
-        </div>
-    </div>
-}
