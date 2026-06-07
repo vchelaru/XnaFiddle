@@ -707,6 +707,46 @@ window.monacoInterop = {
         if (window.monacoInterop._csharpModel) {
             monaco.editor.setModelMarkers(window.monacoInterop._csharpModel, 'compilation', []);
         }
+    },
+
+    setShaderDiagnostics: function (name, markers) {
+        // markers: array of { startLine, startCol, endLine, endCol, message, severity }
+        // Marks a specific shader (.fx) model by tab name, mirroring setDiagnostics for C#.
+        var model = window.monacoInterop._models[name];
+        if (!model) return;
+        var monacoMarkers = markers.map(function (m) {
+            var startLine = m.startLine, startCol = m.startCol;
+            var endLine = m.endLine, endCol = m.endCol;
+            // ShadowDusk often reports only a point (Line/Column). Underline the word at that
+            // position so the squiggle is visible; fall back to the rest of the line.
+            if (endLine === startLine && endCol <= startCol) {
+                var word = model.getWordAtPosition({ lineNumber: startLine, column: startCol });
+                if (word) {
+                    startCol = word.startColumn;
+                    endCol = word.endColumn;
+                } else {
+                    endCol = model.getLineMaxColumn(startLine);
+                }
+            }
+            return {
+                startLineNumber: startLine,
+                startColumn: startCol,
+                endLineNumber: endLine,
+                endColumn: endCol,
+                message: m.message,
+                severity: m.severity === 'error'
+                    ? monaco.MarkerSeverity.Error
+                    : m.severity === 'warning'
+                        ? monaco.MarkerSeverity.Warning
+                        : monaco.MarkerSeverity.Info
+            };
+        });
+        monaco.editor.setModelMarkers(model, 'shader', monacoMarkers);
+    },
+
+    clearShaderDiagnostics: function (name) {
+        var model = window.monacoInterop._models[name];
+        if (model) monaco.editor.setModelMarkers(model, 'shader', []);
     }
 };
 
