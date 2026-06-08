@@ -640,16 +640,18 @@ technique BasicColorDrawing
         }
 
         // Converts ShadowDusk's ShaderError[] into the editor's DiagnosticInfo DTO so the same
-        // Monaco marker path used for C# can render inline shader squiggles. Include-not-found and
-        // circular-include errors can report Line/Column 0; clamp to 1 so they still anchor to a
-        // valid position. Each error stays a bare point — the JS side widens it to the word under
-        // the position so the squiggle is visible.
+        // Monaco marker path used for C# can render inline shader squiggles. A ShaderError with
+        // Line <= 0 has no source location (e.g. a load/runtime failure) — it can't be anchored to
+        // a glyph, so it is skipped here and surfaces only in the text diagnostics panel rather
+        // than mis-squiggling line 1. Each located error stays a bare point — the JS side widens it
+        // to the word under the position so the squiggle is visible.
         private static List<DiagnosticInfo> MapShaderErrors(ShadowDusk.Core.ShaderError[] errors)
         {
             var list = new List<DiagnosticInfo>(errors.Length);
             foreach (var e in errors)
             {
-                int line = e.Line > 0 ? e.Line : 1;
+                if (e.Line <= 0)
+                    continue; // no source location — shown in the text panel, not squiggled
                 int col = e.Column > 0 ? e.Column : 1;
                 string severity = e.Severity switch
                 {
@@ -660,9 +662,9 @@ technique BasicColorDrawing
                 string message = string.IsNullOrEmpty(e.Code) ? e.Message : $"{e.Code}: {e.Message}";
                 list.Add(new DiagnosticInfo
                 {
-                    StartLine = line,
+                    StartLine = e.Line,
                     StartCol = col,
-                    EndLine = line,
+                    EndLine = e.Line,
                     EndCol = col, // bare point; JS widens to the word at this position
                     Message = message,
                     Severity = severity,
