@@ -736,13 +736,19 @@ window.monacoInterop = {
 
             tokenizer: {
                 root: [
-                    // 1. Whitespace + comments (block comments use a pushed state below).
-                    { include: '@whitespace' },
+                    // 1. Preprocessor directives (#if / #else / #define / #endif / ...). This
+                    //    MUST come before @whitespace: the rule is ^-anchored and matches the
+                    //    leading indentation itself (^\s*). If @whitespace consumed the indent
+                    //    first, ^ would no longer match and an indented directive would go
+                    //    unhighlighted. We color only the `#word` and push NO state, so the macro
+                    //    name and value tokenize normally (distinct colors, not one blue blob)
+                    //    and there is no sub-state that can leak into the next line. A directive
+                    //    with no trailing text (#else / #endif) is therefore handled correctly,
+                    //    and a '\'-continued macro body simply tokenizes as ordinary code.
+                    [/^\s*#\s*\w+/, 'keyword.directive'],
 
-                    // 2. Preprocessor directives (#if / #define / #include / ...). Pushed into
-                    //    a dedicated state so a trailing '\' line-continuation keeps the
-                    //    directive open across lines instead of bleeding into real code.
-                    [/^\s*#\s*[a-zA-Z_]\w*/, { token: 'keyword.directive', next: '@directive' }],
+                    // 2. Whitespace + comments (block comments use a pushed state below).
+                    { include: '@whitespace' },
 
                     // 3. HLSL semantics: a ':' followed by a name (: SV_POSITION, : COLOR0,
                     //    : register(t0)). Heuristic — a ternary's ': x' is colored too, which
@@ -804,18 +810,6 @@ window.monacoInterop = {
                     [/[^/*]+/, 'comment'],
                     [/\*\//, { token: 'comment', next: '@pop' }],
                     [/[/*]/, 'comment']
-                ],
-
-                // Preprocessor body. The whole directive (incl. macro body) is colored as a
-                // directive token. A '\' at end of line keeps the state open for the next
-                // line; otherwise we pop at end of line. Popping happens inside the rule that
-                // consumes to EOL because Monaco stops tokenizing a line at its end (a bare
-                // '$' @pop rule would never run and the state would bleed downward).
-                directive: [
-                    [/\\$/, 'keyword.directive'],                              // line continuation: stay open
-                    [/[^\\]*$/, { token: 'keyword.directive', next: '@pop' }], // body to EOL, then close
-                    [/[^\\]+/, 'keyword.directive'],                           // body up to a mid-line backslash
-                    [/\\/, 'keyword.directive']
                 ],
 
                 string: [
