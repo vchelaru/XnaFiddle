@@ -39,6 +39,8 @@ window.monacoInterop = {
                 window.monacoInterop._registerSignatureHelp();
                 window.monacoInterop._registerHover();
                 window.monacoInterop._registerAddUsingCommand();
+                // Register the HLSL (.fx shader) language so .fx tabs are syntax-highlighted.
+                window.monacoInterop._registerHlsl();
 
                 // Create the C# program model up front and keep a dedicated reference to it.
                 var interop = window.monacoInterop;
@@ -590,6 +592,247 @@ window.monacoInterop = {
         } catch (e) {
             console.warn('[AddUsing] registerCommand threw:', e);
         }
+    },
+
+    // Registers HLSL (.fx shader) syntax highlighting. Monaco ships no built-in 'hlsl'
+    // language, so the createModel(name, source, 'hlsl') calls used for shader tabs would
+    // otherwise fall back to plaintext (everything uncolored). We register the language id
+    // here with a Monarch grammar whose token coverage matches/exceeds Shiki's source.hlsl
+    // (keywords, scalar/vector/matrix/object types, and HLSL intrinsics), plus a few things
+    // Shiki's grammar lacks (member-access / swizzle coloring and semantic-name coloring).
+    _registerHlsl: function () {
+        // Generate the vector (float2, int4, ...) and matrix (float4x4, ...) type names
+        // programmatically rather than listing all ~120 by hand. Dims run 1-4 each.
+        var scalarBases = ['bool', 'int', 'uint', 'half', 'float', 'double'];
+        var typeKeywords = [
+            // scalars
+            'bool', 'int', 'uint', 'dword', 'half', 'float', 'double',
+            'min16float', 'min10float', 'min16int', 'min12int', 'min16uint',
+            'void', 'string', 'matrix', 'vector',
+            // texture / buffer / sampler object types
+            'Texture1D', 'Texture1DArray', 'Texture2D', 'Texture2DArray',
+            'Texture2DMS', 'Texture2DMSArray', 'Texture3D', 'TextureCube',
+            'TextureCubeArray', 'Buffer', 'ByteAddressBuffer', 'StructuredBuffer',
+            'AppendStructuredBuffer', 'ConsumeStructuredBuffer', 'RWBuffer',
+            'RWByteAddressBuffer', 'RWStructuredBuffer', 'RWTexture1D',
+            'RWTexture1DArray', 'RWTexture2D', 'RWTexture2DArray', 'RWTexture3D',
+            'ConstantBuffer', 'InputPatch', 'OutputPatch',
+            'sampler', 'sampler1D', 'sampler2D', 'sampler3D', 'samplerCUBE',
+            'sampler_state', 'SamplerState', 'SamplerComparisonState',
+            'PixelShader', 'VertexShader', 'GeometryShader', 'HullShader',
+            'DomainShader', 'ComputeShader'
+        ];
+        for (var b = 0; b < scalarBases.length; b++) {
+            var base = scalarBases[b];
+            for (var n = 1; n <= 4; n++) {
+                typeKeywords.push(base + n);          // vectors: float2, int4, ...
+            }
+            for (var r = 1; r <= 4; r++) {
+                for (var c = 1; c <= 4; c++) {
+                    typeKeywords.push(base + r + 'x' + c); // matrices: float4x4, ...
+                }
+            }
+        }
+
+        // Control-flow + storage-class + misc keywords. Note: sampler_state / SamplerState /
+        // SamplerComparisonState are intentionally classified as types (above), not here, so a
+        // word lands in exactly one Monarch case bucket.
+        var keywords = [
+            'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default',
+            'break', 'continue', 'return', 'discard', 'true', 'false',
+            'struct', 'cbuffer', 'tbuffer', 'typedef', 'namespace',
+            'technique', 'technique10', 'technique11', 'pass',
+            'compile', 'compile_fragment', 'register', 'packoffset',
+            'static', 'const', 'volatile', 'extern', 'uniform', 'inline',
+            'in', 'out', 'inout', 'precise', 'shared', 'groupshared',
+            'globallycoherent', 'centroid', 'nointerpolation', 'noperspective',
+            'linear', 'sample', 'row_major', 'column_major', 'snorm', 'unorm',
+            'stateblock', 'stateblock_state', 'fxgroup', 'interface', 'class'
+        ];
+
+        // HLSL intrinsic functions (tokenized as 'predefined' to distinguish them from
+        // user-defined functions, which get 'identifier.function').
+        var builtinFunctions = [
+            'abs', 'acos', 'all', 'any', 'asin', 'atan', 'atan2', 'ceil', 'clamp',
+            'clip', 'cos', 'cosh', 'cross', 'ddx', 'ddy', 'degrees', 'determinant',
+            'distance', 'dot', 'exp', 'exp2', 'faceforward', 'floor', 'fmod', 'frac',
+            'frexp', 'fwidth', 'ldexp', 'length', 'lerp', 'lit', 'log', 'log10', 'log2',
+            'mad', 'max', 'min', 'modf', 'mul', 'normalize', 'pow', 'radians', 'reflect',
+            'refract', 'round', 'rsqrt', 'saturate', 'sign', 'sin', 'sincos', 'sinh',
+            'smoothstep', 'sqrt', 'step', 'tan', 'tanh', 'transpose', 'trunc',
+            'tex1D', 'tex1Dbias', 'tex1Dgrad', 'tex1Dlod', 'tex1Dproj',
+            'tex2D', 'tex2Dbias', 'tex2Dgrad', 'tex2Dlod', 'tex2Dproj',
+            'tex3D', 'tex3Dbias', 'tex3Dgrad', 'tex3Dlod', 'tex3Dproj',
+            'texCUBE', 'texCUBEbias', 'texCUBEgrad', 'texCUBElod', 'texCUBEproj',
+            'ddx_coarse', 'ddx_fine', 'ddy_coarse', 'ddy_fine',
+            'countbits', 'firstbithigh', 'firstbitlow', 'reversebits',
+            'asdouble', 'asfloat', 'asint', 'asuint', 'f16tof32', 'f32tof16',
+            'isfinite', 'isinf', 'isnan', 'dst', 'msad4',
+            'GroupMemoryBarrier', 'GroupMemoryBarrierWithGroupSync',
+            'DeviceMemoryBarrier', 'DeviceMemoryBarrierWithGroupSync',
+            'AllMemoryBarrier', 'AllMemoryBarrierWithGroupSync',
+            'InterlockedAdd', 'InterlockedAnd', 'InterlockedCompareExchange',
+            'InterlockedCompareStore', 'InterlockedExchange', 'InterlockedMax',
+            'InterlockedMin', 'InterlockedOr', 'InterlockedXor',
+            'EvaluateAttributeAtCentroid', 'EvaluateAttributeAtSample',
+            'EvaluateAttributeSnapped',
+            'Process2DQuadTessFactorsAvg', 'Process2DQuadTessFactorsMax',
+            'Process2DQuadTessFactorsMin', 'ProcessIsolineTessFactors',
+            'ProcessQuadTessFactorsAvg', 'ProcessQuadTessFactorsMax',
+            'ProcessQuadTessFactorsMin', 'ProcessTriTessFactorsAvg',
+            'ProcessTriTessFactorsMax', 'ProcessTriTessFactorsMin',
+            'CheckAccessFullyMapped', 'abort', 'errorf', 'printf',
+            'GetRenderTargetSampleCount', 'GetRenderTargetSamplePosition'
+        ];
+
+        monaco.languages.register({
+            id: 'hlsl',
+            extensions: ['.fx'],
+            aliases: ['HLSL', 'hlsl']
+        });
+
+        monaco.languages.setLanguageConfiguration('hlsl', {
+            comments: {
+                lineComment: '//',
+                blockComment: ['/*', '*/']
+            },
+            brackets: [
+                ['{', '}'],
+                ['[', ']'],
+                ['(', ')']
+            ],
+            autoClosingPairs: [
+                { open: '{', close: '}' },
+                { open: '[', close: ']' },
+                { open: '(', close: ')' },
+                { open: '"', close: '"' },
+                { open: "'", close: "'" }
+            ],
+            surroundingPairs: [
+                { open: '{', close: '}' },
+                { open: '[', close: ']' },
+                { open: '(', close: ')' },
+                { open: '"', close: '"' },
+                { open: "'", close: "'" }
+            ]
+        });
+
+        monaco.languages.setMonarchTokensProvider('hlsl', {
+            // defaultToken '' (not 'invalid') so any text we don't explicitly match renders
+            // as plain text rather than being marked red as an error.
+            defaultToken: '',
+            tokenPostfix: '.hlsl',
+            keywords: keywords,
+            typeKeywords: typeKeywords,
+            builtinFunctions: builtinFunctions,
+            operators: [
+                '=', '>', '<', '!', '~', '?', ':', '==', '<=', '>=', '!=',
+                '&&', '||', '++', '--', '+', '-', '*', '/', '&', '|', '^', '%',
+                '<<', '>>', '+=', '-=', '*=', '/=', '&=', '|=', '^=', '%=',
+                '<<=', '>>='
+            ],
+            symbols: /[=><!~?:&|+\-*\/\^%]+/,
+            escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]+|[0-7]{1,3})/,
+
+            tokenizer: {
+                root: [
+                    // 1. Whitespace + comments (block comments use a pushed state below).
+                    { include: '@whitespace' },
+
+                    // 2. Preprocessor directives (#if / #define / #include / ...). Pushed into
+                    //    a dedicated state so a trailing '\' line-continuation keeps the
+                    //    directive open across lines instead of bleeding into real code.
+                    [/^\s*#\s*[a-zA-Z_]\w*/, { token: 'keyword.directive', next: '@directive' }],
+
+                    // 3. HLSL semantics: a ':' followed by a name (: SV_POSITION, : COLOR0,
+                    //    : register(t0)). Heuristic — a ternary's ': x' is colored too, which
+                    //    is acceptable. Requires the name on the same line, so 'case x:' and
+                    //    'default:' (name on next line) are not falsely matched.
+                    [/(:)(\s*)([a-zA-Z_]\w*\d*)/, ['delimiter', 'white', 'keyword.semantic']],
+
+                    // 4. Name immediately before '(' — a call. Keep keyword/type/intrinsic
+                    //    classification (float4( is a type, tex2D( an intrinsic) and fall back
+                    //    to a user-function token otherwise. Lookahead so '(' isn't consumed.
+                    [/[a-zA-Z_]\w*(?=\s*\()/, {
+                        cases: {
+                            '@keywords': 'keyword',
+                            '@typeKeywords': 'type',
+                            '@builtinFunctions': 'predefined',
+                            '@default': 'identifier.function'
+                        }
+                    }],
+
+                    // 5. Member access / swizzle: the name after a '.' (col.rgb -> rgb).
+                    [/(\.)([a-zA-Z_]\w*)/, ['delimiter', 'variable']],
+
+                    // 6. Plain identifiers, classified via the keyword/type/intrinsic maps.
+                    [/[a-zA-Z_]\w*/, {
+                        cases: {
+                            '@keywords': 'keyword',
+                            '@typeKeywords': 'type',
+                            '@builtinFunctions': 'predefined',
+                            '@default': 'identifier'
+                        }
+                    }],
+
+                    // 7. Numbers (float forms before integers; hex; sci-notation; suffixes).
+                    [/0[xX][0-9a-fA-F]+[uUlL]*/, 'number.hex'],
+                    [/\d*\.\d+([eE][\-+]?\d+)?[fFhHlL]?/, 'number.float'],
+                    [/\d+\.\d*([eE][\-+]?\d+)?[fFhHlL]?/, 'number.float'],
+                    [/\d+[eE][\-+]?\d+[fFhHlL]?/, 'number.float'],
+                    [/\d+[uUlL]*/, 'number'],
+
+                    // 8. Strings and char literals.
+                    [/"/, { token: 'string.quote', next: '@string' }],
+                    [/'[^'\\]'/, 'string'],
+                    [/'/, { token: 'string.quote', next: '@charlit' }],
+
+                    // 9. Brackets, operators, and remaining delimiters.
+                    [/[{}()\[\]]/, '@brackets'],
+                    [/@symbols/, { cases: { '@operators': 'operator', '@default': '' } }],
+                    [/[;,.]/, 'delimiter']
+                ],
+
+                whitespace: [
+                    [/[ \t\r\n]+/, 'white'],
+                    [/\/\*/, { token: 'comment', next: '@comment' }],
+                    [/\/\/.*$/, 'comment']
+                ],
+
+                // Block comment: a pushed state so /* ... */ spans multiple lines correctly.
+                comment: [
+                    [/[^/*]+/, 'comment'],
+                    [/\*\//, { token: 'comment', next: '@pop' }],
+                    [/[/*]/, 'comment']
+                ],
+
+                // Preprocessor body. The whole directive (incl. macro body) is colored as a
+                // directive token. A '\' at end of line keeps the state open for the next
+                // line; otherwise we pop at end of line. Popping happens inside the rule that
+                // consumes to EOL because Monaco stops tokenizing a line at its end (a bare
+                // '$' @pop rule would never run and the state would bleed downward).
+                directive: [
+                    [/\\$/, 'keyword.directive'],                              // line continuation: stay open
+                    [/[^\\]*$/, { token: 'keyword.directive', next: '@pop' }], // body to EOL, then close
+                    [/[^\\]+/, 'keyword.directive'],                           // body up to a mid-line backslash
+                    [/\\/, 'keyword.directive']
+                ],
+
+                string: [
+                    [/[^\\"]+/, 'string'],
+                    [/@escapes/, 'string.escape'],
+                    [/\\./, 'string.escape.invalid'],
+                    [/"/, { token: 'string.quote', next: '@pop' }]
+                ],
+
+                charlit: [
+                    [/[^\\']+/, 'string'],
+                    [/@escapes/, 'string.escape'],
+                    [/\\./, 'string.escape.invalid'],
+                    [/'/, { token: 'string.quote', next: '@pop' }]
+                ]
+            }
+        });
     },
 
     registerChangeCallback: function (dotNetRef) {
