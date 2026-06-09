@@ -44,5 +44,13 @@ namespace XnaFiddle
         /// <summary>Code placed inside Draw(), between preset Begin/End wrappers.</summary>
         [JsonPropertyName("draw")]
         public string Draw { get; set; }
+
+        /// <summary>
+        /// Shader (.fx) editor tabs to re-open on load, so shaders round-trip with the snippet.
+        /// Not consumed by <see cref="SnippetExpander"/> (shaders aren't part of the C# scaffold);
+        /// the page applies them separately. See issue #26.
+        /// </summary>
+        [JsonPropertyName("shaders")]
+        public List<ShaderFile> Shaders { get; set; }
     }
 }

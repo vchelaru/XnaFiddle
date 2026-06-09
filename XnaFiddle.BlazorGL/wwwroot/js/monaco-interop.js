@@ -3,6 +3,18 @@
 window.monacoInterop = {
     _editor: null,
 
+    // Multi-model support (tabbed editor, issue #26 phase 2). The editor instance is
+    // single; each tab is a separate monaco model swapped in via editor.setModel().
+    //   _models:        name -> monaco.ITextModel (includes the C# tab + each .fx tab)
+    //   _csharpModel:   the C# program model. getValue/setValue ALWAYS target this one
+    //                   (not the active model) so the ~14 existing call sites that mean
+    //                   "the C# program" keep working regardless of which tab is showing.
+    //   _activeName:    name of the currently shown tab.
+    _models: {},
+    _csharpModel: null,
+    _activeName: null,
+    CSHARP_TAB: 'Game.cs',
+
     init: function (containerId, initialCode) {
         return new Promise(function (resolve) {
             require.config({
@@ -27,12 +39,21 @@ window.monacoInterop = {
                 window.monacoInterop._registerSignatureHelp();
                 window.monacoInterop._registerHover();
                 window.monacoInterop._registerAddUsingCommand();
+                // Register the HLSL (.fx shader) language so .fx tabs are syntax-highlighted.
+                window.monacoInterop._registerHlsl();
+
+                // Create the C# program model up front and keep a dedicated reference to it.
+                var interop = window.monacoInterop;
+                var csModel = monaco.editor.createModel(initialCode, 'csharp');
+                interop._models = {};
+                interop._models[interop.CSHARP_TAB] = csModel;
+                interop._csharpModel = csModel;
+                interop._activeName = interop.CSHARP_TAB;
 
                 window.monacoInterop._editor = monaco.editor.create(
                     document.getElementById(containerId),
                     {
-                        value: initialCode,
-                        language: 'csharp',
+                        model: csModel,
                         theme: 'xnafiddle-dark',
                         fontSize: 14,
                         fontFamily: "Consolas, 'Courier New', monospace",
@@ -53,6 +74,10 @@ window.monacoInterop = {
                 );
 
                 window.monacoInterop._editor.onDidChangeModelContent(function () {
+                    // Roslyn diagnostics and the C#-only change callback apply to the C#
+                    // program only — skip when a shader (.fx) tab is the active model.
+                    if (window.monacoInterop._editor.getModel() !== window.monacoInterop._csharpModel) return;
+
                     // Live diagnostics (squiggles) — debounced, readiness-gated.
                     window.monacoInterop._scheduleDiagnostics();
 
@@ -103,6 +128,9 @@ window.monacoInterop = {
         if (!ref || !interop._editor) return;
         var model = interop._editor.getModel();
         if (!model) return;
+        // Roslyn diagnostics are for C# only; a diagnostics run scheduled before the user
+        // switched to a shader (.fx) tab must not send HLSL to Roslyn.
+        if (model !== interop._csharpModel) return;
         var source = model.getValue();
         var diags;
         try {
@@ -566,28 +594,334 @@ window.monacoInterop = {
         }
     },
 
+    // Registers HLSL (.fx shader) syntax highlighting. Monaco ships no built-in 'hlsl'
+    // language, so the createModel(name, source, 'hlsl') calls used for shader tabs would
+    // otherwise fall back to plaintext (everything uncolored). We register the language id
+    // here with a Monarch grammar whose token coverage matches/exceeds Shiki's source.hlsl
+    // (keywords, scalar/vector/matrix/object types, and HLSL intrinsics), plus a few things
+    // Shiki's grammar lacks (member-access / swizzle coloring and semantic-name coloring).
+    _registerHlsl: function () {
+        // Generate the vector (float2, int4, ...) and matrix (float4x4, ...) type names
+        // programmatically rather than listing all ~120 by hand. Dims run 1-4 each.
+        var scalarBases = ['bool', 'int', 'uint', 'half', 'float', 'double'];
+        var typeKeywords = [
+            // scalars
+            'bool', 'int', 'uint', 'dword', 'half', 'float', 'double',
+            'min16float', 'min10float', 'min16int', 'min12int', 'min16uint',
+            'void', 'string', 'matrix', 'vector',
+            // texture / buffer / sampler object types
+            'Texture1D', 'Texture1DArray', 'Texture2D', 'Texture2DArray',
+            'Texture2DMS', 'Texture2DMSArray', 'Texture3D', 'TextureCube',
+            'TextureCubeArray', 'Buffer', 'ByteAddressBuffer', 'StructuredBuffer',
+            'AppendStructuredBuffer', 'ConsumeStructuredBuffer', 'RWBuffer',
+            'RWByteAddressBuffer', 'RWStructuredBuffer', 'RWTexture1D',
+            'RWTexture1DArray', 'RWTexture2D', 'RWTexture2DArray', 'RWTexture3D',
+            'ConstantBuffer', 'InputPatch', 'OutputPatch',
+            'sampler', 'sampler1D', 'sampler2D', 'sampler3D', 'samplerCUBE',
+            'sampler_state', 'SamplerState', 'SamplerComparisonState',
+            'PixelShader', 'VertexShader', 'GeometryShader', 'HullShader',
+            'DomainShader', 'ComputeShader'
+        ];
+        for (var b = 0; b < scalarBases.length; b++) {
+            var base = scalarBases[b];
+            for (var n = 1; n <= 4; n++) {
+                typeKeywords.push(base + n);          // vectors: float2, int4, ...
+            }
+            for (var r = 1; r <= 4; r++) {
+                for (var c = 1; c <= 4; c++) {
+                    typeKeywords.push(base + r + 'x' + c); // matrices: float4x4, ...
+                }
+            }
+        }
+
+        // Control-flow + storage-class + misc keywords. Note: sampler_state / SamplerState /
+        // SamplerComparisonState are intentionally classified as types (above), not here, so a
+        // word lands in exactly one Monarch case bucket.
+        var keywords = [
+            'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default',
+            'break', 'continue', 'return', 'discard', 'true', 'false',
+            'struct', 'cbuffer', 'tbuffer', 'typedef', 'namespace',
+            'technique', 'technique10', 'technique11', 'pass',
+            'compile', 'compile_fragment', 'register', 'packoffset',
+            'static', 'const', 'volatile', 'extern', 'uniform', 'inline',
+            'in', 'out', 'inout', 'precise', 'shared', 'groupshared',
+            'globallycoherent', 'centroid', 'nointerpolation', 'noperspective',
+            'linear', 'sample', 'row_major', 'column_major', 'snorm', 'unorm',
+            'stateblock', 'stateblock_state', 'fxgroup', 'interface', 'class'
+        ];
+
+        // HLSL intrinsic functions (tokenized as 'predefined' to distinguish them from
+        // user-defined functions, which get 'identifier.function').
+        var builtinFunctions = [
+            'abs', 'acos', 'all', 'any', 'asin', 'atan', 'atan2', 'ceil', 'clamp',
+            'clip', 'cos', 'cosh', 'cross', 'ddx', 'ddy', 'degrees', 'determinant',
+            'distance', 'dot', 'exp', 'exp2', 'faceforward', 'floor', 'fmod', 'frac',
+            'frexp', 'fwidth', 'ldexp', 'length', 'lerp', 'lit', 'log', 'log10', 'log2',
+            'mad', 'max', 'min', 'modf', 'mul', 'normalize', 'pow', 'radians', 'reflect',
+            'refract', 'round', 'rsqrt', 'saturate', 'sign', 'sin', 'sincos', 'sinh',
+            'smoothstep', 'sqrt', 'step', 'tan', 'tanh', 'transpose', 'trunc',
+            'tex1D', 'tex1Dbias', 'tex1Dgrad', 'tex1Dlod', 'tex1Dproj',
+            'tex2D', 'tex2Dbias', 'tex2Dgrad', 'tex2Dlod', 'tex2Dproj',
+            'tex3D', 'tex3Dbias', 'tex3Dgrad', 'tex3Dlod', 'tex3Dproj',
+            'texCUBE', 'texCUBEbias', 'texCUBEgrad', 'texCUBElod', 'texCUBEproj',
+            'ddx_coarse', 'ddx_fine', 'ddy_coarse', 'ddy_fine',
+            'countbits', 'firstbithigh', 'firstbitlow', 'reversebits',
+            'asdouble', 'asfloat', 'asint', 'asuint', 'f16tof32', 'f32tof16',
+            'isfinite', 'isinf', 'isnan', 'dst', 'msad4',
+            'GroupMemoryBarrier', 'GroupMemoryBarrierWithGroupSync',
+            'DeviceMemoryBarrier', 'DeviceMemoryBarrierWithGroupSync',
+            'AllMemoryBarrier', 'AllMemoryBarrierWithGroupSync',
+            'InterlockedAdd', 'InterlockedAnd', 'InterlockedCompareExchange',
+            'InterlockedCompareStore', 'InterlockedExchange', 'InterlockedMax',
+            'InterlockedMin', 'InterlockedOr', 'InterlockedXor',
+            'EvaluateAttributeAtCentroid', 'EvaluateAttributeAtSample',
+            'EvaluateAttributeSnapped',
+            'Process2DQuadTessFactorsAvg', 'Process2DQuadTessFactorsMax',
+            'Process2DQuadTessFactorsMin', 'ProcessIsolineTessFactors',
+            'ProcessQuadTessFactorsAvg', 'ProcessQuadTessFactorsMax',
+            'ProcessQuadTessFactorsMin', 'ProcessTriTessFactorsAvg',
+            'ProcessTriTessFactorsMax', 'ProcessTriTessFactorsMin',
+            'CheckAccessFullyMapped', 'abort', 'errorf', 'printf',
+            'GetRenderTargetSampleCount', 'GetRenderTargetSamplePosition'
+        ];
+
+        monaco.languages.register({
+            id: 'hlsl',
+            extensions: ['.fx'],
+            aliases: ['HLSL', 'hlsl']
+        });
+
+        monaco.languages.setLanguageConfiguration('hlsl', {
+            comments: {
+                lineComment: '//',
+                blockComment: ['/*', '*/']
+            },
+            brackets: [
+                ['{', '}'],
+                ['[', ']'],
+                ['(', ')']
+            ],
+            autoClosingPairs: [
+                { open: '{', close: '}' },
+                { open: '[', close: ']' },
+                { open: '(', close: ')' },
+                { open: '"', close: '"' },
+                { open: "'", close: "'" }
+            ],
+            surroundingPairs: [
+                { open: '{', close: '}' },
+                { open: '[', close: ']' },
+                { open: '(', close: ')' },
+                { open: '"', close: '"' },
+                { open: "'", close: "'" }
+            ]
+        });
+
+        monaco.languages.setMonarchTokensProvider('hlsl', {
+            // defaultToken '' (not 'invalid') so any text we don't explicitly match renders
+            // as plain text rather than being marked red as an error.
+            defaultToken: '',
+            tokenPostfix: '.hlsl',
+            keywords: keywords,
+            typeKeywords: typeKeywords,
+            builtinFunctions: builtinFunctions,
+            operators: [
+                '=', '>', '<', '!', '~', '?', ':', '==', '<=', '>=', '!=',
+                '&&', '||', '++', '--', '+', '-', '*', '/', '&', '|', '^', '%',
+                '<<', '>>', '+=', '-=', '*=', '/=', '&=', '|=', '^=', '%=',
+                '<<=', '>>='
+            ],
+            symbols: /[=><!~?:&|+\-*\/\^%]+/,
+            escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]+|[0-7]{1,3})/,
+
+            tokenizer: {
+                root: [
+                    // 1. Preprocessor directives (#if / #else / #define / #endif / ...). This
+                    //    MUST come before @whitespace: the rule is ^-anchored and matches the
+                    //    leading indentation itself (^\s*). If @whitespace consumed the indent
+                    //    first, ^ would no longer match and an indented directive would go
+                    //    unhighlighted. We color only the `#word` and push NO state, so the macro
+                    //    name and value tokenize normally (distinct colors, not one blue blob)
+                    //    and there is no sub-state that can leak into the next line. A directive
+                    //    with no trailing text (#else / #endif) is therefore handled correctly,
+                    //    and a '\'-continued macro body simply tokenizes as ordinary code.
+                    [/^\s*#\s*\w+/, 'keyword.directive'],
+
+                    // 2. Whitespace + comments (block comments use a pushed state below).
+                    { include: '@whitespace' },
+
+                    // 3. HLSL semantics: a ':' followed by a name (: SV_POSITION, : COLOR0,
+                    //    : register(t0)). Heuristic — a ternary's ': x' is colored too, which
+                    //    is acceptable. Requires the name on the same line, so 'case x:' and
+                    //    'default:' (name on next line) are not falsely matched.
+                    [/(:)(\s*)([a-zA-Z_]\w*\d*)/, ['delimiter', 'white', 'keyword.semantic']],
+
+                    // 4. Name immediately before '(' — a call. Keep keyword/type/intrinsic
+                    //    classification (float4( is a type, tex2D( an intrinsic) and fall back
+                    //    to a user-function token otherwise. Lookahead so '(' isn't consumed.
+                    [/[a-zA-Z_]\w*(?=\s*\()/, {
+                        cases: {
+                            '@keywords': 'keyword',
+                            '@typeKeywords': 'type',
+                            '@builtinFunctions': 'predefined',
+                            '@default': 'identifier.function'
+                        }
+                    }],
+
+                    // 5. Member access / swizzle: the name after a '.' (col.rgb -> rgb).
+                    [/(\.)([a-zA-Z_]\w*)/, ['delimiter', 'variable']],
+
+                    // 6. Plain identifiers, classified via the keyword/type/intrinsic maps.
+                    [/[a-zA-Z_]\w*/, {
+                        cases: {
+                            '@keywords': 'keyword',
+                            '@typeKeywords': 'type',
+                            '@builtinFunctions': 'predefined',
+                            '@default': 'identifier'
+                        }
+                    }],
+
+                    // 7. Numbers (float forms before integers; hex; sci-notation; suffixes).
+                    [/0[xX][0-9a-fA-F]+[uUlL]*/, 'number.hex'],
+                    [/\d*\.\d+([eE][\-+]?\d+)?[fFhHlL]?/, 'number.float'],
+                    [/\d+\.\d*([eE][\-+]?\d+)?[fFhHlL]?/, 'number.float'],
+                    [/\d+[eE][\-+]?\d+[fFhHlL]?/, 'number.float'],
+                    [/\d+[uUlL]*/, 'number'],
+
+                    // 8. Strings and char literals.
+                    [/"/, { token: 'string.quote', next: '@string' }],
+                    [/'[^'\\]'/, 'string'],
+                    [/'/, { token: 'string.quote', next: '@charlit' }],
+
+                    // 9. Brackets, operators, and remaining delimiters.
+                    [/[{}()\[\]]/, '@brackets'],
+                    [/@symbols/, { cases: { '@operators': 'operator', '@default': '' } }],
+                    [/[;,.]/, 'delimiter']
+                ],
+
+                whitespace: [
+                    [/[ \t\r\n]+/, 'white'],
+                    [/\/\*/, { token: 'comment', next: '@comment' }],
+                    [/\/\/.*$/, 'comment']
+                ],
+
+                // Block comment: a pushed state so /* ... */ spans multiple lines correctly.
+                comment: [
+                    [/[^/*]+/, 'comment'],
+                    [/\*\//, { token: 'comment', next: '@pop' }],
+                    [/[/*]/, 'comment']
+                ],
+
+                string: [
+                    [/[^\\"]+/, 'string'],
+                    [/@escapes/, 'string.escape'],
+                    [/\\./, 'string.escape.invalid'],
+                    [/"/, { token: 'string.quote', next: '@pop' }]
+                ],
+
+                charlit: [
+                    [/[^\\']+/, 'string'],
+                    [/@escapes/, 'string.escape'],
+                    [/\\./, 'string.escape.invalid'],
+                    [/'/, { token: 'string.quote', next: '@pop' }]
+                ]
+            }
+        });
+    },
+
     registerChangeCallback: function (dotNetRef) {
         window.monacoInterop._changeCallbackRef = dotNetRef;
         window.monacoInterop._changeTimer = null;
     },
 
+    // getValue/setValue target the C# program model specifically (NOT the active tab),
+    // so existing callers that mean "the C# code" work no matter which tab is showing.
     getValue: function () {
-        if (window.monacoInterop._editor) {
-            return window.monacoInterop._editor.getValue();
-        }
-        return '';
+        var m = window.monacoInterop._csharpModel;
+        return m ? m.getValue() : '';
     },
 
     setValue: function (code) {
-        if (window.monacoInterop._editor) {
-            window.monacoInterop._editor.setValue(code);
+        var m = window.monacoInterop._csharpModel;
+        if (m) m.setValue(code);
+    },
+
+    // ---- Tabbed editor: model management (issue #26 phase 2) ----
+
+    // Create (or replace the content of) a named model and give it a language.
+    // Used for shader (.fx, language 'hlsl') tabs. The C# tab is created in init().
+    createModel: function (name, content, language) {
+        var interop = window.monacoInterop;
+        var existing = interop._models[name];
+        if (existing) {
+            existing.setValue(content);
+            return;
+        }
+        interop._models[name] = monaco.editor.createModel(content, language);
+    },
+
+    // Show the named tab's model in the editor.
+    switchToModel: function (name) {
+        var interop = window.monacoInterop;
+        var model = interop._models[name];
+        if (model && interop._editor) {
+            interop._editor.setModel(model);
+            interop._activeName = name;
+        }
+    },
+
+    getModelValue: function (name) {
+        var model = window.monacoInterop._models[name];
+        return model ? model.getValue() : '';
+    },
+
+    // Dispose a tab's model. If it was active, the caller is expected to switchToModel
+    // to another tab immediately afterward.
+    disposeModel: function (name) {
+        var interop = window.monacoInterop;
+        var model = interop._models[name];
+        if (!model) return;
+        // Never dispose the model currently bound to the editor without rebinding first,
+        // or Monaco throws; rebind to the C# model defensively.
+        if (interop._editor && interop._editor.getModel() === model) {
+            interop._editor.setModel(interop._csharpModel);
+            interop._activeName = interop.CSHARP_TAB;
+        }
+        model.dispose();
+        delete interop._models[name];
+    },
+
+    // Re-key a model under a new name (tab rename). The model and its language are
+    // unchanged; only our name->model map and active-name bookkeeping move.
+    renameModel: function (oldName, newName) {
+        var interop = window.monacoInterop;
+        var model = interop._models[oldName];
+        if (!model || oldName === newName) return;
+        interop._models[newName] = model;
+        delete interop._models[oldName];
+        if (interop._activeName === oldName) interop._activeName = newName;
+    },
+
+    // Dispose every shader model and reset to just the C# tab (used when loading an
+    // example / shared fiddle that brings its own — or no — shader tabs).
+    resetToCSharpOnly: function () {
+        var interop = window.monacoInterop;
+        if (interop._editor) interop._editor.setModel(interop._csharpModel);
+        interop._activeName = interop.CSHARP_TAB;
+        var names = Object.keys(interop._models);
+        for (var i = 0; i < names.length; i++) {
+            if (names[i] === interop.CSHARP_TAB) continue;
+            interop._models[names[i]].dispose();
+            delete interop._models[names[i]];
         }
     },
 
     setDiagnostics: function (markers) {
         // markers: array of { startLine, startCol, endLine, endCol, message, severity }
-        if (window.monacoInterop._editor) {
-            var model = window.monacoInterop._editor.getModel();
+        // Compile diagnostics are for the C# program — always mark the C# model, even if
+        // a shader tab is currently showing.
+        if (window.monacoInterop._csharpModel) {
+            var model = window.monacoInterop._csharpModel;
             var monacoMarkers = markers.map(function (m) {
                 return {
                     startLineNumber: m.startLine,
@@ -607,10 +941,49 @@ window.monacoInterop = {
     },
 
     clearDiagnostics: function () {
-        if (window.monacoInterop._editor) {
-            var model = window.monacoInterop._editor.getModel();
-            monaco.editor.setModelMarkers(model, 'compilation', []);
+        if (window.monacoInterop._csharpModel) {
+            monaco.editor.setModelMarkers(window.monacoInterop._csharpModel, 'compilation', []);
         }
+    },
+
+    setShaderDiagnostics: function (name, markers) {
+        // markers: array of { startLine, startCol, endLine, endCol, message, severity }
+        // Marks a specific shader (.fx) model by tab name, mirroring setDiagnostics for C#.
+        var model = window.monacoInterop._models[name];
+        if (!model) return;
+        var monacoMarkers = markers.map(function (m) {
+            var startLine = m.startLine, startCol = m.startCol;
+            var endLine = m.endLine, endCol = m.endCol;
+            // ShadowDusk often reports only a point (Line/Column). Underline the word at that
+            // position so the squiggle is visible; fall back to the rest of the line.
+            if (endLine === startLine && endCol <= startCol) {
+                var word = model.getWordAtPosition({ lineNumber: startLine, column: startCol });
+                if (word) {
+                    startCol = word.startColumn;
+                    endCol = word.endColumn;
+                } else {
+                    endCol = model.getLineMaxColumn(startLine);
+                }
+            }
+            return {
+                startLineNumber: startLine,
+                startColumn: startCol,
+                endLineNumber: endLine,
+                endColumn: endCol,
+                message: m.message,
+                severity: m.severity === 'error'
+                    ? monaco.MarkerSeverity.Error
+                    : m.severity === 'warning'
+                        ? monaco.MarkerSeverity.Warning
+                        : monaco.MarkerSeverity.Info
+            };
+        });
+        monaco.editor.setModelMarkers(model, 'shader', monacoMarkers);
+    },
+
+    clearShaderDiagnostics: function (name) {
+        var model = window.monacoInterop._models[name];
+        if (model) monaco.editor.setModelMarkers(model, 'shader', []);
     }
 };
 

@@ -20,6 +20,13 @@ namespace XnaFiddle
         private readonly LibraryRegistry _libraryRegistry;
         private BlazorWasmMetadataReferenceService _referenceService;
 
+        // Persistent success-only cache of resolved metadata references, keyed by assembly
+        // name. Parsing each assembly's PE metadata is the dominant cost of a recompile in
+        // single-threaded WASM, so once an assembly resolves we keep its MetadataReference
+        // for all subsequent compiles. Only successes are cached; failures are left out so
+        // they are retried (an assembly absent on one compile may be loaded by the next).
+        private readonly Dictionary<string, MetadataReference> _referenceCache = [];
+
         public CompilationService(NavigationManager navigationManager, LibraryRegistry libraryRegistry)
         {
             _navigationManager = navigationManager;
@@ -60,16 +67,6 @@ namespace XnaFiddle
             "TextCopy",
         ];
 
-        public class DiagnosticInfo
-        {
-            public int StartLine { get; set; }
-            public int StartCol { get; set; }
-            public int EndLine { get; set; }
-            public int EndCol { get; set; }
-            public string Message { get; set; }
-            public string Severity { get; set; } // "error", "warning", "info"
-        }
-
         public class CompilationResult
         {
             public byte[] ILBytes { get; set; }
@@ -85,27 +82,10 @@ namespace XnaFiddle
         /// environment, resolving via BlazorWasmMetadataReferenceService. Used by
         /// CompileAsync and shared with IntellisenseService so the completion workspace
         /// sees the same BCL/KNI/plugin surface the compile will see.
-        /// A custom resolver can be passed for host-side tests that cannot use
-        /// Blazor WebAssembly metadata resolution.
         /// </summary>
         public async Task<(List<MetadataReference> References, List<string> FailedAssemblies, string VersionInfo)>
-            GetMetadataReferencesAsync(
-                Action<int, int> onProgress = null,
-                CancellationToken cancellationToken = default,
-                Func<string, CancellationToken, Task<MetadataReference>> resolveMetadataReferenceAsync = null)
+            GetMetadataReferencesAsync(Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
         {
-            // Always create a fresh service so cached failure results from a previous
-            // compile don't permanently hide assemblies that are now loaded.
-            if (resolveMetadataReferenceAsync == null)
-            {
-                _referenceService = new(_navigationManager);
-                resolveMetadataReferenceAsync = async (assemblyName, _) =>
-                {
-                    AssemblyDetails assemblyDetails = new() { Name = assemblyName };
-                    return await _referenceService.CreateAsync(assemblyDetails);
-                };
-            }
-
             ForceLoadAssemblies();
 
             IReadOnlyList<ILibraryPlugin> plugins = _libraryRegistry.Plugins;
@@ -164,22 +144,54 @@ namespace XnaFiddle
             int resolved = 0;
             int total = assembliesRequired.Count;
 
+            // First pass: serve everything already in the success cache and collect the
+            // misses. After warm-up this typically leaves zero misses, so no PE metadata
+            // is re-parsed and no reference service is even created.
+            List<string> missingAssemblies = [];
             foreach (string assemblyName in assembliesRequired)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
+                if (_referenceCache.TryGetValue(assemblyName, out MetadataReference cached))
                 {
-                    MetadataReference metadataReference = await resolveMetadataReferenceAsync(assemblyName, cancellationToken);
-                    if (metadataReference != null)
-                        metadataReferences.Add(metadataReference);
-                    else
+                    metadataReferences.Add(cached);
+                    onProgress?.Invoke(++resolved, total);
+                }
+                else
+                {
+                    missingAssemblies.Add(assemblyName);
+                }
+            }
+
+            // Second pass: resolve only the misses. Create a fresh service so a stale
+            // failure cached inside the service can't permanently hide an assembly that
+            // is now loaded; the success cache (not the service) is what makes warm
+            // compiles skip resolution entirely.
+            if (missingAssemblies.Count > 0)
+            {
+                _referenceService = new(_navigationManager);
+                for (int i = 0; i < missingAssemblies.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string assemblyName = missingAssemblies[i];
+                    AssemblyDetails assemblyDetails = new() { Name = assemblyName };
+                    try
+                    {
+                        MetadataReference metadataReference = await _referenceService.CreateAsync(assemblyDetails);
+                        if (metadataReference != null)
+                        {
+                            metadataReferences.Add(metadataReference);
+                            _referenceCache[assemblyName] = metadataReference; // cache successes only
+                        }
+                        else
+                        {
+                            failedAssemblies.Add(assemblyName);
+                        }
+                    }
+                    catch
+                    {
                         failedAssemblies.Add(assemblyName);
+                    }
+                    onProgress?.Invoke(++resolved, total);
                 }
-                catch
-                {
-                    failedAssemblies.Add(assemblyName);
-                }
-                onProgress?.Invoke(++resolved, total);
             }
 
             if (failedAssemblies.Count > 0)

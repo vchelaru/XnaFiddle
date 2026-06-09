@@ -183,6 +183,17 @@ namespace XnaFiddle
                         _loaded[normalizedAssetName] = sfx;
                     return (T)(object)sfx;
                 }
+
+                // Compiled shader bytes (.mgfx) produced by the in-browser ShadowDusk
+                // compiler are registered under the bare shader name before the game runs,
+                // so Content.Load<Effect>("Name") resolves them directly. KNI's Effect ctor
+                // reads the MGFX (MGFB-magic) bytes; these are never XNB. See issue #26.
+                if (!isXnb && typeof(T) == typeof(Effect))
+                {
+                    Effect effect = new(GetGraphicsDevice(), bytes);
+                    _loaded[assetName] = effect;
+                    return (T)(object)effect;
+                }
             }
 
             // Fall back to default ContentManager behavior

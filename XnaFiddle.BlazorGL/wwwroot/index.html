@@ -344,13 +344,17 @@
         window.clearCanvas = function () {
             var canvas = document.getElementById('theCanvas');
             if (!canvas) return;
-            var gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+            // A canvas permanently binds to one WebGL context type the first time getContext is
+            // called (issue #25). Only clear through the type a game already bound it to —
+            // window._canvasContextType is set by .NET after a game runs. If unset, the canvas
+            // is unbound and there is nothing to clear; calling getContext here would wrongly
+            // bind it (e.g. to webgl2) and break a later game that needs the other type.
+            var type = window._canvasContextType;
+            if (!type) return;
+            var gl = canvas.getContext(type);
             if (gl) {
                 gl.clearColor(0, 0, 0, 1);
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-            } else {
-                var ctx = canvas.getContext('2d');
-                if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
         };
 
@@ -370,6 +374,34 @@
                 });
             });
         })();
+
+        window._canvasFocused = false;
+
+        // Wires per-canvas behavior onto #theCanvas: sizing from #canvasHolder, context-menu
+        // suppression, focus tracking, and Alt-key suppression while focused. Safe to call
+        // repeatedly on a freshly-created element — a Reach<->HiDef profile switch recreates the
+        // canvas (Index.razor @key="_canvasGen") to get a fresh WebGL context type, and this
+        // re-applies the wiring to the new one. The window-level Alt handlers in initRenderJS are
+        // registered once and read the shared window._canvasFocused flag set here, so they survive
+        // canvas swaps.
+        window.setupCanvas = function () {
+            var canvas = document.getElementById('theCanvas');
+            if (!canvas) return;
+            var holder = document.getElementById('canvasHolder');
+            canvas.width = holder.clientWidth;
+            canvas.height = holder.clientHeight;
+            canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+            // Make the canvas focusable so we can track when it has focus.
+            if (!canvas.hasAttribute('tabindex')) canvas.setAttribute('tabindex', '0');
+
+            // When the canvas has focus, suppress Alt+key so the browser menu doesn't activate.
+            canvas.addEventListener('focus', function () { window._canvasFocused = true; });
+            canvas.addEventListener('blur',  function () { window._canvasFocused = false; });
+            canvas.addEventListener('keydown', function (e) {
+                if (e.altKey) e.preventDefault();
+            });
+        };
 
         window.initRenderJS = (instance) => {
             // KNI's JS files (Canvas.8.0.10.js etc.) expect the Emscripten Module object on
@@ -398,29 +430,17 @@
 
             window.theInstance = instance;
 
-            var canvas = document.getElementById('theCanvas');
-            var holder = document.getElementById('canvasHolder');
-            canvas.width = holder.clientWidth;
-            canvas.height = holder.clientHeight;
-            canvas.addEventListener("contextmenu", e => e.preventDefault());
+            window.setupCanvas();
 
-            // Make the canvas focusable so we can track when it has focus.
-            if (!canvas.hasAttribute('tabindex')) canvas.setAttribute('tabindex', '0');
-
-            // When the canvas has focus, suppress Alt+key so the browser menu doesn't activate.
-            var canvasFocused = false;
-            canvas.addEventListener('focus', function () { canvasFocused = true; });
-            canvas.addEventListener('blur',  function () { canvasFocused = false; });
-            canvas.addEventListener('keydown', function (e) {
-                if (e.altKey) e.preventDefault();
-            });
-            // Also intercept at the window level while canvas is focused,
-            // because some browsers fire the menu on keyup rather than keydown.
+            // Intercept Alt+key at the window level while the canvas is focused, because some
+            // browsers fire the menu on keyup rather than keydown. Registered once here (they
+            // survive canvas swaps) and read the shared window._canvasFocused flag that
+            // setupCanvas wires onto each freshly-created canvas element.
             window.addEventListener('keydown', function (e) {
-                if (e.altKey && canvasFocused) e.preventDefault();
+                if (e.altKey && window._canvasFocused) e.preventDefault();
             }, true);
             window.addEventListener('keyup', function (e) {
-                if (e.altKey && canvasFocused) e.preventDefault();
+                if (e.altKey && window._canvasFocused) e.preventDefault();
             }, true);
 
             var params = new URLSearchParams(window.location.search);

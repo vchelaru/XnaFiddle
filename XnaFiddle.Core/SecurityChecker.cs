@@ -63,9 +63,9 @@ namespace XnaFiddle
 
         // Walks the syntax tree using the semantic model and returns errors for any
         // forbidden namespace or type references found in the user's source code.
-        public static List<CompilationService.DiagnosticInfo> Check(CSharpCompilation compilation, SyntaxTree syntaxTree)
+        public static List<DiagnosticInfo> Check(CSharpCompilation compilation, SyntaxTree syntaxTree)
         {
-            var errors = new List<CompilationService.DiagnosticInfo>();
+            var errors = new List<DiagnosticInfo>();
             SemanticModel model = compilation.GetSemanticModel(syntaxTree);
 
             foreach (SyntaxNode node in syntaxTree.GetRoot().DescendantNodes())
@@ -77,7 +77,7 @@ namespace XnaFiddle
                     if (model.GetTypeInfo(node).Type?.TypeKind == TypeKind.Dynamic)
                     {
                         FileLinePositionSpan dynSpan = node.GetLocation().GetMappedLineSpan();
-                        errors.Add(new CompilationService.DiagnosticInfo
+                        errors.Add(new DiagnosticInfo
                         {
                             StartLine = dynSpan.StartLinePosition.Line + 1,
                             StartCol = dynSpan.StartLinePosition.Character + 1,
@@ -101,7 +101,7 @@ namespace XnaFiddle
                 if (message == null) continue;
 
                 FileLinePositionSpan lineSpan = node.GetLocation().GetMappedLineSpan();
-                errors.Add(new CompilationService.DiagnosticInfo
+                errors.Add(new DiagnosticInfo
                 {
                     StartLine = lineSpan.StartLinePosition.Line + 1,
                     StartCol = lineSpan.StartLinePosition.Character + 1,
