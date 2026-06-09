@@ -447,6 +447,46 @@ public class Game1 : Game
         Assert.Contains("0.3.1-preview.1", csproj);
     }
 
+    [Fact]
+    public void FlatRedBallAnimationChain_RawContentManager_HasAchxBranch()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        // RawContentManager lives in the common project, alongside the package reference.
+        string rcm = files["MyGameCommon/RawContentManager.cs"];
+        Assert.Contains("using FlatRedBall.AnimationChain;", rcm);
+        Assert.Contains("typeof(T) == typeof(AnimationChainList)", rcm);
+        Assert.Contains("new AchxLoader(", rcm);
+        Assert.Contains("SanitizeFrames", rcm);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_RawContentManager_SingleTarget_HasAchxBranch()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string rcm = files["MyGame/RawContentManager.cs"];
+        Assert.Contains("typeof(T) == typeof(AnimationChainList)", rcm);
+    }
+
+    [Fact]
+    public void RawContentManager_WithoutAnimationChain_OmitsAchxBranch()
+    {
+        // A project that does not use AnimationChain must not reference the package's
+        // types, or it would fail to compile (the package isn't referenced).
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string rcm = files["MyGameCommon/RawContentManager.cs"];
+        Assert.DoesNotContain("AnimationChain", rcm);
+        Assert.DoesNotContain("AchxLoader", rcm);
+    }
+
     // ── BlazorGL multi-platform entry points ─────────────────────────────────
 
     [Fact]
