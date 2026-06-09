@@ -1130,6 +1130,22 @@ technique BasicColorDrawing
                         {
                             try { newGame.Dispose(); } catch { }
                             LibraryRegistry.RunAllCleanups();
+
+                            // Issue #12: when the browser can't create a WebGL context, KNI throws a
+                            // bare NullReferenceException deep in device creation ("Object reference
+                            // not set to an instance of an object."), which tells the user nothing.
+                            // Translate just that case into an actionable message (still appending the
+                            // technical detail for bug reports). Other crashes fall through to the
+                            // full-stack path below.
+                            if (GraphicsErrorClassifier.IsGraphicsDeviceCreationFailure(runEx))
+                            {
+                                SetError("Graphics device unavailable.",
+                                    GraphicsErrorClassifier.DeviceCreationFailureMessage
+                                        + "\n\nTechnical details:\n" + runEx);
+                                _isCompiling = false;
+                                StateHasChanged();
+                                return;
+                            }
                             throw new Exception("Game crashed during initialization: " + runEx.Message, runEx);
                         }
                         _game = newGame;
