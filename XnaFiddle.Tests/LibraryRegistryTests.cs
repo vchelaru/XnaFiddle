@@ -124,7 +124,7 @@ public class LibraryRegistryTests
 
         public string Name { get; }
         public string[] RequiredAssemblies => [];
-        public (string Label, string[] AssemblyNames) VersionInfo => (Name, []);
+        public string[] VersionAssemblies => [];
         public int CleanUpCallCount { get; private set; }
 
         public void CleanUp()

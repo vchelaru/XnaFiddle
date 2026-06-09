@@ -6,7 +6,7 @@ namespace XnaFiddle.Plugins
     {
         public string Name => "FlatRedBall.AnimationChain";
         public string[] RequiredAssemblies => ["AnimationChain.KNI"];
-        public (string Label, string[] AssemblyNames) VersionInfo => ("FlatRedBall.AnimationChain", ["AnimationChain.KNI"]);
+        public string[] VersionAssemblies => ["AnimationChain.KNI"];
 
         public void CleanUp() { }
 

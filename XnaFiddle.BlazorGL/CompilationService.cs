@@ -95,12 +95,12 @@ namespace XnaFiddle
             versionParts.Add($"KNI {GetAssemblyVersion("Kni.Platform")}");
             for (int i = 0; i < plugins.Count; i++)
             {
-                var info = plugins[i].VersionInfo;
-                if (info.Label.Length == 0) continue;
-                string version = info.AssemblyNames.Select(GetAssemblyVersion)
+                string[] assemblyNames = plugins[i].VersionAssemblies;
+                if (assemblyNames.Length == 0) continue;
+                string version = assemblyNames.Select(GetAssemblyVersion)
                     .FirstOrDefault(v => v != "?" && v != "0.0.0.0" && v != "0.0.0")
-                    ?? GetAssemblyVersion(info.AssemblyNames[0]);
-                versionParts.Add($"{info.Label} {version}");
+                    ?? GetAssemblyVersion(assemblyNames[0]);
+                versionParts.Add($"{plugins[i].Name} {version}");
             }
             string versionInfo = string.Join("  ·  ", versionParts);
 
