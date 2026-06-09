@@ -17,6 +17,9 @@ obj/
 
 ## Build-generated
 XnaFiddle.BlazorGL/wwwroot/js/build-version.js
+## The Apos.Shapes content target emits an unused Content/ copy of apos-shapes.xnb on build.
+## The app loads the root wwwroot/apos-shapes.xnb; this artifact must not be tracked.
+XnaFiddle.BlazorGL/wwwroot/Content/
 
 ## OS
 Thumbs.db
