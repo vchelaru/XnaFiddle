@@ -8,7 +8,7 @@ namespace XnaFiddle.Plugins
     {
         public string Name => "MLEM";
         public string[] RequiredAssemblies => ["MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI"];
-        public (string Label, string[] AssemblyNames) VersionInfo => ("MLEM", ["MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI"]);
+        public string[] VersionAssemblies => ["MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI"];
 
         public void CleanUp()
         {

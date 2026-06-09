@@ -9,7 +9,7 @@ namespace XnaFiddle.Plugins
     {
         public string Name => "GameWindow";
         public string[] RequiredAssemblies => [];
-        public (string Label, string[] AssemblyNames) VersionInfo => ("", []);
+        public string[] VersionAssemblies => [];
 
         public void CleanUp()
         {

@@ -6,7 +6,7 @@ namespace XnaFiddle.Plugins
     {
         public string Name => "MonoGame.Extended";
         public string[] RequiredAssemblies => ["KNI.Extended"];
-        public (string Label, string[] AssemblyNames) VersionInfo => ("KNI.Extended", ["KNI.Extended"]);
+        public string[] VersionAssemblies => ["KNI.Extended"];
 
         public void CleanUp() { }
 

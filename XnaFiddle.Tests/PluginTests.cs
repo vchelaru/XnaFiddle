@@ -61,17 +61,10 @@ public class PluginTests
     }
 
     [Fact]
-    public void GumPlugin_VersionInfo_Label()
+    public void GumPlugin_VersionAssemblies()
     {
         var plugin = new GumPlugin();
-        Assert.Equal("Gum.KNI", plugin.VersionInfo.Label);
-    }
-
-    [Fact]
-    public void GumPlugin_VersionInfo_AssemblyNames()
-    {
-        var plugin = new GumPlugin();
-        Assert.Equal(new[] { "GumCommon", "KniGum" }, plugin.VersionInfo.AssemblyNames);
+        Assert.Equal(new[] { "GumCommon", "KniGum" }, plugin.VersionAssemblies);
     }
 
     [Fact]
@@ -110,17 +103,10 @@ public class PluginTests
     }
 
     [Fact]
-    public void MlemPlugin_VersionInfo_Label()
+    public void MlemPlugin_VersionAssemblies()
     {
         var plugin = new MlemPlugin();
-        Assert.Equal("MLEM", plugin.VersionInfo.Label);
-    }
-
-    [Fact]
-    public void MlemPlugin_VersionInfo_AssemblyNames()
-    {
-        var plugin = new MlemPlugin();
-        Assert.Equal(new[] { "MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI" }, plugin.VersionInfo.AssemblyNames);
+        Assert.Equal(new[] { "MLEM.KNI", "MLEM.Ui.KNI", "MLEM.Extended.KNI" }, plugin.VersionAssemblies);
     }
 
     [Fact]
@@ -153,11 +139,9 @@ public class PluginTests
     }
 
     [Fact]
-    public void AposShapesPlugin_VersionInfo()
+    public void AposShapesPlugin_VersionAssemblies()
     {
-        var info = new AposShapesPlugin().VersionInfo;
-        Assert.Equal("Apos.Shapes.KNI", info.Label);
-        Assert.Equal(new[] { "Apos.Shapes.KNI" }, info.AssemblyNames);
+        Assert.Equal(new[] { "Apos.Shapes.KNI" }, new AposShapesPlugin().VersionAssemblies);
     }
 
     [Fact]
@@ -185,11 +169,9 @@ public class PluginTests
     }
 
     [Fact]
-    public void FontStashSharpPlugin_VersionInfo()
+    public void FontStashSharpPlugin_VersionAssemblies()
     {
-        var info = new FontStashSharpPlugin().VersionInfo;
-        Assert.Equal("FontStashSharp.Kni", info.Label);
-        Assert.Equal(new[] { "FontStashSharp.Kni", "FontStashSharp.Base" }, info.AssemblyNames);
+        Assert.Equal(new[] { "FontStashSharp.Kni", "FontStashSharp.Base" }, new FontStashSharpPlugin().VersionAssemblies);
     }
 
     // ── MonoGameExtendedPlugin ───────────────────────────────────────────────
@@ -207,11 +189,9 @@ public class PluginTests
     }
 
     [Fact]
-    public void MonoGameExtendedPlugin_VersionInfo()
+    public void MonoGameExtendedPlugin_VersionAssemblies()
     {
-        var info = new MonoGameExtendedPlugin().VersionInfo;
-        Assert.Equal("KNI.Extended", info.Label);
-        Assert.Equal(new[] { "KNI.Extended" }, info.AssemblyNames);
+        Assert.Equal(new[] { "KNI.Extended" }, new MonoGameExtendedPlugin().VersionAssemblies);
     }
 
     // ── AetherPhysicsPlugin ──────────────────────────────────────────────────
@@ -229,11 +209,9 @@ public class PluginTests
     }
 
     [Fact]
-    public void AetherPhysicsPlugin_VersionInfo()
+    public void AetherPhysicsPlugin_VersionAssemblies()
     {
-        var info = new AetherPhysicsPlugin().VersionInfo;
-        Assert.Equal("Aether.Physics2D", info.Label);
-        Assert.Equal(new[] { "Aether.Physics2D" }, info.AssemblyNames);
+        Assert.Equal(new[] { "Aether.Physics2D" }, new AetherPhysicsPlugin().VersionAssemblies);
     }
 
     // ── KernSmithPlugin ──────────────────────────────────────────────────────
@@ -254,11 +232,9 @@ public class PluginTests
     }
 
     [Fact]
-    public void KernSmithPlugin_VersionInfo()
+    public void KernSmithPlugin_VersionAssemblies()
     {
-        var info = new KernSmithPlugin().VersionInfo;
-        Assert.Equal("KernSmith.KniGum", info.Label);
-        Assert.Equal(new[] { "KernSmith.KniGum", "KernSmith.GumCommon", "KernSmith" }, info.AssemblyNames);
+        Assert.Equal(new[] { "KernSmith.KniGum", "KernSmith.GumCommon", "KernSmith" }, new KernSmithPlugin().VersionAssemblies);
     }
 
     // ── FlatRedBallAnimationChainPlugin ──────────────────────────────────────
@@ -279,17 +255,10 @@ public class PluginTests
     }
 
     [Fact]
-    public void FlatRedBallAnimationChainPlugin_VersionInfo_Label()
+    public void FlatRedBallAnimationChainPlugin_VersionAssemblies()
     {
         var plugin = new FlatRedBallAnimationChainPlugin();
-        Assert.Equal("FlatRedBall.AnimationChain", plugin.VersionInfo.Label);
-    }
-
-    [Fact]
-    public void FlatRedBallAnimationChainPlugin_VersionInfo_AssemblyNames()
-    {
-        var plugin = new FlatRedBallAnimationChainPlugin();
-        Assert.Equal(new[] { "AnimationChain.KNI" }, plugin.VersionInfo.AssemblyNames);
+        Assert.Equal(new[] { "AnimationChain.KNI" }, plugin.VersionAssemblies);
     }
 
     [Fact]

@@ -17,9 +17,11 @@ namespace XnaFiddle
         string[] RequiredAssemblies { get; }
 
         /// <summary>
-        /// Label and assembly names for the version banner in the diagnostics panel.
+        /// Assembly names used to read the version number shown in the diagnostics
+        /// banner. Empty means this plugin contributes no banner entry. The display
+        /// name comes from <see cref="Name"/>.
         /// </summary>
-        (string Label, string[] AssemblyNames) VersionInfo { get; }
+        string[] VersionAssemblies { get; }
 
         /// <summary>
         /// Reset static state left behind by this library between game runs.
