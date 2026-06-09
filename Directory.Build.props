@@ -43,6 +43,7 @@
     <!-- Third-party game libraries -->
     <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
     <AposShapesVersion>0.6.8</AposShapesVersion>
+    <FlatRedBallAnimationChainVersion>0.3.1-preview.1</FlatRedBallAnimationChainVersion>
     <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
     <GumVersion>2026.4.28.1-preview.9</GumVersion>
     <KniExtendedVersion>5.5.0</KniExtendedVersion>

@@ -125,7 +125,7 @@ namespace XnaFiddle
                 // Neither KNI nor MonoGame reliably load raw image files via Content.Load
                 // on all platforms (e.g. Android packs assets in the APK). Include a shim
                 // ContentManager that handles raw textures via FromStream.
-                AddTextEntry(archive, $"{projectName}/RawContentManager.cs", GenerateRawContentManager(projectName));
+                AddTextEntry(archive, $"{projectName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(packages)));
 
                 if (assets != null)
                 {
@@ -174,7 +174,7 @@ namespace XnaFiddle
                 // Common project
                 AddTextEntry(archive, $"{commonName}/{commonName}.csproj", commonCsproj);
                 AddTextEntry(archive, $"{commonName}/Game1.cs", gameCs);
-                AddTextEntry(archive, $"{commonName}/RawContentManager.cs", GenerateRawContentManager(projectName));
+                AddTextEntry(archive, $"{commonName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(commonPackages)));
 
                 // Per-platform projects
                 foreach (var target in targets)
@@ -855,11 +855,114 @@ internal class Program
 ";
         }
 
-        static string GenerateRawContentManager(string projectName)
+        // Detects whether an export references a FlatRedBall.AnimationChain package
+        // (.KNI or .MonoGame). When it does, the generated RawContentManager gains an
+        // AnimationChainList branch; otherwise that branch is omitted so projects that
+        // don't reference the package still compile.
+        static bool UsesAnimationChain(List<NuGetPackage> packages)
         {
+            for (int i = 0; i < packages.Count; i++)
+                if (packages[i].Id.StartsWith("FlatRedBall.AnimationChain", StringComparison.Ordinal))
+                    return true;
+            return false;
+        }
+
+        static string GenerateRawContentManager(string projectName, bool includeAnimationChain)
+        {
+            // The .achx branch references types from FlatRedBall.AnimationChain, which is only
+            // referenced when the source uses it, so emit these pieces conditionally.
+            string achxUsings = includeAnimationChain
+                ? "using System.Collections.Generic;\nusing FlatRedBall.AnimationChain;\n"
+                : "";
+
+            string achxField = includeAnimationChain
+                ? "    AchxLoader _achxLoader;\n"
+                : "";
+
+            string achxLoadBranch = includeAnimationChain
+                ? @"        if (typeof(T) == typeof(AnimationChainList))
+        {
+            string achxName = assetName.EndsWith("".achx"", StringComparison.OrdinalIgnoreCase) ? assetName : assetName + "".achx"";
+            string achxPath = Path.Combine(RootDirectory, achxName);
+            _achxLoader ??= new AchxLoader(_graphics.GraphicsDevice);
+
+            // AchxLoader asks for the .achx file and each referenced texture by relative path;
+            // resolve against RootDirectory and bare filename so all platforms find them.
+            Stream OpenStreamOrNull(string path)
+            {
+                string[] candidates = { path, Path.Combine(RootDirectory, path), Path.Combine(RootDirectory, Path.GetFileName(path)) };
+                foreach (string candidate in candidates)
+                {
+                    byte[] data = TryReadAllBytes(candidate);
+                    if (data != null) return new MemoryStream(data, false);
+                }
+                return null;
+            }
+
+            AnimationChainList chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
+            SanitizeFrames(chainList);
+            return (T)(object)chainList;
+        }
+
+"
+                : "";
+
+            string achxMethods = includeAnimationChain
+                ? @"
+    // .achx frames can contain negative or out-of-bounds pixel coordinates (e.g.
+    // LeftCoordinate=-1), which produce Rectangles that raise GL_INVALID_OPERATION
+    // (0x0502) on WebGL when submitted to SpriteBatch. Clamp every frame to texture
+    // bounds, and premultiply alpha on KNI (AchxLoader's FromStream returns straight alpha).
+    void SanitizeFrames(AnimationChainList chainList)
+    {
+        var premultiplied = new HashSet<Texture2D>();
+        foreach (AnimationChain chain in chainList)
+        {
+            for (int i = 0; i < chain.Count; i++)
+            {
+                AnimationFrame frame = chain[i];
+                if (frame.Texture == null) continue;
+
+                if (NeedsPremultiply && premultiplied.Add(frame.Texture))
+                    PremultiplyAlpha(frame.Texture);
+
+                if (!frame.SourceRectangle.HasValue) continue;
+
+                Rectangle r = frame.SourceRectangle.Value;
+                int texW = frame.Texture.Width;
+                int texH = frame.Texture.Height;
+
+                if (r.Width < 0) { r.X += r.Width; r.Width = -r.Width; }
+                if (r.Height < 0) { r.Y += r.Height; r.Height = -r.Height; }
+                if (r.X < 0) { r.Width += r.X; r.X = 0; }
+                if (r.Y < 0) { r.Height += r.Y; r.Y = 0; }
+
+                if (r.X >= texW || r.Y >= texH || r.Width <= 0 || r.Height <= 0)
+                {
+                    frame.SourceRectangle = null;
+                    continue;
+                }
+
+                if (r.Right > texW) r.Width = texW - r.X;
+                if (r.Bottom > texH) r.Height = texH - r.Y;
+
+                frame.SourceRectangle = r;
+            }
+        }
+    }
+
+    public override void Unload()
+    {
+        _achxLoader?.Dispose();
+        _achxLoader = null;
+        base.Unload();
+    }
+"
+                : "";
+
             return $@"using System;
 using System.IO;
-using Microsoft.Xna.Framework;
+{achxUsings}using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
@@ -888,7 +991,7 @@ public class RawContentManager : ContentManager
     static readonly bool NeedsPremultiply = typeof(Texture2D).Assembly.GetName().Name?.StartsWith(""Xna.Framework"") == true;
 
     readonly IGraphicsDeviceService _graphics;
-
+{achxField}
     static void PremultiplyAlpha(Texture2D texture)
     {{
         Color[] pixels = new Color[texture.Width * texture.Height];
@@ -939,7 +1042,7 @@ public class RawContentManager : ContentManager
             }}
         }}
 
-        return base.Load<T>(assetName);
+{achxLoadBranch}        return base.Load<T>(assetName);
     }}
 
     static bool IsXnb(byte[] bytes) =>
@@ -961,7 +1064,7 @@ public class RawContentManager : ContentManager
         }}
         catch (FileNotFoundException) {{ return null; }}
     }}
-}}
+{achxMethods}}}
 ";
         }
 

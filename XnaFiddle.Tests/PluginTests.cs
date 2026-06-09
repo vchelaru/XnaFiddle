@@ -260,4 +260,52 @@ public class PluginTests
         Assert.Equal("KernSmith.KniGum", info.Label);
         Assert.Equal(new[] { "KernSmith.KniGum", "KernSmith.GumCommon", "KernSmith" }, info.AssemblyNames);
     }
+
+    // ── FlatRedBallAnimationChainPlugin ──────────────────────────────────────
+
+    [Fact]
+    public void FlatRedBallAnimationChainPlugin_Name()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        Assert.Equal("FlatRedBall.AnimationChain", plugin.Name);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChainPlugin_RequiredAssemblies()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        Assert.Single(plugin.RequiredAssemblies);
+        Assert.Contains("AnimationChain.KNI", plugin.RequiredAssemblies);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChainPlugin_VersionInfo_Label()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        Assert.Equal("FlatRedBall.AnimationChain", plugin.VersionInfo.Label);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChainPlugin_VersionInfo_AssemblyNames()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        Assert.Equal(new[] { "AnimationChain.KNI" }, plugin.VersionInfo.AssemblyNames);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChainPlugin_CleanUp_WhenNotLoaded_IsNoOp()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        // Should not throw even if the plugin is not loaded
+        plugin.CleanUp();
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChainPlugin_CleanUp_IsIdempotent()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        plugin.CleanUp();
+        plugin.CleanUp();
+        // No exception = pass
+    }
 }

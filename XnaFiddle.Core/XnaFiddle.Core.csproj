@@ -51,6 +51,7 @@ namespace XnaFiddle {
         // Third-party libraries
         public const string AetherPhysics = &quot;$(AetherPhysicsVersion)&quot;%3B
         public const string AposShapes = &quot;$(AposShapesVersion)&quot;%3B
+        public const string FlatRedBallAnimationChain = &quot;$(FlatRedBallAnimationChainVersion)&quot;%3B
         public const string FontStashSharp = &quot;$(FontStashSharpVersion)&quot;%3B
         public const string Gum = &quot;$(GumVersion)&quot;%3B
         public const string KniExtended = &quot;$(KniExtendedVersion)&quot;%3B

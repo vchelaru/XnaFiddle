@@ -104,7 +104,8 @@ namespace XnaFiddle
             }
             string versionInfo = string.Join("  ·  ", versionParts);
 
-            HashSet<string> assembliesRequired = [];
+            HashSet<string> assembliesRequired = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> assembliesToExpand = new(StringComparer.OrdinalIgnoreCase);
             Assembly[] loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
             for (int i = 0; i < loadedAssemblies.Length; i++)
             {
@@ -115,17 +116,28 @@ namespace XnaFiddle
             }
 
             for (int i = 0; i < KniCoreAssemblyNames.Length; i++)
+            {
                 assembliesRequired.Add(KniCoreAssemblyNames[i]);
+                assembliesToExpand.Add(KniCoreAssemblyNames[i]);
+            }
 
             for (int i = 0; i < plugins.Count; i++)
             {
                 string[] assemblies = plugins[i].RequiredAssemblies;
                 for (int j = 0; j < assemblies.Length; j++)
+                {
                     assembliesRequired.Add(assemblies[j]);
+                    assembliesToExpand.Add(assemblies[j]);
+                }
             }
 
             for (int i = 0; i < BclAssemblyNames.Length; i++)
+            {
                 assembliesRequired.Add(BclAssemblyNames[i]);
+                assembliesToExpand.Add(BclAssemblyNames[i]);
+            }
+
+            AddReferencedAssemblyNames(assembliesRequired, loadedAssemblies, assembliesToExpand);
 
             List<MetadataReference> metadataReferences = [];
             List<string> failedAssemblies = [];
@@ -186,6 +198,49 @@ namespace XnaFiddle
                 Console.WriteLine($"[XnaFiddle] {failedAssemblies.Count} assembl{(failedAssemblies.Count == 1 ? "y" : "ies")} failed to resolve: {string.Join(", ", failedAssemblies)}");
 
             return (metadataReferences, failedAssemblies, versionInfo);
+        }
+
+        private static void AddReferencedAssemblyNames(
+            HashSet<string> assembliesRequired,
+            Assembly[] loadedAssemblies,
+            HashSet<string> assembliesToExpand)
+        {
+            var loadedByName = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < loadedAssemblies.Length; i++)
+            {
+                if (loadedAssemblies[i].IsDynamic) continue;
+                string name = loadedAssemblies[i].GetName().Name;
+                if (string.IsNullOrEmpty(name)) continue;
+                loadedByName[name] = loadedAssemblies[i];
+            }
+
+            Queue<string> queue = new(assembliesToExpand);
+            HashSet<string> visited = new(assembliesToExpand, StringComparer.OrdinalIgnoreCase);
+            while (queue.Count > 0)
+            {
+                string assemblyName = queue.Dequeue();
+                if (!loadedByName.TryGetValue(assemblyName, out Assembly loadedAssembly)) continue;
+
+                AssemblyName[] references;
+                try
+                {
+                    references = loadedAssembly.GetReferencedAssemblies();
+                }
+                catch
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < references.Length; i++)
+                {
+                    string referencedAssemblyName = references[i].Name;
+                    if (string.IsNullOrEmpty(referencedAssemblyName)) continue;
+                    if (!visited.Add(referencedAssemblyName)) continue;
+
+                    assembliesRequired.Add(referencedAssemblyName);
+                    queue.Enqueue(referencedAssemblyName);
+                }
+            }
         }
 
         private void ForceLoadAssemblies()

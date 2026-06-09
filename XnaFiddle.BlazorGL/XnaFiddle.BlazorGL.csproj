@@ -39,6 +39,7 @@
   <ItemGroup>
     <PackageReference Include="Aether.Physics2D.KNI" Version="$(AetherPhysicsVersion)" />
     <PackageReference Include="Apos.Shapes.KNI" Version="$(AposShapesVersion)" />
+    <PackageReference Include="FlatRedBall.AnimationChain.KNI" Version="$(FlatRedBallAnimationChainVersion)" />
     <PackageReference Include="FontStashSharp.Kni" Version="$(FontStashSharpVersion)" />
     <PackageReference Include="Gum.KNI" Version="$(GumVersion)" />
     <PackageReference Include="KNI.Extended" Version="$(KniExtendedVersion)" />
