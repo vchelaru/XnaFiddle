@@ -50,6 +50,7 @@ Pass any of these names to `?example=`:
 | `FontStashSharp` | Dynamic text rendering with multiple sizes and colors |
 | `DynamicFonts` | Runtime font generation with KernSmith — pick family, size, bold, italic, and outline |
 | `GumUI` | UI layout with buttons and text using Gum |
+| `GumShapes` | Filled, outlined, gradient, dashed, and shadowed shapes with Gum's `CircleRuntime` / `RectangleRuntime` |
 | `MlemTextFormatting` | Text formatting using MLEM, which supports coloring, in-text icons, text animations and more |
 | `MlemUi` | A mouse, keyboard, gamepad and touch ready Ui system that features automatic anchoring, sizing and several ready-to-use element types |
 | `Camera2D (MonoGame.Extended)` | Pan and zoom a 2D camera with keyboard and mouse |
@@ -263,15 +264,33 @@ Add a `.cs` file to `XnaFiddle.BlazorGL/Examples/`. It will be picked up automat
 
 ### Upgrading Apos.Shapes
 
-The `Apos.Shapes.KNI` NuGet package includes a pre-built content file (`apos-shapes.xnb`) that must be shipped with the app. When upgrading:
+The Apos shader is shipped pre-built as `wwwroot/apos-shapes.xnb` (XnaFiddle can't run the
+content pipeline in the browser). When you bump `AposShapesVersion`, the shader source
+(`apos-shapes.fx`) usually changes, so the XNB **must** be regenerated or the shape examples
+crash at load.
 
-1. Update the version in `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj`
-2. Build to restore the new package
-3. Copy the XNB from the NuGet cache:
+**Critical:** build the XNB with the **MonoGame DesktopGL** content builder, not KNI's. The
+`.fx` selects its shader model by define: `__KNIFX__` → `ps_4_0` (Shader Model 4.0), `OPENGL`
+→ `ps_3_0`. BlazorGL/WebGL caps below SM4, so a KNI-pipeline XNB throws *"Shader model 4.0 is
+not supported by the current graphics profile 'HiDef'"* at `Content.Load`. The DesktopGL build
+takes the `OPENGL`/`ps_3_0` path and produces a legacy-MGFX effect that BlazorGL loads.
+
+1. Update `AposShapesVersion` in `Directory.Build.props` and build to restore the package.
+2. Regenerate the XNB from the new shader with the MonoGame `mgcb` tool (`dotnet tool install -g dotnet-mgcb`):
    ```bash
-   cp ~/.nuget/packages/apos.shapes/<VERSION>/buildTransitive/Content/bin/DesktopGL/Content/apos-shapes.xnb XnaFiddle.BlazorGL/wwwroot/apos-shapes.xnb
+   FX=~/.nuget/packages/apos.shapes.kni/<VERSION>/buildTransitive/Content/apos-shapes.fx
+   mgcb /platform:DesktopGL /profile:HiDef /compress:True \
+        /importer:EffectImporter /processor:EffectProcessor /processorParam:DebugMode=Auto \
+        /build:"$FX" /outputDir:out /intermediateDir:obj
+   cp out/apos-shapes.xnb XnaFiddle.BlazorGL/wwwroot/apos-shapes.xnb
    ```
-4. Verify the AposShapes example still runs
+3. Verify the **AposShapes** and **GumShapes** examples run in the browser.
+
+> **Note:** `Gum.Shapes.KNI` depends on `Apos.Shapes.KNI` and renders through Apos's
+> `ShapeBatch`, so it loads this same `apos-shapes.xnb`. Keep `AposShapesVersion` at (or above)
+> the floor `Gum.Shapes.KNI` requires; both shape examples break together if the shader and XNB
+> drift. (A normal build also emits an unused `wwwroot/Content/apos-shapes.xnb` from the package's
+> content target — the app loads the root copy; the `Content/` one can be ignored.)
 
 ### Deployment
 

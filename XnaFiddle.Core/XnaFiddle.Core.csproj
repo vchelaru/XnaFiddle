@@ -54,6 +54,7 @@ namespace XnaFiddle {
         public const string FlatRedBallAnimationChain = &quot;$(FlatRedBallAnimationChainVersion)&quot;%3B
         public const string FontStashSharp = &quot;$(FontStashSharpVersion)&quot;%3B
         public const string Gum = &quot;$(GumVersion)&quot;%3B
+        public const string GumShapes = &quot;$(GumShapesVersion)&quot;%3B
         public const string KniExtended = &quot;$(KniExtendedVersion)&quot;%3B
         public const string KernSmith = &quot;$(KernSmithVersion)&quot;%3B
         public const string Mlem = &quot;$(MlemVersion)&quot;%3B

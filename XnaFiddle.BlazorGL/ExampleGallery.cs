@@ -53,6 +53,7 @@ namespace XnaFiddle
             new ExampleInfo { Name = "FontStashSharp",               Category = "FontStashSharp",     Description = "Dynamic text rendering with multiple sizes and colors" },
             new ExampleInfo { Name = "DynamicFonts",                    Category = "Gum",                Description = "Runtime font generation with KernSmith — pick family, size, bold, italic, and outline" },
             new ExampleInfo { Name = "GumUI",                        Category = "Gum",                Description = "UI layout with buttons and text using Gum" },
+            new ExampleInfo { Name = "GumShapes",                    Category = "Gum",                Description = "Filled, outlined, gradient, dashed, and shadowed shapes with Gum's CircleRuntime and RectangleRuntime" },
             new ExampleInfo { Name = "MlemTextFormatting",           Category = "MLEM",               Description = "Text formatting using MLEM, which supports coloring, in-text icons, text animations and more" },
             new ExampleInfo { Name = "MlemUi",                       Category = "MLEM",               Description = "A mouse, keyboard, gamepad and touch ready Ui system that features automatic anchoring, sizing and several ready-to-use element types" },
             new ExampleInfo { Name = "Camera2D (MonoGame.Extended)", Category = "MonoGame.Extended",  Description = "Pan and zoom a 2D camera with keyboard and mouse" },

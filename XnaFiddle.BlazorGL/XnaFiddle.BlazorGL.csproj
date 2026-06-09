@@ -42,6 +42,7 @@
     <PackageReference Include="FlatRedBall.AnimationChain.KNI" Version="$(FlatRedBallAnimationChainVersion)" />
     <PackageReference Include="FontStashSharp.Kni" Version="$(FontStashSharpVersion)" />
     <PackageReference Include="Gum.KNI" Version="$(GumVersion)" />
+    <PackageReference Include="Gum.Shapes.KNI" Version="$(GumShapesVersion)" />
     <PackageReference Include="KNI.Extended" Version="$(KniExtendedVersion)" />
     <PackageReference Include="MLEM.Ui.KNI" Version="$(MlemVersion)" />
     <PackageReference Include="MLEM.Extended.KNI" Version="$(MlemVersion)" />

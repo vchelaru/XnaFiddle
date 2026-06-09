@@ -42,10 +42,17 @@
 
     <!-- Third-party game libraries -->
     <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
-    <AposShapesVersion>0.6.8</AposShapesVersion>
+    <!-- Bumped from the stable 0.6.8 to a prerelease because Gum.Shapes.KNI 2026.6.6.1
+         depends on Apos.Shapes.KNI >= 0.6.9-alpha; 0.6.8 is the highest stable, so the
+         shape package forces us onto a prerelease. Keep in sync with GumShapesVersion's
+         dependency floor when either is bumped. -->
+    <AposShapesVersion>0.6.10-alpha</AposShapesVersion>
     <FlatRedBallAnimationChainVersion>0.3.1-preview.1</FlatRedBallAnimationChainVersion>
     <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
     <GumVersion>2026.6.6.1</GumVersion>
+    <!-- Gum's fill+effects shape support (CircleRuntime / RectangleRuntime). Ships on the
+         same release cadence as Gum.KNI, so it tracks GumVersion. Depends on Apos.Shapes.KNI. -->
+    <GumShapesVersion>2026.6.6.1</GumShapesVersion>
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
     <KernSmithVersion>0.12.3</KernSmithVersion>
     <MlemVersion>8.1.0</MlemVersion>

@@ -49,6 +49,39 @@ public class ExportableLibraryTests
         Assert.Contains("Gum.MonoGame", ids);
     }
 
+    // ── GumShapesPlugin ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void GumShapes_DetectsShapeRendererUsage()
+    {
+        var plugin = new GumShapesPlugin();
+        Assert.True(plugin.IsUsedInSource("ShapeRenderer.Self.Initialize();"));
+    }
+
+    [Fact]
+    public void GumShapes_NotDetectedForPlainGumOrColoredRectangle()
+    {
+        // Plain Gum code (and base-Gum's ColoredRectangleRuntime, whose name contains
+        // "RectangleRuntime") must NOT pull in the shapes package — only ShapeRenderer does.
+        var plugin = new GumShapesPlugin();
+        Assert.False(plugin.IsUsedInSource("using MonoGameGum;"));
+        Assert.False(plugin.IsUsedInSource("var r = new ColoredRectangleRuntime();"));
+    }
+
+    [Fact]
+    public void GumShapes_KniPackage()
+    {
+        var ids = PackageIds(new GumShapesPlugin(), ExportTarget.KniDesktopGL);
+        Assert.Contains("Gum.Shapes.KNI", ids);
+    }
+
+    [Fact]
+    public void GumShapes_MonoGamePackage()
+    {
+        var ids = PackageIds(new GumShapesPlugin(), ExportTarget.MonoGameDesktopGL);
+        Assert.Contains("Gum.Shapes.MonoGame", ids);
+    }
+
     // ── AposShapesPlugin ─────────────────────────────────────────────────────
 
     [Fact]

@@ -84,6 +84,42 @@ public class PluginTests
         plugin.CleanUp();
     }
 
+    // ── GumShapesPlugin ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void GumShapesPlugin_Name()
+    {
+        Assert.Equal("Gum.Shapes", new GumShapesPlugin().Name);
+    }
+
+    [Fact]
+    public void GumShapesPlugin_RequiredAssemblies()
+    {
+        Assert.Equal(new[] { "KniGumShapes" }, new GumShapesPlugin().RequiredAssemblies);
+    }
+
+    [Fact]
+    public void GumShapesPlugin_VersionAssemblies()
+    {
+        Assert.Equal(new[] { "KniGumShapes" }, new GumShapesPlugin().VersionAssemblies);
+    }
+
+    [Fact]
+    public void GumShapesPlugin_CleanUp_WhenNotLoaded_IsNoOp()
+    {
+        // KniGumShapes is not loaded in the test environment; CleanUp must no-op.
+        var plugin = new GumShapesPlugin();
+        plugin.CleanUp();
+    }
+
+    [Fact]
+    public void GumShapesPlugin_CleanUp_IsIdempotent()
+    {
+        var plugin = new GumShapesPlugin();
+        plugin.CleanUp();
+        plugin.CleanUp();
+    }
+
     // ── MlemPlugin ───────────────────────────────────────────────────────────
 
     [Fact]
