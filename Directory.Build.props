@@ -39,6 +39,10 @@
 
     <!-- MonoGame framework — not used by XnaFiddle itself, only in exported projects -->
     <MonoGameFrameworkVersion>3.8.4.1</MonoGameFrameworkVersion>
+    <!-- MonoGame preview — an experimental, opt-in alternative offered by the export
+         version selector. Restoring a third-party lib against this prerelease may surface
+         dependency conflicts; that's expected for a preview, not an XnaFiddle bug. -->
+    <MonoGameFrameworkPreviewVersion>3.8.5-preview.6</MonoGameFrameworkPreviewVersion>
 
     <!-- FNA.NET — opinionated third-party FNA fork, used only in exported FnaDesktop projects.
          A single package supplies the framework and bundles native libs (win/macOS). -->

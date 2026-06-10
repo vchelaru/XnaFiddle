@@ -303,6 +303,20 @@
                         </span>
                     }
                 </div>
+
+                @* MonoGame version selector, only shown when the MonoGame runtime is chosen. *@
+                @if (_exportRuntime == ExportRuntime.MonoGame)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="color: #aaa; margin-bottom: 2px;">MonoGame version:</span>
+                        <select @bind="_monoGameVersion"
+                                style="background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px;
+                                       font-size: 12px; font-family: inherit;">
+                            <option value="@PackageVersions.MonoGameFramework">@PackageVersions.MonoGameFramework (stable)</option>
+                            <option value="@PackageVersions.MonoGameFrameworkPreview">@PackageVersions.MonoGameFrameworkPreview (preview - experimental)</option>
+                        </select>
+                    </div>
+                }
             </div>
 
             @* Row 2: Project name + Export button *@

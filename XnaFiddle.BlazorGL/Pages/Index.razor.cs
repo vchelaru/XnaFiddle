@@ -105,6 +105,10 @@ namespace XnaFiddle.Pages
         bool _isExporting;
         ExportRuntime _exportRuntime = ExportRuntime.Kni;
         HashSet<ExportPlatform> _selectedPlatforms = new() { ExportPlatform.DesktopGL };
+        // MonoGame framework version chosen in the export panel's version selector. Only meaningful
+        // when the MonoGame runtime is selected; defaults to the stable release. The preview option
+        // is experimental — a third-party lib restore conflict on it is expected, not our bug.
+        string _monoGameVersion = PackageVersions.MonoGameFramework;
         string _exportProjectName = "MyFiddle";
         List<AssetInfo> _assets = new();
         string _assetUrlInput = "";
@@ -1571,7 +1575,9 @@ technique BasicColorDrawing
 
                 var assets = InMemoryContentManager.Files;
                 var targets = GetExportTargets();
-                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null, libraryRegistry: LibraryRegistry);
+                // Pass the chosen MonoGame version only for MonoGame exports; KNI/FNA ignore it (null).
+                string monoGameVersion = _exportRuntime == ExportRuntime.MonoGame ? _monoGameVersion : null;
+                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null, libraryRegistry: LibraryRegistry, monoGameVersion: monoGameVersion);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }
