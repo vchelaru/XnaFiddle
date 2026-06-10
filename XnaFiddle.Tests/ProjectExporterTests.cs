@@ -287,6 +287,47 @@ public class Game1 : Game
         Assert.Contains("MonoGame.Framework.Android", android);
     }
 
+    // ── MonoGame framework version selector ──────────────────────────────────
+
+    [Fact]
+    public void MonoGame_DefaultVersion_PinsStableFramework()
+    {
+        // No monoGameVersion argument → stable default for both lockstep packages.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame");
+        var files = ExtractTextFiles(zip);
+        string csproj = files["MyGame/MyGame.csproj"];
+
+        Assert.Equal("3.8.4.1", PackageVersions.MonoGameFramework);
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{PackageVersions.MonoGameFramework}"" />",
+            csproj);
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Content.Builder.Task"" Version=""{PackageVersions.MonoGameFramework}"" />",
+            csproj);
+    }
+
+    [Fact]
+    public void MonoGame_PreviewVersion_PinsPreviewForFrameworkAndBuilder()
+    {
+        // Passing the preview version must move BOTH the framework package and the content
+        // builder package in lockstep onto the prerelease.
+        byte[] zip = ProjectExporter.Export(
+            MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        var files = ExtractTextFiles(zip);
+        string csproj = files["MyGame/MyGame.csproj"];
+
+        Assert.Equal("3.8.5-preview.6", PackageVersions.MonoGameFrameworkPreview);
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{PackageVersions.MonoGameFrameworkPreview}"" />",
+            csproj);
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Content.Builder.Task"" Version=""{PackageVersions.MonoGameFrameworkPreview}"" />",
+            csproj);
+        // The stable version must not leak into the preview export.
+        Assert.DoesNotContain(PackageVersions.MonoGameFramework + @"""", csproj);
+    }
+
     // ── Content linking in platform projects ─────────────────────────────────
 
     [Fact]

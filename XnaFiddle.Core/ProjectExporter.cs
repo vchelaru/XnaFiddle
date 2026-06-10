@@ -74,30 +74,35 @@ namespace XnaFiddle
             IReadOnlyList<ExportTarget> targets,
             string projectName = "MyFiddle",
             IReadOnlyDictionary<string, byte[]> assets = null,
-            LibraryRegistry libraryRegistry = null)
+            LibraryRegistry libraryRegistry = null,
+            string monoGameVersion = null)
         {
             if (targets == null || targets.Count == 0)
                 throw new ArgumentException("At least one export target is required.", nameof(targets));
 
             if (targets.Count == 1)
-                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry);
+                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry, monoGameVersion);
 
             // FNA is single-target only — it must never reach the multi-platform common-project
             // path (GenerateCommonCsproj's isMonoGame framework-reference logic assumes KNI/MonoGame).
             if (targets.Contains(ExportTarget.FnaDesktop))
                 throw new ArgumentException("FnaDesktop cannot be combined with other export targets.", nameof(targets));
 
-            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry);
+            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry, monoGameVersion);
         }
 
+        // monoGameVersion, when non-null, overrides the MonoGame framework + content-builder package
+        // version (the version selector's preview option). Null preserves the stable default; KNI and
+        // FNA targets ignore it entirely.
         public static byte[] Export(
             string expandedSource,
             ExportTarget target,
             string projectName = "MyFiddle",
             IReadOnlyDictionary<string, byte[]> assets = null,
-            LibraryRegistry libraryRegistry = null)
+            LibraryRegistry libraryRegistry = null,
+            string monoGameVersion = null)
         {
-            List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry);
+            List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
             string slnx = GenerateSlnx(projectName, target);
             string csproj = GenerateCsproj(projectName, target, packages, assets != null && assets.Count > 0);
             string gameCs = GenerateGameClass(projectName, expandedSource);
@@ -168,7 +173,8 @@ namespace XnaFiddle
             IReadOnlyList<ExportTarget> targets,
             string projectName,
             IReadOnlyDictionary<string, byte[]> assets,
-            LibraryRegistry libraryRegistry)
+            LibraryRegistry libraryRegistry,
+            string monoGameVersion)
         {
             bool hasAssets = assets != null && assets.Count > 0;
             string commonName = $"{projectName}Common";
@@ -176,7 +182,7 @@ namespace XnaFiddle
 
             // The common project holds Game1.cs, RawContentManager.cs and shared code.
             // Each platform project references the common project and adds its entry point.
-            List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0], libraryRegistry);
+            List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0], libraryRegistry, monoGameVersion);
             string commonCsproj = GenerateCommonCsproj(projectName, commonName, commonPackages);
             string slnx = GenerateSlnx(projectName, commonName, targets);
 
@@ -195,7 +201,7 @@ namespace XnaFiddle
                 {
                     string suffix = GetPlatformSuffix(target);
                     string platformDir = $"{projectName}.{suffix}";
-                    List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry);
+                    List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
                     string csproj = GenerateCsproj(projectName, target, packages, hasAssets, isMultiPlatform: true, commonProjectName: commonName);
 
                     AddTextEntry(archive, $"{platformDir}/{platformDir}.csproj", csproj);
@@ -321,7 +327,7 @@ namespace XnaFiddle
             return sb.ToString();
         }
 
-        static List<NuGetPackage> BuildPackageList(string source, ExportTarget target, LibraryRegistry libraryRegistry)
+        static List<NuGetPackage> BuildPackageList(string source, ExportTarget target, LibraryRegistry libraryRegistry, string monoGameVersion = null)
         {
             var packages = new List<NuGetPackage>();
             bool isKni = target.IsKni();
@@ -370,8 +376,11 @@ namespace XnaFiddle
                     ExportTarget.MonoGameAndroid   => "MonoGame.Framework.Android",
                     _ => "MonoGame.Framework.DesktopGL",
                 };
-                packages.Add(new NuGetPackage { Id = monoGamePkg, Version = PackageVersions.MonoGameFramework });
-                packages.Add(new NuGetPackage { Id = "MonoGame.Content.Builder.Task", Version = PackageVersions.MonoGameFramework });
+                // The framework and content-builder packages ship in lockstep, so both take the
+                // chosen version (the version selector's preview option) or fall back to stable.
+                string mgVersion = monoGameVersion ?? PackageVersions.MonoGameFramework;
+                packages.Add(new NuGetPackage { Id = monoGamePkg, Version = mgVersion });
+                packages.Add(new NuGetPackage { Id = "MonoGame.Content.Builder.Task", Version = mgVersion });
             }
 
             // Third-party libraries — detected by scanning the source for namespace/type names
