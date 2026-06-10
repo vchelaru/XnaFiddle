@@ -25,7 +25,7 @@ For each tab in `_shaderTabs`:
 
 **Lazy DXC download:** the loop is guarded by `if (_shaderTabs.Count > 0)`. With no shader tabs, the `WasmShaderCompiler` is never constructed and the ~17 MB DXC wasm is never fetched.
 
-**Profile-agnostic output:** `PlatformTarget.OpenGL` emits one `.mgfx` that loads under KNI Reach (WebGL1), HiDef (WebGL2), and desktop GL alike — a single compile works regardless of the game's `GraphicsProfile`.
+**Profile-agnostic output:** `PlatformTarget.OpenGL` emits one `.mgfx` that loads under KNI Reach (WebGL1), HiDef (WebGL2), and desktop GL alike — a single compile works regardless of the game's `GraphicsProfile`. **Web is GL-only:** ShadowDusk in the browser can compile only OpenGL targets — it cannot emit DirectX output, and even the upcoming FNA DX9 `.fxb` support won't produce `.fxb` on web. Any DirectX/`.fxb` target requires a desktop-side compile.
 
 **Stale-effect cleanup:** `_lastCompiledShaders` (a `HashSet`) tracks what was compiled last Run. After compiling, any bare name in the old set not in the current set is `InMemoryContentManager.RemoveFile`d, so a removed/renamed shader can't resolve old bytes via a stale `Content.Load<Effect>`.
 
