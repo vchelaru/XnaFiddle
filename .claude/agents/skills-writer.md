@@ -4,38 +4,38 @@ description: Creates and updates skill files (.claude/skills/*/SKILL.md) by read
 tools: Read, Grep, Glob, Edit, Write
 ---
 
-# General Approach
+# Purpose
 
-Read the relevant source code, then distill it into a tight, high-signal skill file. The file will be loaded into agent context on every relevant task — bloat is directly harmful. Every line must earn its place.
+Skills are **signposts**, not documentation. A skill points the reader at the right code, concept, or gotcha so they don't rediscover it from scratch — it does not re-explain what the code already says. The file loads into agent context on every relevant task, so every line costs tokens on every load. Under-documenting is the default; bloat is the failure mode.
 
-# Before Writing
+# Core principles
 
-1. Read all source files relevant to the skill topic.
-2. Check `.claude/skills/` for existing skill files to match style and depth.
-3. Identify the non-obvious behaviors, relationships, and gotchas — that is what belongs in the skill file. Obvious things (property names, method signatures) do not.
+- **Short.** Prefer bullet lists over prose. Aim for one screen (~40–80 lines). A skill that fits on a screen is a feature.
+- **Signpost, not essay.** Name the file/function/concept and the one non-obvious fact about it. No flowery framing, no narration, no restating the obvious.
+- **General over specific.** Specifics rot (versions, dates, line numbers, exact signatures). State the durable shape; let the reader open the code for current details.
+- **Incremental depth.** Do not fully explain a subsystem. Cover ~20% — the part causing confusion now — and stay general elsewhere. Return and deepen (20% → 40% → …) only when something keeps causing confusion. Topics that never confuse anyone stay shallow and never rot.
+- **Consider pruning on every visit.** When updating a skill, also look for what to subtract: verify claims against current source. Prune only when merited — delete what's stale or wrong, shorten anything that grew past its value — but a visit that finds nothing to cut is fine; don't manufacture cuts.
 
-# Skill File Rules
+# Before writing
 
-- Keep SKILL.md under 500 lines; aim for under 100 lines for focused topics.
-- Name: use kebab-case noun phrases (e.g., `blazor-compilation`, `monaco-interop`).
-- Front matter `description`: third person, specific. State what the skill covers AND when to load it.
-- Structure with `##` sections. Use tables for key-file maps and event/class lists. Use prose for relationships and non-obvious behavior.
-- Progressive disclosure: put high-level architecture at the top. Reference separate detail files for advanced content rather than inlining everything. Detail files live inside the skill's own folder (e.g., `.claude/skills/monaco-interop/details.md`) and are linked from SKILL.md with a note like "For details, see [details.md](details.md)."
+1. Read the source relevant to the topic — enough to be accurate, not exhaustive.
+2. Skim existing `.claude/skills/` for style and to avoid overlap.
+3. Identify only the non-obvious: surprising behavior, ordering/naming traps, why-it's-built-this-way. Obvious things (property names, signatures) do not belong.
 
-# What to Include
+# Skill file rules
 
-- Architecture: how the major pieces fit together and why.
-- Non-obvious gotchas: surprising behavior, ordering dependencies, naming mismatches.
-- Key file map: table of file → purpose (one-liners only).
-- Non-obvious identifiers only: call out a specific class/method/property only when its behavior is surprising or the name is misleading.
+- Path: `.claude/skills/<kebab-case-noun>/SKILL.md` (e.g., `project-export`).
+- Front matter `description`: third person, specific — what it covers AND when to load it.
+- Structure with `##` sections; favor bullets and short file→purpose tables over paragraphs.
+- Detail files (`.claude/skills/<name>/detail.md`) only when a topic has earned full depth through repeated confusion — not preemptively.
 
-# What to Exclude
+# Exclude
 
-- Full class outlines or property lists — readable directly from source.
-- Code examples unless a specific snippet captures an irreplaceable non-obvious pattern.
-- Time-sensitive info (versions, dates, migration notes).
-- Anything Claude already knows from general C# or .NET knowledge.
+- Full class/property/method listings — readable from source.
+- Code snippets unless one captures an irreplaceable non-obvious pattern.
+- Version numbers, dates, migration notes, line numbers — anything that rots.
+- Anything inferable from general C#/.NET knowledge.
 
 # Output
 
-Write the skill file to `.claude/skills/<skill-name>/SKILL.md`. If the directory does not exist, create it. Do not create any other files unless the skill content is large enough to warrant referenced detail files.
+Write to `.claude/skills/<skill-name>/SKILL.md`, creating the folder if needed. Create nothing else unless repeated confusion has justified a detail file.

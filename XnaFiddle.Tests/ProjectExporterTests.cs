@@ -487,6 +487,70 @@ public class Game1 : Game
         Assert.DoesNotContain("AchxLoader", rcm);
     }
 
+    // ── FNA desktop export ───────────────────────────────────────────────────
+
+    [Fact]
+    public void FnaDesktop_ReferencesFnaNetAndNoOtherRuntimes()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.FnaDesktop };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+
+        // FNA.NET is the single framework package, at the version from PackageVersions.
+        Assert.Contains("FNA.NET", csproj);
+        Assert.Contains("2.2.11.2602", csproj);
+
+        // No MonoGame, KNI, or nkast packages should leak in.
+        Assert.DoesNotContain("MonoGame", csproj);
+        Assert.DoesNotContain("nkast", csproj);
+        Assert.DoesNotContain("KniPlatform", csproj);
+        Assert.DoesNotContain("MonoGamePlatform", csproj);
+
+        // Standard desktop entry point + shared sources.
+        Assert.Contains("MyGame/Program.cs", files.Keys);
+        Assert.Contains("MyGame/Game1.cs", files.Keys);
+        Assert.Contains("MyGame/RawContentManager.cs", files.Keys);
+    }
+
+    [Fact]
+    public void FnaDesktop_IncludesFnaNetReadme()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.FnaDesktop };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/README.txt", files.Keys);
+        string readme = files["MyGame/README.txt"];
+        Assert.Contains("FNA.NET", readme);
+        Assert.Contains("PackageReference", readme);
+    }
+
+    [Fact]
+    public void RawContentManager_PremultiplyDetection_IncludesFnaAndKni()
+    {
+        // FNA's Texture2D.FromStream does NOT premultiply alpha, so the generated
+        // RawContentManager must detect FNA (assembly FNA.NET) alongside KNI
+        // (Xna.Framework.*) and premultiply. MonoGame stays out (it premultiplies itself).
+        // Guards against the FNA case silently regressing back to "false".
+        byte[] zip = ProjectExporter.Export(MinimalCode, [ExportTarget.FnaDesktop], "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        string rcm = files["MyGame/RawContentManager.cs"];
+        Assert.Contains("NeedsPremultiply", rcm);
+        Assert.Contains("FNA.NET", rcm);
+        Assert.Contains("Xna.Framework", rcm);
+    }
+
+    [Fact]
+    public void FnaDesktop_CannotCombineWithOtherTargets()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.FnaDesktop, ExportTarget.KniDesktopGL };
+        Assert.Throws<System.ArgumentException>(() =>
+            ProjectExporter.Export(MinimalCode, targets, "MyGame"));
+    }
+
     // ── BlazorGL multi-platform entry points ─────────────────────────────────
 
     [Fact]

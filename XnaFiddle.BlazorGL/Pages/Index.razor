@@ -265,6 +265,12 @@
                                style="accent-color: #0e639c;" />
                         MonoGame
                     </label>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                        <input type="radio" name="exportRuntime" checked="@(_exportRuntime == ExportRuntime.Fna)"
+                               @onchange="() => SetExportRuntime(ExportRuntime.Fna)"
+                               style="accent-color: #0e639c;" />
+                        FNA (via FNA.NET)
+                    </label>
                 </div>
 
                 @* Platform checkboxes *@
@@ -279,6 +285,9 @@
                     {
                         var p = platform;
                         if (p == ExportPlatform.BlazorGL && _exportRuntime == ExportRuntime.MonoGame)
+                            continue;
+                        // FNA is a single desktop target — hide every non-Desktop platform.
+                        if (_exportRuntime == ExportRuntime.Fna && p != ExportPlatform.DesktopGL)
                             continue;
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
                             <input type="checkbox" checked="@(_selectedPlatforms.Contains(p))"

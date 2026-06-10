@@ -16,7 +16,10 @@ namespace XnaFiddle
         KniBlazorGL,
         MonoGameDesktopGL,
         MonoGameWindowsDX,
-        MonoGameAndroid
+        MonoGameAndroid,
+        // FNA is a third runtime category, neither KNI nor MonoGame. It is exported
+        // via the FNA.NET NuGet package and is a single desktop target only.
+        FnaDesktop
     }
 
     /// <summary>
@@ -57,6 +60,7 @@ namespace XnaFiddle
             ExportTarget.MonoGameDesktopGL => "DesktopGL",
             ExportTarget.MonoGameWindowsDX => "WindowsDX",
             ExportTarget.MonoGameAndroid   => "Android",
+            ExportTarget.FnaDesktop        => "Desktop",
             _ => throw new ArgumentOutOfRangeException(nameof(target), target, null),
         };
 
@@ -77,6 +81,11 @@ namespace XnaFiddle
 
             if (targets.Count == 1)
                 return Export(expandedSource, targets[0], projectName, assets, libraryRegistry);
+
+            // FNA is single-target only — it must never reach the multi-platform common-project
+            // path (GenerateCommonCsproj's isMonoGame framework-reference logic assumes KNI/MonoGame).
+            if (targets.Contains(ExportTarget.FnaDesktop))
+                throw new ArgumentException("FnaDesktop cannot be combined with other export targets.", nameof(targets));
 
             return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry);
         }
@@ -126,6 +135,11 @@ namespace XnaFiddle
                 // on all platforms (e.g. Android packs assets in the APK). Include a shim
                 // ContentManager that handles raw textures via FromStream.
                 AddTextEntry(archive, $"{projectName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(packages)));
+
+                // FNA.NET bundles win-x64 and osx natives, but on linux-x64 it ships only
+                // libtheorafile — SDL3/FNA3D/FAudio are expected from system packages.
+                if (target == ExportTarget.FnaDesktop)
+                    AddTextEntry(archive, $"{projectName}/README.txt", GenerateFnaReadme());
 
                 if (assets != null)
                 {
@@ -312,8 +326,15 @@ namespace XnaFiddle
             var packages = new List<NuGetPackage>();
             bool isKni = target.IsKni();
 
-            // Base framework packages
-            if (isKni)
+            // Base framework packages.
+            // FNA is a third runtime category (neither KNI nor MonoGame): a single FNA.NET
+            // package supplies the framework and bundles native libs. It has no content
+            // pipeline (RawContentManager handles raw assets) and no separate platform package.
+            if (target == ExportTarget.FnaDesktop)
+            {
+                packages.Add(new NuGetPackage { Id = "FNA.NET", Version = PackageVersions.Fna });
+            }
+            else if (isKni)
             {
                 // KNI: 10 individual framework packages + 1 platform package + content pipeline builder
                 foreach (string pkg in KniFrameworkPackages)
@@ -481,6 +502,15 @@ namespace XnaFiddle
                     sb.AppendLine("    <ApplicationVersion>1</ApplicationVersion>");
                     sb.AppendLine("    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>");
                     break;
+
+                case ExportTarget.FnaDesktop:
+                    // FNA is neither KNI nor MonoGame: no KniPlatform/MonoGamePlatform property.
+                    // The FNA.NET package brings the framework and bundles native libs for win/macOS.
+                    sb.AppendLine("    <OutputType>WinExe</OutputType>");
+                    sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+                    sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
+                    sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
+                    break;
             }
 
             sb.AppendLine("  </PropertyGroup>");
@@ -575,6 +605,18 @@ public static class Program
         game.Run();
     }}
 }}
+";
+        }
+
+        static string GenerateFnaReadme()
+        {
+            return @"This project targets FNA via the FNA.NET NuGet package — an opinionated
+third-party fork of FNA that bundles the required native libraries (SDL3, FNA3D,
+FAudio, etc.) and is distributed via NuGet, so it builds and runs as-is via
+`dotnet restore` && `dotnet run`.
+
+If you prefer upstream FNA instead, replace the FNA.NET PackageReference in the
+.csproj with a project/source reference to FNA.
 ";
         }
 
@@ -982,13 +1024,16 @@ public class RawContentManager : ContentManager
     static readonly string[] ImageExtensions = {{ "".png"", "".jpg"", "".jpeg"", "".bmp"" }};
     static readonly string[] AudioExtensions = {{ "".wav"" }};
     static readonly bool IsDesktop = !OperatingSystem.IsAndroid() && !OperatingSystem.IsBrowser();
-    // KNI's Texture2D.FromStream returns straight (non-premultiplied) alpha, but XNA-style
-    // code (SpriteBatch + BlendState.AlphaBlend) expects premultiplied. MonoGame's FromStream
-    // already premultiplies, so we only do it on KNI. Detected at runtime by assembly name
-    // to avoid pushing a #if KNI / csproj DefineConstants flag down to every exported project.
-    // Fragile: fails open (skips premultiply) if KNI ever renames its graphics assembly away
-    // from Xna.Framework.*.
-    static readonly bool NeedsPremultiply = typeof(Texture2D).Assembly.GetName().Name?.StartsWith(""Xna.Framework"") == true;
+    // KNI's and FNA's Texture2D.FromStream return straight (non-premultiplied) alpha, but
+    // XNA-style code (SpriteBatch + BlendState.AlphaBlend) expects premultiplied. MonoGame's
+    // FromStream already premultiplies, so we only do it on KNI and FNA. Detected at runtime
+    // by assembly name (KNI is Xna.Framework.*, FNA is FNA.NET) to avoid pushing a #if /
+    // csproj DefineConstants flag down to every exported project. MonoGame is left false.
+    // Fragile: fails open (skips premultiply) if either framework ever renames its graphics
+    // assembly away from these names.
+    static readonly bool NeedsPremultiply =
+        typeof(Texture2D).Assembly.GetName().Name is string asmName &&
+        (asmName.StartsWith(""Xna.Framework"") || asmName == ""FNA.NET"");
 
     readonly IGraphicsDeviceService _graphics;
 {achxField}
