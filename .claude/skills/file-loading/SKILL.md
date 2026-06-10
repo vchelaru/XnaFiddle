@@ -110,7 +110,7 @@ Multi-platform exports produce a solution with a common project (`{Name}Common`)
 | `XnaFiddle.BlazorGL/InMemoryContentManager.cs` | Static file store + `ContentManager` that loads `Texture2D` and `SoundEffect` from bytes |
 | `XnaFiddle.BlazorGL/ExampleGallery.cs` | Reads embedded resources; `LoadAssets()` extracts non-code files for an example |
 | `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `OnFileDropped` JSInvokable, `SupportedAssetExtensions`, `LoadExampleAssets()`, stale-assets check |
-| `XnaFiddle.BlazorGL/ProjectExporter.cs` | `GenerateRawContentManager` template with `Texture2D` + `SoundEffect` branches |
+| `XnaFiddle.Core/ProjectExporter.cs` | `GenerateRawContentManager` template with `Texture2D` + `SoundEffect` branches |
 | `XnaFiddle.BlazorGL/wwwroot/index.html` | XHR intercept for `TitleContainer.OpenStream`, canvas tick loop, splitter layout, other JS interop |
 | `XnaFiddle.BlazorGL/wwwroot/js/monaco-interop.js` | `fileDropInterop` (drag-and-drop), keyboard event suppression for Monaco |
 | `XnaFiddle.BlazorGL/wwwroot/js/build-version.js` | MSBuild-generated; sets `window._buildVersion` for stale-asset detection |

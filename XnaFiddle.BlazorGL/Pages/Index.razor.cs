@@ -98,7 +98,7 @@ namespace XnaFiddle.Pages
             public string SourceUrl;     // non-null when loaded from a URL (for share link encoding)
         }
 
-        enum ExportRuntime { Kni, MonoGame }
+        enum ExportRuntime { Kni, MonoGame, Fna }
         enum ExportPlatform { DesktopGL, WindowsDX, Android, BlazorGL }
 
         bool _exportOpen;
@@ -1511,6 +1511,9 @@ technique BasicColorDrawing
             (ExportRuntime.MonoGame, ExportPlatform.DesktopGL) => ExportTarget.MonoGameDesktopGL,
             (ExportRuntime.MonoGame, ExportPlatform.WindowsDX) => ExportTarget.MonoGameWindowsDX,
             (ExportRuntime.MonoGame, ExportPlatform.Android)   => ExportTarget.MonoGameAndroid,
+            // FNA supports only the desktop target — any FNA platform resolves to FnaDesktop.
+            (ExportRuntime.Fna, ExportPlatform.DesktopGL)      => ExportTarget.FnaDesktop,
+            (ExportRuntime.Fna, _)                            => ExportTarget.FnaDesktop,
             // MonoGame + BlazorGL is not valid — fall back to DesktopGL
             _ => ExportTarget.MonoGameDesktopGL,
         };
@@ -1536,6 +1539,13 @@ technique BasicColorDrawing
             _exportRuntime = runtime;
             if (runtime == ExportRuntime.MonoGame)
                 _selectedPlatforms.Remove(ExportPlatform.BlazorGL);
+            // FNA is a single desktop target — it can't be combined with other platforms,
+            // so collapse the selection to DesktopGL only.
+            else if (runtime == ExportRuntime.Fna)
+            {
+                _selectedPlatforms.Clear();
+                _selectedPlatforms.Add(ExportPlatform.DesktopGL);
+            }
         }
 
         private async Task OnExportNameKeyDown(KeyboardEventArgs e)

@@ -40,6 +40,10 @@
     <!-- MonoGame framework — not used by XnaFiddle itself, only in exported projects -->
     <MonoGameFrameworkVersion>3.8.4.1</MonoGameFrameworkVersion>
 
+    <!-- FNA.NET — opinionated third-party FNA fork, used only in exported FnaDesktop projects.
+         A single package supplies the framework and bundles native libs (win/macOS). -->
+    <FnaNetVersion>2.2.11.2602</FnaNetVersion>
+
     <!-- Third-party game libraries -->
     <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
     <!-- Bumped from the stable 0.6.8 to a prerelease because Gum.Shapes.KNI 2026.6.6.1

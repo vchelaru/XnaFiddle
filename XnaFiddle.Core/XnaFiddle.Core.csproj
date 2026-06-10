@@ -48,6 +48,8 @@ namespace XnaFiddle {
         public const string KniWasmJs = &quot;$(KniWasmJsVersion)&quot;%3B
         // MonoGame
         public const string MonoGameFramework = &quot;$(MonoGameFrameworkVersion)&quot;%3B
+        // FNA
+        public const string Fna = &quot;$(FnaNetVersion)&quot;%3B
         // Third-party libraries
         public const string AetherPhysics = &quot;$(AetherPhysicsVersion)&quot;%3B
         public const string AposShapes = &quot;$(AposShapesVersion)&quot;%3B
