@@ -113,6 +113,12 @@ namespace XnaFiddle
                 AddTextEntry(archive, $"{projectName}.slnx", slnx);
                 AddTextEntry(archive, $"{projectName}/{projectName}.csproj", csproj);
 
+                // Emit the dotnet-tools manifest so `dotnet mgcb` resolves at build time
+                // (mirrors how BuildPackageList resolves the MonoGame version).
+                string mgVersion = monoGameVersion ?? PackageVersions.MonoGameFramework;
+                if (NeedsMgcbToolManifest(target))
+                    AddTextEntry(archive, $"{projectName}/.config/dotnet-tools.json", GenerateMgcbToolManifest(mgVersion));
+
                 // Each platform has its own entry-point and hosting structure.
                 if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
                 {
@@ -205,6 +211,12 @@ namespace XnaFiddle
                     string csproj = GenerateCsproj(projectName, target, packages, hasAssets, isMultiPlatform: true, commonProjectName: commonName);
 
                     AddTextEntry(archive, $"{platformDir}/{platformDir}.csproj", csproj);
+
+                    // Emit the dotnet-tools manifest per MonoGame project so `dotnet mgcb`
+                    // resolves at build time without affecting sibling KNI projects.
+                    string mgVersion = monoGameVersion ?? PackageVersions.MonoGameFramework;
+                    if (NeedsMgcbToolManifest(target))
+                        AddTextEntry(archive, $"{platformDir}/.config/dotnet-tools.json", GenerateMgcbToolManifest(mgVersion));
 
                     // Platform-specific entry points
                     if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
@@ -1119,6 +1131,37 @@ public class RawContentManager : ContentManager
         catch (FileNotFoundException) {{ return null; }}
     }}
 {achxMethods}}}
+";
+        }
+
+        // The MonoGame content pipeline compiles content (e.g. Apos.Shapes' shader, injected via its
+        // buildTransitive MonoGameContentReference) by shelling out to the `dotnet mgcb` local tool.
+        // That tool only resolves when the project ships a .config/dotnet-tools.json manifest; without
+        // it the build fails with MSB3073. The legacy content-builder task (MonoGame.Content.Builder.Task
+        // + dotnet-mgcb + MonoGameContentReference) is the path the export uses on both 3.8.4 stable and
+        // the 3.8.5 preview — it's mechanically identical and dotnet-mgcb ships at both versions — so the
+        // manifest is emitted for all MonoGame targets. The caller pins dotnet-mgcb to mgVersion so the
+        // restored tool stays in lockstep with the framework/builder packages. KNI/FNA use different
+        // tooling and are out of scope.
+        static bool NeedsMgcbToolManifest(ExportTarget target) =>
+            target == ExportTarget.MonoGameDesktopGL
+            || target == ExportTarget.MonoGameWindowsDX
+            || target == ExportTarget.MonoGameAndroid;
+
+        // dotnet-mgcb is pinned to the same version as the framework/content-builder packages so the
+        // restored local tool stays in lockstep with MonoGame.Content.Builder.Task.
+        static string GenerateMgcbToolManifest(string mgVersion)
+        {
+            return $@"{{
+  ""version"": 1,
+  ""isRoot"": true,
+  ""tools"": {{
+    ""dotnet-mgcb"": {{
+      ""version"": ""{mgVersion}"",
+      ""commands"": [ ""mgcb"" ]
+    }}
+  }}
+}}
 ";
         }
 
