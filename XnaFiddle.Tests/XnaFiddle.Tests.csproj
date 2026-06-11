@@ -14,6 +14,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    <!-- SecurityChecker's JSInterop-blocking tests need the Microsoft.JSInterop types to bind
+         symbols. These came transitively from XnaFiddle.BlazorGL, which a net8.0 test project
+         can no longer reference (it now targets net8.0-browser). See issue #26. -->
+    <PackageReference Include="Microsoft.JSInterop" Version="8.0.17" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,7 +25,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\XnaFiddle.BlazorGL\XnaFiddle.BlazorGL.csproj" />
+    <!-- The tested, platform-agnostic logic lives in XnaFiddle.Core (net8.0); the app project
+         is net8.0-browser and can't be referenced from a net8.0 test project. See issue #26. -->
+    <ProjectReference Include="..\XnaFiddle.Core\XnaFiddle.Core.csproj" />
   </ItemGroup>
 
 </Project>

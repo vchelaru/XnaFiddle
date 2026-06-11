@@ -16,7 +16,10 @@ namespace XnaFiddle
         KniBlazorGL,
         MonoGameDesktopGL,
         MonoGameWindowsDX,
-        MonoGameAndroid
+        MonoGameAndroid,
+        // FNA is a third runtime category, neither KNI nor MonoGame. It is exported
+        // via the FNA.NET NuGet package and is a single desktop target only.
+        FnaDesktop
     }
 
     /// <summary>
@@ -57,6 +60,7 @@ namespace XnaFiddle
             ExportTarget.MonoGameDesktopGL => "DesktopGL",
             ExportTarget.MonoGameWindowsDX => "WindowsDX",
             ExportTarget.MonoGameAndroid   => "Android",
+            ExportTarget.FnaDesktop        => "Desktop",
             _ => throw new ArgumentOutOfRangeException(nameof(target), target, null),
         };
 
@@ -77,6 +81,11 @@ namespace XnaFiddle
 
             if (targets.Count == 1)
                 return Export(expandedSource, targets[0], projectName, assets, libraryRegistry);
+
+            // FNA is single-target only — it must never reach the multi-platform common-project
+            // path (GenerateCommonCsproj's isMonoGame framework-reference logic assumes KNI/MonoGame).
+            if (targets.Contains(ExportTarget.FnaDesktop))
+                throw new ArgumentException("FnaDesktop cannot be combined with other export targets.", nameof(targets));
 
             return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry);
         }
@@ -125,7 +134,12 @@ namespace XnaFiddle
                 // Neither KNI nor MonoGame reliably load raw image files via Content.Load
                 // on all platforms (e.g. Android packs assets in the APK). Include a shim
                 // ContentManager that handles raw textures via FromStream.
-                AddTextEntry(archive, $"{projectName}/RawContentManager.cs", GenerateRawContentManager(projectName));
+                AddTextEntry(archive, $"{projectName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(packages)));
+
+                // FNA.NET bundles win-x64 and osx natives, but on linux-x64 it ships only
+                // libtheorafile — SDL3/FNA3D/FAudio are expected from system packages.
+                if (target == ExportTarget.FnaDesktop)
+                    AddTextEntry(archive, $"{projectName}/README.txt", GenerateFnaReadme());
 
                 if (assets != null)
                 {
@@ -174,7 +188,7 @@ namespace XnaFiddle
                 // Common project
                 AddTextEntry(archive, $"{commonName}/{commonName}.csproj", commonCsproj);
                 AddTextEntry(archive, $"{commonName}/Game1.cs", gameCs);
-                AddTextEntry(archive, $"{commonName}/RawContentManager.cs", GenerateRawContentManager(projectName));
+                AddTextEntry(archive, $"{commonName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(commonPackages)));
 
                 // Per-platform projects
                 foreach (var target in targets)
@@ -312,8 +326,15 @@ namespace XnaFiddle
             var packages = new List<NuGetPackage>();
             bool isKni = target.IsKni();
 
-            // Base framework packages
-            if (isKni)
+            // Base framework packages.
+            // FNA is a third runtime category (neither KNI nor MonoGame): a single FNA.NET
+            // package supplies the framework and bundles native libs. It has no content
+            // pipeline (RawContentManager handles raw assets) and no separate platform package.
+            if (target == ExportTarget.FnaDesktop)
+            {
+                packages.Add(new NuGetPackage { Id = "FNA.NET", Version = PackageVersions.Fna });
+            }
+            else if (isKni)
             {
                 // KNI: 10 individual framework packages + 1 platform package + content pipeline builder
                 foreach (string pkg in KniFrameworkPackages)
@@ -481,6 +502,15 @@ namespace XnaFiddle
                     sb.AppendLine("    <ApplicationVersion>1</ApplicationVersion>");
                     sb.AppendLine("    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>");
                     break;
+
+                case ExportTarget.FnaDesktop:
+                    // FNA is neither KNI nor MonoGame: no KniPlatform/MonoGamePlatform property.
+                    // The FNA.NET package brings the framework and bundles native libs for win/macOS.
+                    sb.AppendLine("    <OutputType>WinExe</OutputType>");
+                    sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+                    sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
+                    sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
+                    break;
             }
 
             sb.AppendLine("  </PropertyGroup>");
@@ -575,6 +605,18 @@ public static class Program
         game.Run();
     }}
 }}
+";
+        }
+
+        static string GenerateFnaReadme()
+        {
+            return @"This project targets FNA via the FNA.NET NuGet package — an opinionated
+third-party fork of FNA that bundles the required native libraries (SDL3, FNA3D,
+FAudio, etc.) and is distributed via NuGet, so it builds and runs as-is via
+`dotnet restore` && `dotnet run`.
+
+If you prefer upstream FNA instead, replace the FNA.NET PackageReference in the
+.csproj with a project/source reference to FNA.
 ";
         }
 
@@ -855,11 +897,114 @@ internal class Program
 ";
         }
 
-        static string GenerateRawContentManager(string projectName)
+        // Detects whether an export references a FlatRedBall.AnimationChain package
+        // (.KNI or .MonoGame). When it does, the generated RawContentManager gains an
+        // AnimationChainList branch; otherwise that branch is omitted so projects that
+        // don't reference the package still compile.
+        static bool UsesAnimationChain(List<NuGetPackage> packages)
         {
+            for (int i = 0; i < packages.Count; i++)
+                if (packages[i].Id.StartsWith("FlatRedBall.AnimationChain", StringComparison.Ordinal))
+                    return true;
+            return false;
+        }
+
+        static string GenerateRawContentManager(string projectName, bool includeAnimationChain)
+        {
+            // The .achx branch references types from FlatRedBall.AnimationChain, which is only
+            // referenced when the source uses it, so emit these pieces conditionally.
+            string achxUsings = includeAnimationChain
+                ? "using System.Collections.Generic;\nusing FlatRedBall.AnimationChain;\n"
+                : "";
+
+            string achxField = includeAnimationChain
+                ? "    AchxLoader _achxLoader;\n"
+                : "";
+
+            string achxLoadBranch = includeAnimationChain
+                ? @"        if (typeof(T) == typeof(AnimationChainList))
+        {
+            string achxName = assetName.EndsWith("".achx"", StringComparison.OrdinalIgnoreCase) ? assetName : assetName + "".achx"";
+            string achxPath = Path.Combine(RootDirectory, achxName);
+            _achxLoader ??= new AchxLoader(_graphics.GraphicsDevice);
+
+            // AchxLoader asks for the .achx file and each referenced texture by relative path;
+            // resolve against RootDirectory and bare filename so all platforms find them.
+            Stream OpenStreamOrNull(string path)
+            {
+                string[] candidates = { path, Path.Combine(RootDirectory, path), Path.Combine(RootDirectory, Path.GetFileName(path)) };
+                foreach (string candidate in candidates)
+                {
+                    byte[] data = TryReadAllBytes(candidate);
+                    if (data != null) return new MemoryStream(data, false);
+                }
+                return null;
+            }
+
+            AnimationChainList chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
+            SanitizeFrames(chainList);
+            return (T)(object)chainList;
+        }
+
+"
+                : "";
+
+            string achxMethods = includeAnimationChain
+                ? @"
+    // .achx frames can contain negative or out-of-bounds pixel coordinates (e.g.
+    // LeftCoordinate=-1), which produce Rectangles that raise GL_INVALID_OPERATION
+    // (0x0502) on WebGL when submitted to SpriteBatch. Clamp every frame to texture
+    // bounds, and premultiply alpha on KNI (AchxLoader's FromStream returns straight alpha).
+    void SanitizeFrames(AnimationChainList chainList)
+    {
+        var premultiplied = new HashSet<Texture2D>();
+        foreach (AnimationChain chain in chainList)
+        {
+            for (int i = 0; i < chain.Count; i++)
+            {
+                AnimationFrame frame = chain[i];
+                if (frame.Texture == null) continue;
+
+                if (NeedsPremultiply && premultiplied.Add(frame.Texture))
+                    PremultiplyAlpha(frame.Texture);
+
+                if (!frame.SourceRectangle.HasValue) continue;
+
+                Rectangle r = frame.SourceRectangle.Value;
+                int texW = frame.Texture.Width;
+                int texH = frame.Texture.Height;
+
+                if (r.Width < 0) { r.X += r.Width; r.Width = -r.Width; }
+                if (r.Height < 0) { r.Y += r.Height; r.Height = -r.Height; }
+                if (r.X < 0) { r.Width += r.X; r.X = 0; }
+                if (r.Y < 0) { r.Height += r.Y; r.Y = 0; }
+
+                if (r.X >= texW || r.Y >= texH || r.Width <= 0 || r.Height <= 0)
+                {
+                    frame.SourceRectangle = null;
+                    continue;
+                }
+
+                if (r.Right > texW) r.Width = texW - r.X;
+                if (r.Bottom > texH) r.Height = texH - r.Y;
+
+                frame.SourceRectangle = r;
+            }
+        }
+    }
+
+    public override void Unload()
+    {
+        _achxLoader?.Dispose();
+        _achxLoader = null;
+        base.Unload();
+    }
+"
+                : "";
+
             return $@"using System;
 using System.IO;
-using Microsoft.Xna.Framework;
+{achxUsings}using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
@@ -879,16 +1024,19 @@ public class RawContentManager : ContentManager
     static readonly string[] ImageExtensions = {{ "".png"", "".jpg"", "".jpeg"", "".bmp"" }};
     static readonly string[] AudioExtensions = {{ "".wav"" }};
     static readonly bool IsDesktop = !OperatingSystem.IsAndroid() && !OperatingSystem.IsBrowser();
-    // KNI's Texture2D.FromStream returns straight (non-premultiplied) alpha, but XNA-style
-    // code (SpriteBatch + BlendState.AlphaBlend) expects premultiplied. MonoGame's FromStream
-    // already premultiplies, so we only do it on KNI. Detected at runtime by assembly name
-    // to avoid pushing a #if KNI / csproj DefineConstants flag down to every exported project.
-    // Fragile: fails open (skips premultiply) if KNI ever renames its graphics assembly away
-    // from Xna.Framework.*.
-    static readonly bool NeedsPremultiply = typeof(Texture2D).Assembly.GetName().Name?.StartsWith(""Xna.Framework"") == true;
+    // KNI's and FNA's Texture2D.FromStream return straight (non-premultiplied) alpha, but
+    // XNA-style code (SpriteBatch + BlendState.AlphaBlend) expects premultiplied. MonoGame's
+    // FromStream already premultiplies, so we only do it on KNI and FNA. Detected at runtime
+    // by assembly name (KNI is Xna.Framework.*, FNA is FNA.NET) to avoid pushing a #if /
+    // csproj DefineConstants flag down to every exported project. MonoGame is left false.
+    // Fragile: fails open (skips premultiply) if either framework ever renames its graphics
+    // assembly away from these names.
+    static readonly bool NeedsPremultiply =
+        typeof(Texture2D).Assembly.GetName().Name is string asmName &&
+        (asmName.StartsWith(""Xna.Framework"") || asmName == ""FNA.NET"");
 
     readonly IGraphicsDeviceService _graphics;
-
+{achxField}
     static void PremultiplyAlpha(Texture2D texture)
     {{
         Color[] pixels = new Color[texture.Width * texture.Height];
@@ -914,26 +1062,15 @@ public class RawContentManager : ContentManager
             foreach (var ext in ImageExtensions)
             {{
                 string path = Path.Combine(RootDirectory, assetName + ext);
-                if (IsDesktop)
-                {{
-                    if (!File.Exists(path))
-                        continue;
-                    using var stream = File.OpenRead(path);
-                    var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
-                    if (NeedsPremultiply) PremultiplyAlpha(tex);
-                    return (T)(object)tex;
-                }}
-                else
-                {{
-                    try
-                    {{
-                        using var stream = TitleContainer.OpenStream(path);
-                        var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
-                        if (NeedsPremultiply) PremultiplyAlpha(tex);
-                        return (T)(object)tex;
-                    }}
-                    catch (FileNotFoundException) {{ }}
-                }}
+                byte[] bytes = TryReadAllBytes(path);
+                if (bytes == null) continue;
+                // If the user dropped an .xnb in disguise (or any XNB-headered blob), skip
+                // raw decode and fall through to the pipeline-based base.Load<T>.
+                if (IsXnb(bytes)) break;
+                using var stream = new MemoryStream(bytes);
+                var tex = Texture2D.FromStream(_graphics.GraphicsDevice, stream);
+                if (NeedsPremultiply) PremultiplyAlpha(tex);
+                return (T)(object)tex;
             }}
         }}
 
@@ -942,28 +1079,37 @@ public class RawContentManager : ContentManager
             foreach (var ext in AudioExtensions)
             {{
                 string path = Path.Combine(RootDirectory, assetName + ext);
-                if (IsDesktop)
-                {{
-                    if (!File.Exists(path))
-                        continue;
-                    using var stream = File.OpenRead(path);
-                    return (T)(object)SoundEffect.FromStream(stream);
-                }}
-                else
-                {{
-                    try
-                    {{
-                        using var stream = TitleContainer.OpenStream(path);
-                        return (T)(object)SoundEffect.FromStream(stream);
-                    }}
-                    catch (FileNotFoundException) {{ }}
-                }}
+                byte[] bytes = TryReadAllBytes(path);
+                if (bytes == null) continue;
+                if (IsXnb(bytes)) break;
+                using var stream = new MemoryStream(bytes);
+                return (T)(object)SoundEffect.FromStream(stream);
             }}
         }}
 
-        return base.Load<T>(assetName);
+{achxLoadBranch}        return base.Load<T>(assetName);
     }}
-}}
+
+    static bool IsXnb(byte[] bytes) =>
+        bytes != null && bytes.Length >= 3 && bytes[0] == (byte)'X' && bytes[1] == (byte)'N' && bytes[2] == (byte)'B';
+
+    static byte[] TryReadAllBytes(string path)
+    {{
+        if (IsDesktop)
+        {{
+            if (!File.Exists(path)) return null;
+            return File.ReadAllBytes(path);
+        }}
+        try
+        {{
+            using var stream = TitleContainer.OpenStream(path);
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            return ms.ToArray();
+        }}
+        catch (FileNotFoundException) {{ return null; }}
+    }}
+{achxMethods}}}
 ";
         }
 

@@ -21,6 +21,7 @@ public class ProjectExporterTests
         registry.Register(new MonoGameExtendedPlugin());
         registry.Register(new AetherPhysicsPlugin());
         registry.Register(new KernSmithPlugin());
+        registry.Register(new FlatRedBallAnimationChainPlugin());
         return registry;
     }
 
@@ -46,6 +47,15 @@ public class Game1 : Game
     const string GumCode = @"
 using Microsoft.Xna.Framework;
 using MonoGameGum;
+public class Game1 : Game
+{
+     protected override void Draw(GameTime gt) { }
+}";
+
+    // Game code that references FlatRedBall.AnimationChain
+    const string FlatRedBallAnimationChainCode = @"
+using Microsoft.Xna.Framework;
+using FlatRedBall.AnimationChain;
 public class Game1 : Game
 {
     protected override void Draw(GameTime gt) { }
@@ -396,6 +406,149 @@ public class Game1 : Game
         // Should NOT be in platform projects
         string desktop = files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"];
         Assert.DoesNotContain("Gum", desktop);
+    }
+
+    // ── FlatRedBallAnimationChain ────────────────────────────────────────────
+
+    [Fact]
+    public void FlatRedBallAnimationChain_Kni_IncludesKniPackage()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+        Assert.Contains("FlatRedBall.AnimationChain.KNI", common);
+        Assert.DoesNotContain("FlatRedBall.AnimationChain.MonoGame", common);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_MonoGame_IncludesMonoGamePackage()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameAndroid };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+        Assert.Contains("FlatRedBall.AnimationChain.MonoGame", common);
+        Assert.DoesNotContain("FlatRedBall.AnimationChain.KNI", common);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_Kni_CorrectVersion()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        // Verify version from PackageVersions (0.3.1-preview.1)
+        Assert.Contains("FlatRedBall.AnimationChain.KNI", csproj);
+        Assert.Contains("0.3.1-preview.1", csproj);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_RawContentManager_HasAchxBranch()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        // RawContentManager lives in the common project, alongside the package reference.
+        string rcm = files["MyGameCommon/RawContentManager.cs"];
+        Assert.Contains("using FlatRedBall.AnimationChain;", rcm);
+        Assert.Contains("typeof(T) == typeof(AnimationChainList)", rcm);
+        Assert.Contains("new AchxLoader(", rcm);
+        Assert.Contains("SanitizeFrames", rcm);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_RawContentManager_SingleTarget_HasAchxBranch()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string rcm = files["MyGame/RawContentManager.cs"];
+        Assert.Contains("typeof(T) == typeof(AnimationChainList)", rcm);
+    }
+
+    [Fact]
+    public void RawContentManager_WithoutAnimationChain_OmitsAchxBranch()
+    {
+        // A project that does not use AnimationChain must not reference the package's
+        // types, or it would fail to compile (the package isn't referenced).
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string rcm = files["MyGameCommon/RawContentManager.cs"];
+        Assert.DoesNotContain("AnimationChain", rcm);
+        Assert.DoesNotContain("AchxLoader", rcm);
+    }
+
+    // ── FNA desktop export ───────────────────────────────────────────────────
+
+    [Fact]
+    public void FnaDesktop_ReferencesFnaNetAndNoOtherRuntimes()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.FnaDesktop };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+
+        // FNA.NET is the single framework package, at the version from PackageVersions.
+        Assert.Contains("FNA.NET", csproj);
+        Assert.Contains("2.2.11.2602", csproj);
+
+        // No MonoGame, KNI, or nkast packages should leak in.
+        Assert.DoesNotContain("MonoGame", csproj);
+        Assert.DoesNotContain("nkast", csproj);
+        Assert.DoesNotContain("KniPlatform", csproj);
+        Assert.DoesNotContain("MonoGamePlatform", csproj);
+
+        // Standard desktop entry point + shared sources.
+        Assert.Contains("MyGame/Program.cs", files.Keys);
+        Assert.Contains("MyGame/Game1.cs", files.Keys);
+        Assert.Contains("MyGame/RawContentManager.cs", files.Keys);
+    }
+
+    [Fact]
+    public void FnaDesktop_IncludesFnaNetReadme()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.FnaDesktop };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/README.txt", files.Keys);
+        string readme = files["MyGame/README.txt"];
+        Assert.Contains("FNA.NET", readme);
+        Assert.Contains("PackageReference", readme);
+    }
+
+    [Fact]
+    public void RawContentManager_PremultiplyDetection_IncludesFnaAndKni()
+    {
+        // FNA's Texture2D.FromStream does NOT premultiply alpha, so the generated
+        // RawContentManager must detect FNA (assembly FNA.NET) alongside KNI
+        // (Xna.Framework.*) and premultiply. MonoGame stays out (it premultiplies itself).
+        // Guards against the FNA case silently regressing back to "false".
+        byte[] zip = ProjectExporter.Export(MinimalCode, [ExportTarget.FnaDesktop], "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        string rcm = files["MyGame/RawContentManager.cs"];
+        Assert.Contains("NeedsPremultiply", rcm);
+        Assert.Contains("FNA.NET", rcm);
+        Assert.Contains("Xna.Framework", rcm);
+    }
+
+    [Fact]
+    public void FnaDesktop_CannotCombineWithOtherTargets()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.FnaDesktop, ExportTarget.KniDesktopGL };
+        Assert.Throws<System.ArgumentException>(() =>
+            ProjectExporter.Export(MinimalCode, targets, "MyGame"));
     }
 
     // ── BlazorGL multi-platform entry points ─────────────────────────────────

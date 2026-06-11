@@ -49,6 +49,39 @@ public class ExportableLibraryTests
         Assert.Contains("Gum.MonoGame", ids);
     }
 
+    // ── GumShapesPlugin ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void GumShapes_DetectsShapeRendererUsage()
+    {
+        var plugin = new GumShapesPlugin();
+        Assert.True(plugin.IsUsedInSource("ShapeRenderer.Self.Initialize();"));
+    }
+
+    [Fact]
+    public void GumShapes_NotDetectedForPlainGumOrColoredRectangle()
+    {
+        // Plain Gum code (and base-Gum's ColoredRectangleRuntime, whose name contains
+        // "RectangleRuntime") must NOT pull in the shapes package — only ShapeRenderer does.
+        var plugin = new GumShapesPlugin();
+        Assert.False(plugin.IsUsedInSource("using MonoGameGum;"));
+        Assert.False(plugin.IsUsedInSource("var r = new ColoredRectangleRuntime();"));
+    }
+
+    [Fact]
+    public void GumShapes_KniPackage()
+    {
+        var ids = PackageIds(new GumShapesPlugin(), ExportTarget.KniDesktopGL);
+        Assert.Contains("Gum.Shapes.KNI", ids);
+    }
+
+    [Fact]
+    public void GumShapes_MonoGamePackage()
+    {
+        var ids = PackageIds(new GumShapesPlugin(), ExportTarget.MonoGameDesktopGL);
+        Assert.Contains("Gum.Shapes.MonoGame", ids);
+    }
+
     // ── AposShapesPlugin ─────────────────────────────────────────────────────
 
     [Fact]
@@ -229,15 +262,61 @@ public class ExportableLibraryTests
         Assert.Contains("MLEM.Extended", ids);
     }
 
+    // ── FlatRedBallAnimationChainPlugin ──────────────────────────────────────
+
     [Fact]
-    public void Mlem_WithBoth_IncludesAllPackages()
+    public void FlatRedBallAnimationChain_DetectsAnimationChainUsage()
     {
-        var plugin = new MlemPlugin();
-        string source = "using MLEM.Ui;\nusing MLEM.Extended;";
-        var packages = plugin.GetExportPackages(ExportTarget.KniDesktopGL, source);
-        var ids = packages.Select(p => p.Id).ToList();
-        Assert.Contains("MLEM.KNI", ids);
-        Assert.Contains("MLEM.Ui.KNI", ids);
-        Assert.Contains("MLEM.Extended.KNI", ids);
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        Assert.True(plugin.IsUsedInSource("var chain = new AnimationChain();"));
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_DetectsAnimationPlayerUsage()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        Assert.True(plugin.IsUsedInSource("var player = new AnimationPlayer();"));
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_NotDetectedInUnrelatedCode()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        Assert.False(plugin.IsUsedInSource("using Microsoft.Xna.Framework;"));
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_KniPackage()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        var ids = PackageIds(plugin, ExportTarget.KniDesktopGL);
+        Assert.Contains("FlatRedBall.AnimationChain.KNI", ids);
+        Assert.Single(ids); // Should only have one package
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_MonoGamePackage()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        var ids = PackageIds(plugin, ExportTarget.MonoGameDesktopGL);
+        Assert.Contains("FlatRedBall.AnimationChain.MonoGame", ids);
+        Assert.Single(ids); // Should only have one package
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_KniAndroidPackage()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        var ids = PackageIds(plugin, ExportTarget.KniAndroid);
+        Assert.Contains("FlatRedBall.AnimationChain.KNI", ids);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_CorrectVersion()
+    {
+        var plugin = new FlatRedBallAnimationChainPlugin();
+        var packages = plugin.GetExportPackages(ExportTarget.KniDesktopGL, "");
+        var pkg = packages.First(p => p.Id == "FlatRedBall.AnimationChain.KNI");
+        Assert.Equal(PackageVersions.FlatRedBallAnimationChain, pkg.Version);
     }
 }

@@ -34,12 +34,26 @@ namespace XnaFiddle
             new ExampleInfo { Name = "SoundPlayback",   Category = "Basics", Description = "Load and play a WAV sound effect with keyboard controls" },
             new ExampleInfo { Name = "TextureLoading",  Category = "Basics", Description = "Load and display a texture from a file" },
 
+            // Shaders (compiled in-browser from HLSL .fx via ShadowDusk; HiDef, but the OpenGL
+            // .mgfx is profile-agnostic so it loads under Reach/WebGL1 too)
+            new ExampleInfo { Name = "ShaderGrayscale", Category = "Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
+            new ExampleInfo { Name = "ShaderInvert",    Category = "Shaders", Description = "Invert an image's colors" },
+            new ExampleInfo { Name = "ShaderSepia",     Category = "Shaders", Description = "Sepia tone, with a tint parameter set from C#" },
+            new ExampleInfo { Name = "ShaderTint",      Category = "Shaders", Description = "Multiply an image by a tint color passed from C#" },
+            new ExampleInfo { Name = "ShaderSaturate",  Category = "Shaders", Description = "Bloom / brightness boost with adjustable parameters" },
+            new ExampleInfo { Name = "ShaderPixelated", Category = "Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
+            new ExampleInfo { Name = "ShaderScanlines", Category = "Shaders", Description = "CRT-style scanlines" },
+            new ExampleInfo { Name = "ShaderFading",    Category = "Shaders", Description = "Vertical fade driven by texture coordinates" },
+            new ExampleInfo { Name = "ShaderDots",      Category = "Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
+
             // Libraries (alphabetical)
             new ExampleInfo { Name = "AetherPhysics",                Category = "Aether.Physics2D",  Description = "2D physics simulation with a bouncing ball and keyboard controls" },
             new ExampleInfo { Name = "AposShapes",                   Category = "Apos.Shapes",       Description = "Draw shapes with the Apos.Shapes library" },
+            new ExampleInfo { Name = "AnimationChain",               Category = "AnimationChain",    Description = "Play a sprite animation from a FlatRedBall .achx file with AnimationPlayer — arrow keys switch animations" },
             new ExampleInfo { Name = "FontStashSharp",               Category = "FontStashSharp",     Description = "Dynamic text rendering with multiple sizes and colors" },
             new ExampleInfo { Name = "DynamicFonts",                    Category = "Gum",                Description = "Runtime font generation with KernSmith — pick family, size, bold, italic, and outline" },
             new ExampleInfo { Name = "GumUI",                        Category = "Gum",                Description = "UI layout with buttons and text using Gum" },
+            new ExampleInfo { Name = "GumShapes",                    Category = "Gum",                Description = "Filled, outlined, gradient, dashed, and shadowed shapes with Gum's CircleRuntime and RectangleRuntime" },
             new ExampleInfo { Name = "MlemTextFormatting",           Category = "MLEM",               Description = "Text formatting using MLEM, which supports coloring, in-text icons, text animations and more" },
             new ExampleInfo { Name = "MlemUi",                       Category = "MLEM",               Description = "A mouse, keyboard, gamepad and touch ready Ui system that features automatic anchoring, sizing and several ready-to-use element types" },
             new ExampleInfo { Name = "Camera2D (MonoGame.Extended)", Category = "MonoGame.Extended",  Description = "Pan and zoom a 2D camera with keyboard and mouse" },
@@ -54,10 +68,17 @@ namespace XnaFiddle
             .ToArray();
 
         /// <summary>
-        /// Library categories (everything after "Basics"), in catalog order.
+        /// Built-in categories that are part of XnaFiddle itself (not a third-party library).
+        /// These render above the divider in the example browser, with no library separator.
+        /// </summary>
+        public static readonly string[] BuiltInCategories = { "Basics", "Shaders" };
+
+        /// <summary>
+        /// Third-party library categories, in catalog order. The example browser draws a
+        /// divider before the first of these to separate built-ins from libraries.
         /// </summary>
         public static readonly string[] LibraryCategories = Categories
-            .Where(c => c != "Basics")
+            .Where(c => !System.Array.Exists(BuiltInCategories, b => b == c))
             .ToArray();
 
         private static string[] GetExampleNames()

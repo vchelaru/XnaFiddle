@@ -20,6 +20,13 @@ namespace XnaFiddle
         private readonly LibraryRegistry _libraryRegistry;
         private BlazorWasmMetadataReferenceService _referenceService;
 
+        // Persistent success-only cache of resolved metadata references, keyed by assembly
+        // name. Parsing each assembly's PE metadata is the dominant cost of a recompile in
+        // single-threaded WASM, so once an assembly resolves we keep its MetadataReference
+        // for all subsequent compiles. Only successes are cached; failures are left out so
+        // they are retried (an assembly absent on one compile may be loaded by the next).
+        private readonly Dictionary<string, MetadataReference> _referenceCache = [];
+
         public CompilationService(NavigationManager navigationManager, LibraryRegistry libraryRegistry)
         {
             _navigationManager = navigationManager;
@@ -60,16 +67,6 @@ namespace XnaFiddle
             "TextCopy",
         ];
 
-        public class DiagnosticInfo
-        {
-            public int StartLine { get; set; }
-            public int StartCol { get; set; }
-            public int EndLine { get; set; }
-            public int EndCol { get; set; }
-            public string Message { get; set; }
-            public string Severity { get; set; } // "error", "warning", "info"
-        }
-
         public class CompilationResult
         {
             public byte[] ILBytes { get; set; }
@@ -89,10 +86,6 @@ namespace XnaFiddle
         public async Task<(List<MetadataReference> References, List<string> FailedAssemblies, string VersionInfo)>
             GetMetadataReferencesAsync(Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
         {
-            // Always create a fresh service so cached failure results from a previous
-            // compile don't permanently hide assemblies that are now loaded.
-            _referenceService = new(_navigationManager);
-
             ForceLoadAssemblies();
 
             IReadOnlyList<ILibraryPlugin> plugins = _libraryRegistry.Plugins;
@@ -102,16 +95,17 @@ namespace XnaFiddle
             versionParts.Add($"KNI {GetAssemblyVersion("Kni.Platform")}");
             for (int i = 0; i < plugins.Count; i++)
             {
-                var info = plugins[i].VersionInfo;
-                if (info.Label.Length == 0) continue;
-                string version = info.AssemblyNames.Select(GetAssemblyVersion)
+                string[] assemblyNames = plugins[i].VersionAssemblies;
+                if (assemblyNames.Length == 0) continue;
+                string version = assemblyNames.Select(GetAssemblyVersion)
                     .FirstOrDefault(v => v != "?" && v != "0.0.0.0" && v != "0.0.0")
-                    ?? GetAssemblyVersion(info.AssemblyNames[0]);
-                versionParts.Add($"{info.Label} {version}");
+                    ?? GetAssemblyVersion(assemblyNames[0]);
+                versionParts.Add($"{plugins[i].Name} {version}");
             }
             string versionInfo = string.Join("  ·  ", versionParts);
 
-            HashSet<string> assembliesRequired = [];
+            HashSet<string> assembliesRequired = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> assembliesToExpand = new(StringComparer.OrdinalIgnoreCase);
             Assembly[] loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
             for (int i = 0; i < loadedAssemblies.Length; i++)
             {
@@ -122,46 +116,131 @@ namespace XnaFiddle
             }
 
             for (int i = 0; i < KniCoreAssemblyNames.Length; i++)
+            {
                 assembliesRequired.Add(KniCoreAssemblyNames[i]);
+                assembliesToExpand.Add(KniCoreAssemblyNames[i]);
+            }
 
             for (int i = 0; i < plugins.Count; i++)
             {
                 string[] assemblies = plugins[i].RequiredAssemblies;
                 for (int j = 0; j < assemblies.Length; j++)
+                {
                     assembliesRequired.Add(assemblies[j]);
+                    assembliesToExpand.Add(assemblies[j]);
+                }
             }
 
             for (int i = 0; i < BclAssemblyNames.Length; i++)
+            {
                 assembliesRequired.Add(BclAssemblyNames[i]);
+                assembliesToExpand.Add(BclAssemblyNames[i]);
+            }
+
+            AddReferencedAssemblyNames(assembliesRequired, loadedAssemblies, assembliesToExpand);
 
             List<MetadataReference> metadataReferences = [];
             List<string> failedAssemblies = [];
             int resolved = 0;
             int total = assembliesRequired.Count;
 
+            // First pass: serve everything already in the success cache and collect the
+            // misses. After warm-up this typically leaves zero misses, so no PE metadata
+            // is re-parsed and no reference service is even created.
+            List<string> missingAssemblies = [];
             foreach (string assemblyName in assembliesRequired)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                AssemblyDetails assemblyDetails = new() { Name = assemblyName };
-                try
+                if (_referenceCache.TryGetValue(assemblyName, out MetadataReference cached))
                 {
-                    MetadataReference metadataReference = await _referenceService.CreateAsync(assemblyDetails);
-                    if (metadataReference != null)
-                        metadataReferences.Add(metadataReference);
-                    else
+                    metadataReferences.Add(cached);
+                    onProgress?.Invoke(++resolved, total);
+                }
+                else
+                {
+                    missingAssemblies.Add(assemblyName);
+                }
+            }
+
+            // Second pass: resolve only the misses. Create a fresh service so a stale
+            // failure cached inside the service can't permanently hide an assembly that
+            // is now loaded; the success cache (not the service) is what makes warm
+            // compiles skip resolution entirely.
+            if (missingAssemblies.Count > 0)
+            {
+                _referenceService = new(_navigationManager);
+                for (int i = 0; i < missingAssemblies.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string assemblyName = missingAssemblies[i];
+                    AssemblyDetails assemblyDetails = new() { Name = assemblyName };
+                    try
+                    {
+                        MetadataReference metadataReference = await _referenceService.CreateAsync(assemblyDetails);
+                        if (metadataReference != null)
+                        {
+                            metadataReferences.Add(metadataReference);
+                            _referenceCache[assemblyName] = metadataReference; // cache successes only
+                        }
+                        else
+                        {
+                            failedAssemblies.Add(assemblyName);
+                        }
+                    }
+                    catch
+                    {
                         failedAssemblies.Add(assemblyName);
+                    }
+                    onProgress?.Invoke(++resolved, total);
                 }
-                catch
-                {
-                    failedAssemblies.Add(assemblyName);
-                }
-                onProgress?.Invoke(++resolved, total);
             }
 
             if (failedAssemblies.Count > 0)
                 Console.WriteLine($"[XnaFiddle] {failedAssemblies.Count} assembl{(failedAssemblies.Count == 1 ? "y" : "ies")} failed to resolve: {string.Join(", ", failedAssemblies)}");
 
             return (metadataReferences, failedAssemblies, versionInfo);
+        }
+
+        private static void AddReferencedAssemblyNames(
+            HashSet<string> assembliesRequired,
+            Assembly[] loadedAssemblies,
+            HashSet<string> assembliesToExpand)
+        {
+            var loadedByName = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < loadedAssemblies.Length; i++)
+            {
+                if (loadedAssemblies[i].IsDynamic) continue;
+                string name = loadedAssemblies[i].GetName().Name;
+                if (string.IsNullOrEmpty(name)) continue;
+                loadedByName[name] = loadedAssemblies[i];
+            }
+
+            Queue<string> queue = new(assembliesToExpand);
+            HashSet<string> visited = new(assembliesToExpand, StringComparer.OrdinalIgnoreCase);
+            while (queue.Count > 0)
+            {
+                string assemblyName = queue.Dequeue();
+                if (!loadedByName.TryGetValue(assemblyName, out Assembly loadedAssembly)) continue;
+
+                AssemblyName[] references;
+                try
+                {
+                    references = loadedAssembly.GetReferencedAssemblies();
+                }
+                catch
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < references.Length; i++)
+                {
+                    string referencedAssemblyName = references[i].Name;
+                    if (string.IsNullOrEmpty(referencedAssemblyName)) continue;
+                    if (!visited.Add(referencedAssemblyName)) continue;
+
+                    assembliesRequired.Add(referencedAssemblyName);
+                    queue.Enqueue(referencedAssemblyName);
+                }
+            }
         }
 
         private void ForceLoadAssemblies()

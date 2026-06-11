@@ -197,6 +197,14 @@
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0;">
             <div style="padding: 6px 12px; display: flex; flex-direction: column; gap: 6px;">
                 <div style="color: #6a9955; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Export to Gist</div>
+                @if (_shaderTabs.Count > 0)
+                {
+                    <div style="color: #dcdcaa; font-size: 12px; line-height: 1.5; background: #2d2a1e; border: 1px solid #5c5320; border-radius: 3px; padding: 6px 8px;">
+                        &#9888; This fiddle has @_shaderTabs.Count shader file(s): <b>@string.Join(", ", _shaderTabs)</b>.
+                        The clipboard holds only the C# &mdash; add each <b>.fx</b> as a separate file in the gist (keep the same filename).
+                        They'll re-open automatically when the gist is imported.
+                    </div>
+                }
                 @if (!_gistCodeCopied)
                 {
                     <div style="color: #888; font-size: 12px; line-height: 1.6;">
@@ -233,6 +241,13 @@
     @if (_exportOpen)
     {
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
+            @if (_shaderTabs.Count > 0)
+            {
+                <div style="color: #dcdcaa; font-size: 12px; line-height: 1.5; background: #2d2a1e; border: 1px solid #5c5320; border-radius: 3px; padding: 6px 8px;">
+                    &#9888; Shaders aren't included in exports yet &mdash; the exported project won't contain your
+                    @_shaderTabs.Count <b>.fx</b> file(s) (exporting shaders needs the MGCB content pipeline; tracked separately).
+                </div>
+            }
             @* Row 1: Runtime + Platform *@
             <div style="display: flex; align-items: flex-start; gap: 20px;">
                 @* Runtime radio buttons *@
@@ -250,6 +265,12 @@
                                style="accent-color: #0e639c;" />
                         MonoGame
                     </label>
+                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                        <input type="radio" name="exportRuntime" checked="@(_exportRuntime == ExportRuntime.Fna)"
+                               @onchange="() => SetExportRuntime(ExportRuntime.Fna)"
+                               style="accent-color: #0e639c;" />
+                        FNA (via FNA.NET)
+                    </label>
                 </div>
 
                 @* Platform checkboxes *@
@@ -264,6 +285,9 @@
                     {
                         var p = platform;
                         if (p == ExportPlatform.BlazorGL && _exportRuntime == ExportRuntime.MonoGame)
+                            continue;
+                        // FNA is a single desktop target — hide every non-Desktop platform.
+                        if (_exportRuntime == ExportRuntime.Fna && p != ExportPlatform.DesktopGL)
                             continue;
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
                             <input type="checkbox" checked="@(_selectedPlatforms.Contains(p))"
@@ -404,6 +428,53 @@
         </div>
     }
 
+    @* Editor tab strip (issue #26 phase 2): C# program tab + one tab per shader (.fx). *@
+    <div style="display: flex; align-items: stretch; background: #252526; border-bottom: 1px solid #1a1a1a;
+                flex-shrink: 0; height: 30px; overflow-x: auto; overflow-y: hidden;">
+        @{ var csActive = _activeTab == CSharpTabName; }
+        <div @onclick="() => SelectTab(CSharpTabName)"
+             style="display: flex; align-items: center; gap: 6px; padding: 0 12px; cursor: pointer;
+                    font-size: 12px; white-space: nowrap; user-select: none;
+                    color: @(csActive ? "#fff" : "#969696"); background: @(csActive ? "#1e1e1e" : "transparent");
+                    border-right: 1px solid #1a1a1a; border-top: 2px solid @(csActive ? "#007acc" : "transparent");">
+            <i class="codicon codicon-symbol-class" style="font-size: 13px;"></i>
+            @CSharpTabName
+        </div>
+        @foreach (var tab in _shaderTabs)
+        {
+            var t = tab;
+            var active = _activeTab == t;
+            <div @onclick="() => SelectTab(t)" @ondblclick="() => BeginRename(t)" title="Double-click to rename"
+                 style="display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; cursor: pointer;
+                        font-size: 12px; white-space: nowrap; user-select: none;
+                        color: @(active ? "#fff" : "#969696"); background: @(active ? "#1e1e1e" : "transparent");
+                        border-right: 1px solid #1a1a1a; border-top: 2px solid @(active ? "#007acc" : "transparent");">
+                @if (_renamingTab == t)
+                {
+                    <input @bind="_renameValue" @bind:event="oninput"
+                           @onkeydown="OnRenameKeyDown" @onblur="CommitRenameAsync"
+                           @onclick:stopPropagation="true" autofocus
+                           style="width: 100px; background: #3c3c3c; color: #fff; border: 1px solid #007acc;
+                                  font-size: 12px; padding: 1px 4px; font-family: Consolas, monospace;" />
+                }
+                else
+                {
+                    <i class="codicon codicon-file-code" style="font-size: 13px;"></i>
+                    <span>@t</span>
+                    <span @onclick="() => CloseShaderTab(t)" @onclick:stopPropagation="true" title="Close"
+                          style="padding: 0 3px; color: #888; font-size: 14px; line-height: 1;"
+                          onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'">&times;</span>
+                }
+            </div>
+        }
+        <div @onclick="AddShaderTab" title="Add shader (.fx)"
+             style="display: flex; align-items: center; padding: 0 10px; cursor: pointer; color: #969696;
+                    font-size: 14px; user-select: none;"
+             onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#969696'">
+            <i class="codicon codicon-add"></i>
+        </div>
+    </div>
+
     <div style="flex: 1; min-height: 0; position: relative; overflow: hidden;">
         <div id="monacoContainer" style="width: 100%; height: 100%;"></div>
         @if (!Intellisense.IsReady)
@@ -543,7 +614,7 @@
     right: 0;
     bottom: 0;
     left: @(_embedMode ? "0" : "calc(45vw + 2px)");">
-    <canvas id="theCanvas" style="touch-action:none;"></canvas>
+    <canvas @key="_canvasGen" id="theCanvas" style="touch-action:none;"></canvas>
     @if (_embedMode && _isCompiling)
     {
         var embedAssemblyDone = _compileTotal > 0 && _compileProgress >= _compileTotal;
@@ -612,6 +683,10 @@
                        style="color: #666; text-decoration: none;"
                        onmouseover="this.style.color='#999'" onmouseout="this.style.color='#666'">Gum</a>
                     <span style="margin: 0 8px; color: #444;">·</span>
+                    <a href="https://docs.flatredball.com/gum/code/standard-visuals/shapes-apos.shapes" target="_blank"
+                       style="color: #666; text-decoration: none;"
+                       onmouseover="this.style.color='#999'" onmouseout="this.style.color='#666'">Gum.Shapes</a>
+                    <span style="margin: 0 8px; color: #444;">·</span>
                     <a href="https://www.monogameextended.net/" target="_blank"
                        style="color: #666; text-decoration: none;"
                        onmouseover="this.style.color='#999'" onmouseout="this.style.color='#666'">MonoGame.Extended</a>
@@ -632,17 +707,45 @@
                        style="color: #666; text-decoration: none;"
                        onmouseover="this.style.color='#999'" onmouseout="this.style.color='#666'">MLEM (Ui and Extended)</a>
                 </div>
-                <a href="https://github.com/kniEngine/kni" target="_blank"
-                   style="display: inline-flex; align-items: center; gap: 8px; margin-top: 24px;
-                          color: #555; text-decoration: none; font-size: 12px;
-                          border: 1px solid #2a2a2a; border-radius: 4px; padding: 6px 12px;
-                          transition: border-color 0.15s, color 0.15s; pointer-events: auto;"
-                   onmouseover="this.style.borderColor='#444';this.style.color='#999'"
-                   onmouseout="this.style.borderColor='#2a2a2a';this.style.color='#555'">
-                    <img src="kni-logo.png" style="width: 20px; height: 20px; border-radius: 3px;" alt="KNI" />
-                    Built with KNI &mdash; Learn more
-                </a>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 24px;">
+                    <a href="https://github.com/kniEngine/kni" target="_blank"
+                       style="display: inline-flex; align-items: center; gap: 8px;
+                              color: #555; text-decoration: none; font-size: 12px;
+                              border: 1px solid #2a2a2a; border-radius: 4px; padding: 6px 12px;
+                              transition: border-color 0.15s, color 0.15s; pointer-events: auto;"
+                       onmouseover="this.style.borderColor='#444';this.style.color='#999'"
+                       onmouseout="this.style.borderColor='#2a2a2a';this.style.color='#555'">
+                        <img src="kni-logo.png" style="width: 20px; height: 20px; border-radius: 3px;" alt="KNI" />
+                        Built with KNI &mdash; Learn more
+                    </a>
+                    <a href="https://github.com/kaltinril/ShadowDusk" target="_blank"
+                       style="display: inline-flex; align-items: center; gap: 8px;
+                              color: #555; text-decoration: none; font-size: 12px;
+                              border: 1px solid #2a2a2a; border-radius: 4px; padding: 6px 12px;
+                              transition: border-color 0.15s, color 0.15s; pointer-events: auto;"
+                       onmouseover="this.style.borderColor='#444';this.style.color='#999'"
+                       onmouseout="this.style.borderColor='#2a2a2a';this.style.color='#555'">
+                        <img src="shadowdusk-logo.png" style="width: 20px; height: 20px; border-radius: 3px;" alt="ShadowDusk" />
+                        Shaders compiled by ShadowDusk &mdash; Learn more
+                    </a>
+                    <a href="https://discord.gg/8WZy4gwzsX" target="_blank"
+                       style="display: inline-flex; align-items: center; gap: 8px;
+                              color: #555; text-decoration: none; font-size: 12px;
+                              border: 1px solid #2a2a2a; border-radius: 4px; padding: 6px 12px;
+                              transition: border-color 0.15s, color 0.15s; pointer-events: auto;"
+                       onmouseover="this.style.borderColor='#444';this.style.color='#999'"
+                       onmouseout="this.style.borderColor='#2a2a2a';this.style.color='#555'">
+                        <span style="display: inline-flex; align-items: center; justify-content: center;
+                                     width: 20px; height: 20px; border-radius: 3px; background: #5865F2;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="#fff" aria-hidden="true">
+                                <path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9554 2.4189-2.1568 2.4189Z" />
+                            </svg>
+                        </span>
+                        Join us on Discord
+                    </a>
+                </div>
             </div>
         </div>
     }
 </div>
+

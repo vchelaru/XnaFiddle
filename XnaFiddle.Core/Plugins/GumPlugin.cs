@@ -9,7 +9,7 @@ namespace XnaFiddle.Plugins
     {
         public string Name => "Gum";
         public string[] RequiredAssemblies => ["KniGum", "GumCommon", "FlatRedBall.InterpolationCore"];
-        public (string Label, string[] AssemblyNames) VersionInfo => ("Gum.KNI", ["GumCommon", "KniGum"]);
+        public string[] VersionAssemblies => ["GumCommon", "KniGum"];
 
         public bool IsUsedInSource(string source) =>
             source.Contains("MonoGameGum") || source.Contains("Gum.");

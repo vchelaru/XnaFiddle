@@ -51,7 +51,7 @@ public class AposShapesPlugin : ILibraryPlugin, IExportableLibrary
 {
     public string Name => "Apos.Shapes";
     public string[] RequiredAssemblies => ["Apos.Shapes.KNI"];
-    public (string Label, string[] AssemblyNames) VersionInfo => ("Apos.Shapes.KNI", ["Apos.Shapes.KNI"]);
+    public string[] VersionAssemblies => ["Apos.Shapes.KNI"];
 
     public void CleanUp() { }
 
@@ -68,7 +68,7 @@ public class AposShapesPlugin : ILibraryPlugin, IExportableLibrary
 
 - **`Name`** — Display name shown in diagnostics.
 - **`RequiredAssemblies`** — KNI assembly names that Roslyn needs for compilation. If the library has multiple assemblies (e.g. a base package + platform package), list all of them.
-- **`VersionInfo`** — Label and assembly names for the version banner in the diagnostics panel.
+- **`VersionAssemblies`** — Assembly names used to read the version number for the banner in the diagnostics panel. The banner's display name comes from `Name`; an empty array means the plugin contributes no banner entry.
 - **`CleanUp()`** — Reset any global/static state the library holds between game runs. If the library has no static state, leave the method body empty. If it does, use reflection to reset the relevant statics (see `GumPlugin.cs` for a thorough example). Cleanup must be idempotent — safe to call when the library hasn't been initialized, and safe to call multiple times.
 
 **`IExportableLibrary`** members:
@@ -99,7 +99,7 @@ Create an example `.cs` file in `XnaFiddle.BlazorGL/Examples/`. The file:
 - Should guard `GraphicsProfile.HiDef` with `IsProfileSupported` if used
 - Should demonstrate the library's key features with minimal, clear code
 
-Register the example in `ExampleGallery.cs` so it appears in the dropdown.
+Register the example in `ExampleGallery.cs` so it appears in the dropdown. You can also add them to the table of examples in the [README](README.md).
 
 #### 5. Welcome Page Library List (`Pages/Index.razor`)
 

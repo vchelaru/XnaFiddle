@@ -1,7 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- net8.0-browser (NOT plain net8.0): required to reference ShadowDusk.Wasm, whose
+         [JSImport] shader backends target net8.0-browser (a plain net8.0 reference fails
+         NU1201). Needs the wasm-tools workload installed. See issue #26.
+         NOTE: XnaFiddle.Tests (net8.0) cannot reference a browser-targeted project. That test
+         reference is handled separately (extract the tested logic into a net8.0 XnaFiddle.Core
+         library), NOT by multi-targeting this app — multi-targeting breaks VS restore because
+         the KNI/ShadowDusk ProjectReferences aren't solution members. -->
+    <TargetFramework>net8.0-browser</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>XnaFiddle</RootNamespace>
@@ -15,54 +22,27 @@
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
-  <!--
-    ╔══════════════════════════════════════════════════════════════════════╗
-    ║  LIBRARY VERSIONS — single source of truth                           ║
-    ║                                                                      ║
-    ║  These properties drive both the PackageReferences below AND the     ║
-    ║  generated PackageVersions class (used by ProjectExporter to emit    ║
-    ║  correct NuGet versions in exported projects).                       ║
-    ║                                                                      ║
-    ║  To update a library version, change it HERE — everything else       ║
-    ║  flows automatically. See GeneratePackageVersions target at bottom.  ║
-    ╚══════════════════════════════════════════════════════════════════════╝
-  -->
-  <PropertyGroup>
-    <!-- KNI framework — 10 core packages all share this version.
-         Update when the KniSB submodule is updated (XnaFiddle builds KNI from source,
-         but exported projects reference these NuGet packages). -->
-    <KniFrameworkVersion>4.2.9001</KniFrameworkVersion>
-
-    <!-- KNI platform packages — each platform may ship on its own release cadence -->
-    <KniPlatformDesktopGLVersion>4.2.9001.1</KniPlatformDesktopGLVersion>
-    <KniPlatformWindowsDXVersion>4.2.9001</KniPlatformWindowsDXVersion>
-    <KniPlatformAndroidVersion>4.2.9001.1</KniPlatformAndroidVersion>
-    <KniPlatformBlazorGLVersion>4.2.9001.2</KniPlatformBlazorGLVersion>
-    <KniContentPipelineVersion>4.2.9001</KniContentPipelineVersion>
-    <!-- JS version shipped by the nkast.Wasm.* transitive packages.
-         Update when KNI platform NuGet packages bump their Wasm dependency. -->
-    <KniWasmJsVersion>8.0.11</KniWasmJsVersion>
-
-    <!-- MonoGame framework — not used by XnaFiddle itself, only in exported projects -->
-    <MonoGameFrameworkVersion>3.8.4.1</MonoGameFrameworkVersion>
-
-    <!-- Third-party game libraries -->
-    <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
-    <AposShapesVersion>0.6.8</AposShapesVersion>
-    <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
-    <GumVersion>2026.4.5.1</GumVersion>
-    <KniExtendedVersion>5.5.0</KniExtendedVersion>
-    <KernSmithVersion>0.12.3</KernSmithVersion>
-    <MlemVersion>8.1.0</MlemVersion>
+  <!-- SHADOWDUSK gates the in-browser shader-compile code to the real (browser) build only,
+       so the test-only net8.0 build compiles without the ShadowDusk.Wasm reference. -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net8.0-browser' ">
+    <DefineConstants>$(DefineConstants);SHADOWDUSK</DefineConstants>
   </PropertyGroup>
 
+  <!-- Library versions are defined in Directory.Build.props (shared with XnaFiddle.Core, which
+       generates the PackageVersions class from them). They are available here as MSBuild
+       properties for the PackageReference versions below. -->
+
   <!-- Game libraries that XnaFiddle references directly (KNI variants).
-       Versions come from the properties above — do NOT hardcode here. -->
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net8.0' ">
+       Versions come from the properties above — do NOT hardcode here.
+       Unconditioned: both the net8.0-browser (real) and net8.0 (test-only) builds compile the
+       same shared classes, which reference these packages. -->
+  <ItemGroup>
     <PackageReference Include="Aether.Physics2D.KNI" Version="$(AetherPhysicsVersion)" />
     <PackageReference Include="Apos.Shapes.KNI" Version="$(AposShapesVersion)" />
+    <PackageReference Include="FlatRedBall.AnimationChain.KNI" Version="$(FlatRedBallAnimationChainVersion)" />
     <PackageReference Include="FontStashSharp.Kni" Version="$(FontStashSharpVersion)" />
     <PackageReference Include="Gum.KNI" Version="$(GumVersion)" />
+    <PackageReference Include="Gum.Shapes.KNI" Version="$(GumShapesVersion)" />
     <PackageReference Include="KNI.Extended" Version="$(KniExtendedVersion)" />
     <PackageReference Include="MLEM.Ui.KNI" Version="$(MlemVersion)" />
     <PackageReference Include="MLEM.Extended.KNI" Version="$(MlemVersion)" />
@@ -80,7 +60,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Platform-agnostic logic shared with XnaFiddle.Tests (issue #26). -->
+    <ProjectReference Include="..\XnaFiddle.Core\XnaFiddle.Core.csproj" />
     <ProjectReference Include="..\Submodules\KniSB\Platforms\Kni.Platform.Blazor.GL.csproj" />
+    <!-- In-browser HLSL .fx -> .mgfx compiler (issue #26). The DXC + SPIRV-Cross WASM modules
+         ship inside this package as static web assets, served automatically at
+         _content/ShadowDusk.Wasm/ — nothing to copy or configure. Browser-only: it targets
+         net8.0-browser, so a plain net8.0 reference fails NU1201, which is why this is
+         conditioned out of the test-only net8.0 build (which #if-s out the shader code). -->
+    <PackageReference Include="ShadowDusk.Wasm" Version="$(ShadowDuskWasmVersion)"
+                      Condition=" '$(TargetFramework)' == 'net8.0-browser' " />
   </ItemGroup>
 
   <ItemGroup>
@@ -89,51 +78,6 @@
     <!-- Embed non-code assets alongside examples (e.g. TextureLoading.KniIcon.png) -->
     <EmbeddedResource Include="Examples\*.*" Exclude="Examples\*.cs" />
   </ItemGroup>
-
-  <ItemGroup>
-    <!-- Android project template assets streamed into exported .Android projects by ProjectExporter.
-         LogicalName is set explicitly so folder names with hyphens (drawable-hdpi) survive — MSBuild's
-         default naming replaces hyphens with underscores. -->
-    <EmbeddedResource Include="AndroidTemplate\**\*.*">
-      <LogicalName>AndroidTemplate/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
-
-  <!-- Generate PackageVersions.g.cs — makes the version properties above available to C#.
-       ProjectExporter uses these constants to emit correct NuGet versions in exported projects.
-       The generated file lives in obj/ and is never checked in. -->
-  <Target Name="GeneratePackageVersions" BeforeTargets="CoreCompile">
-    <WriteLinesToFile File="$(IntermediateOutputPath)PackageVersions.g.cs" Overwrite="true" Lines="
-namespace XnaFiddle {
-    /// &lt;summary&gt;
-    /// Auto-generated from MSBuild properties in XnaFiddle.BlazorGL.csproj.
-    /// Do not edit — update the version properties in the csproj instead.
-    /// &lt;/summary&gt;
-    public static class PackageVersions {
-        // KNI
-        public const string KniFramework = &quot;$(KniFrameworkVersion)&quot;%3B
-        public const string KniPlatformDesktopGL = &quot;$(KniPlatformDesktopGLVersion)&quot;%3B
-        public const string KniPlatformWindowsDX = &quot;$(KniPlatformWindowsDXVersion)&quot;%3B
-        public const string KniPlatformAndroid = &quot;$(KniPlatformAndroidVersion)&quot;%3B
-        public const string KniPlatformBlazorGL = &quot;$(KniPlatformBlazorGLVersion)&quot;%3B
-        public const string KniContentPipeline = &quot;$(KniContentPipelineVersion)&quot;%3B
-        public const string KniWasmJs = &quot;$(KniWasmJsVersion)&quot;%3B
-        // MonoGame
-        public const string MonoGameFramework = &quot;$(MonoGameFrameworkVersion)&quot;%3B
-        // Third-party libraries
-        public const string AetherPhysics = &quot;$(AetherPhysicsVersion)&quot;%3B
-        public const string AposShapes = &quot;$(AposShapesVersion)&quot;%3B
-        public const string FontStashSharp = &quot;$(FontStashSharpVersion)&quot;%3B
-        public const string Gum = &quot;$(GumVersion)&quot;%3B
-        public const string KniExtended = &quot;$(KniExtendedVersion)&quot;%3B
-        public const string KernSmith = &quot;$(KernSmithVersion)&quot;%3B
-        public const string Mlem = &quot;$(MlemVersion)&quot;%3B
-    }
-}" />
-    <ItemGroup>
-      <Compile Include="$(IntermediateOutputPath)PackageVersions.g.cs" />
-    </ItemGroup>
-  </Target>
 
   <!-- Generate BuildInfo.g.cs with the UTC build timestamp into obj/ -->
   <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">

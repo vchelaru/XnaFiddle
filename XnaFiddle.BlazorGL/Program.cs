@@ -17,7 +17,9 @@ namespace XnaFiddle
             // game actually uses them, causing Roslyn to fail when compiling shared
             // #code= links that reference Gum, Shapes, or Extended.
             _ = typeof(MonoGameGum.GumService);          // Gum.KNI
+            _ = typeof(MonoGameAndGum.Renderables.ShapeRenderer); // Gum.Shapes.KNI
             _ = typeof(Apos.Shapes.ShapeBatch);           // Apos.Shapes.KNI
+            _ = typeof(FlatRedBall.AnimationChain.AnimationChainList); // FlatRedBall.AnimationChain.KNI
             _ = typeof(MonoGame.Extended.OrthographicCamera); // KNI.Extended
 
             // Force-load StbTrueType rasterizer so KernSmith can discover it at runtime.
@@ -31,8 +33,10 @@ namespace XnaFiddle
             var libraryRegistry = new LibraryRegistry();
             libraryRegistry.Register(new GameWindowPlugin());
             libraryRegistry.Register(new GumPlugin());
+            libraryRegistry.Register(new GumShapesPlugin());
             libraryRegistry.Register(new MlemPlugin());
             libraryRegistry.Register(new AposShapesPlugin());
+            libraryRegistry.Register(new FlatRedBallAnimationChainPlugin());
             libraryRegistry.Register(new FontStashSharpPlugin());
             libraryRegistry.Register(new MonoGameExtendedPlugin());
             libraryRegistry.Register(new AetherPhysicsPlugin());
