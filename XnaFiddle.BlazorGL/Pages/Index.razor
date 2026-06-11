@@ -280,7 +280,9 @@
                         (ExportPlatform.DesktopGL,  "DesktopGL (Windows/Linux/macOS)"),
                         (ExportPlatform.WindowsDX,  "WindowsDX (Windows)"),
                         (ExportPlatform.Android,    "Android"),
-                        (ExportPlatform.BlazorGL,   "BlazorGL (Browser)")
+                        (ExportPlatform.BlazorGL,   "BlazorGL (Browser)"),
+                        (ExportPlatform.WindowsDX12, "WindowsDX12 (Windows, DirectX 12)"),
+                        (ExportPlatform.DesktopVK,   "DesktopVK (Windows/Linux/macOS, Vulkan)")
                     })
                     {
                         var p = platform;
@@ -288,6 +290,9 @@
                             continue;
                         // FNA is a single desktop target — hide every non-Desktop platform.
                         if (_exportRuntime == ExportRuntime.Fna && p != ExportPlatform.DesktopGL)
+                            continue;
+                        // WindowsDX12 and DesktopVK are MonoGame 3.8.5 preview-only backends.
+                        if ((p == ExportPlatform.WindowsDX12 || p == ExportPlatform.DesktopVK) && !IsPreviewBackendAvailable)
                             continue;
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
                             <input type="checkbox" checked="@(_selectedPlatforms.Contains(p))"
@@ -309,7 +314,7 @@
                 {
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                         <span style="color: #aaa; margin-bottom: 2px;">MonoGame version:</span>
-                        <select @bind="_monoGameVersion"
+                        <select @bind="_monoGameVersion" @bind:after="PruneUnavailablePlatforms"
                                 style="background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px;
                                        font-size: 12px; font-family: inherit;">
                             <option value="@PackageVersions.MonoGameFramework">@PackageVersions.MonoGameFramework (stable)</option>

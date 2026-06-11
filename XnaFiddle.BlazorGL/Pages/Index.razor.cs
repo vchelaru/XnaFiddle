@@ -99,7 +99,7 @@ namespace XnaFiddle.Pages
         }
 
         enum ExportRuntime { Kni, MonoGame, Fna }
-        enum ExportPlatform { DesktopGL, WindowsDX, Android, BlazorGL }
+        enum ExportPlatform { DesktopGL, WindowsDX, Android, BlazorGL, WindowsDX12, DesktopVK }
 
         bool _exportOpen;
         bool _isExporting;
@@ -1512,9 +1512,11 @@ technique BasicColorDrawing
             (ExportRuntime.Kni, ExportPlatform.WindowsDX)  => ExportTarget.KniWindowsDX,
             (ExportRuntime.Kni, ExportPlatform.Android)    => ExportTarget.KniAndroid,
             (ExportRuntime.Kni, ExportPlatform.BlazorGL)   => ExportTarget.KniBlazorGL,
-            (ExportRuntime.MonoGame, ExportPlatform.DesktopGL) => ExportTarget.MonoGameDesktopGL,
-            (ExportRuntime.MonoGame, ExportPlatform.WindowsDX) => ExportTarget.MonoGameWindowsDX,
-            (ExportRuntime.MonoGame, ExportPlatform.Android)   => ExportTarget.MonoGameAndroid,
+            (ExportRuntime.MonoGame, ExportPlatform.DesktopGL)  => ExportTarget.MonoGameDesktopGL,
+            (ExportRuntime.MonoGame, ExportPlatform.WindowsDX)  => ExportTarget.MonoGameWindowsDX,
+            (ExportRuntime.MonoGame, ExportPlatform.Android)    => ExportTarget.MonoGameAndroid,
+            (ExportRuntime.MonoGame, ExportPlatform.WindowsDX12) => ExportTarget.MonoGameWindowsDX12,
+            (ExportRuntime.MonoGame, ExportPlatform.DesktopVK)   => ExportTarget.MonoGameDesktopVK,
             // FNA supports only the desktop target — any FNA platform resolves to FnaDesktop.
             (ExportRuntime.Fna, ExportPlatform.DesktopGL)      => ExportTarget.FnaDesktop,
             (ExportRuntime.Fna, _)                            => ExportTarget.FnaDesktop,
@@ -1549,6 +1551,23 @@ technique BasicColorDrawing
             {
                 _selectedPlatforms.Clear();
                 _selectedPlatforms.Add(ExportPlatform.DesktopGL);
+            }
+            PruneUnavailablePlatforms();
+        }
+
+        // WindowsDX12 and DesktopVK are MonoGame 3.8.5 preview-only backends. Keep them offered
+        // (and selected) only while the MonoGame runtime and the preview version are both chosen;
+        // otherwise drop them so a hidden checkbox can't silently stay in the export.
+        bool IsPreviewBackendAvailable =>
+            _exportRuntime == ExportRuntime.MonoGame
+            && _monoGameVersion == PackageVersions.MonoGameFrameworkPreview;
+
+        void PruneUnavailablePlatforms()
+        {
+            if (!IsPreviewBackendAvailable)
+            {
+                _selectedPlatforms.Remove(ExportPlatform.WindowsDX12);
+                _selectedPlatforms.Remove(ExportPlatform.DesktopVK);
             }
         }
 

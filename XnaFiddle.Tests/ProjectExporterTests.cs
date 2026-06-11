@@ -139,6 +139,71 @@ public class Game1 : Game
         Assert.Contains("MyGame.Android/Resources/drawable-xxxhdpi/icon.png", allFiles);
     }
 
+    // ── MonoGame DX12 (3.8.5 preview) export ─────────────────────────────────
+
+    [Fact]
+    public void MonoGameDX12_SinglePlatform_UsesNativeFrameworkAndDx12Runtime()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameWindowsDX12 };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
+            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        var files = ExtractTextFiles(zip);
+        string csproj = files["MyGame/MyGame.csproj"];
+
+        Assert.Contains("<MonoGamePlatform>WindowsDX12</MonoGamePlatform>", csproj);
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>", csproj);
+        Assert.Contains("MonoGame.Framework.Native", csproj);
+        Assert.Contains("MonoGame.Runtime.Windows.DX12", csproj);
+
+        // DX12 uses neither the per-platform framework package nor the legacy MGCB content path.
+        Assert.DoesNotContain("MonoGame.Framework.DesktopGL", csproj);
+        Assert.DoesNotContain("MonoGame.Content.Builder.Task", csproj);
+        Assert.DoesNotContain(files.Keys, k => k.Contains("dotnet-tools.json"));
+    }
+
+    [Fact]
+    public void MonoGameDesktopVK_SinglePlatform_UsesNativeFrameworkAndCrossPlatformVulkanRuntimes()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopVK };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
+            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        var files = ExtractTextFiles(zip);
+        string csproj = files["MyGame/MyGame.csproj"];
+
+        Assert.Contains("<MonoGamePlatform>DesktopVK</MonoGamePlatform>", csproj);
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>", csproj);
+        Assert.Contains("MonoGame.Framework.Native", csproj);
+
+        // Vulkan ships a native runtime per desktop OS.
+        Assert.Contains("MonoGame.Runtime.Windows.Vulkan", csproj);
+        Assert.Contains("MonoGame.Runtime.Linux.Vulkan", csproj);
+        Assert.Contains("MonoGame.Runtime.Mac.Vulkan", csproj);
+
+        Assert.DoesNotContain("MonoGame.Content.Builder.Task", csproj);
+        Assert.DoesNotContain(files.Keys, k => k.Contains("dotnet-tools.json"));
+    }
+
+    [Fact]
+    public void MonoGameDX12_MultiPlatform_RuntimePackageStaysOutOfCommonProject()
+    {
+        var targets = new List<ExportTarget>
+        {
+            ExportTarget.MonoGameDesktopGL,
+            ExportTarget.MonoGameWindowsDX12,
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
+            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        var files = ExtractTextFiles(zip);
+
+        string dx12 = files["MyGame.WindowsDX12/MyGame.WindowsDX12.csproj"];
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+
+        // The native runtime belongs to the DX12 platform project only.
+        Assert.Contains("MonoGame.Runtime.Windows.DX12", dx12);
+        Assert.Contains("<MonoGamePlatform>WindowsDX12</MonoGamePlatform>", dx12);
+        Assert.DoesNotContain("MonoGame.Runtime.Windows.DX12", common);
+    }
+
     // ── Multi-platform export structure ──────────────────────────────────────
 
     [Fact]

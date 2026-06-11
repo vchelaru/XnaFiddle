@@ -17,6 +17,13 @@ namespace XnaFiddle
         MonoGameDesktopGL,
         MonoGameWindowsDX,
         MonoGameAndroid,
+        // MonoGame 3.8.5+ next-gen backends: DirectX 12 (Windows) and Vulkan (cross-platform).
+        // Both use the unified managed framework (MonoGame.Framework.Native) plus native-binary
+        // MonoGame.Runtime.* package(s), not the per-platform MonoGame.Framework.* + MGCB path.
+        // Preview-only — the packages ship only as 3.8.5 previews, so the UI gates them behind the
+        // preview version.
+        MonoGameWindowsDX12,
+        MonoGameDesktopVK,
         // FNA is a third runtime category, neither KNI nor MonoGame. It is exported
         // via the FNA.NET NuGet package and is a single desktop target only.
         FnaDesktop
@@ -57,10 +64,12 @@ namespace XnaFiddle
             ExportTarget.KniWindowsDX      => "WindowsDX",
             ExportTarget.KniAndroid        => "Android",
             ExportTarget.KniBlazorGL       => "BlazorGL",
-            ExportTarget.MonoGameDesktopGL => "DesktopGL",
-            ExportTarget.MonoGameWindowsDX => "WindowsDX",
-            ExportTarget.MonoGameAndroid   => "Android",
-            ExportTarget.FnaDesktop        => "Desktop",
+            ExportTarget.MonoGameDesktopGL   => "DesktopGL",
+            ExportTarget.MonoGameWindowsDX   => "WindowsDX",
+            ExportTarget.MonoGameAndroid     => "Android",
+            ExportTarget.MonoGameWindowsDX12 => "WindowsDX12",
+            ExportTarget.MonoGameDesktopVK   => "DesktopVK",
+            ExportTarget.FnaDesktop          => "Desktop",
             _ => throw new ArgumentOutOfRangeException(nameof(target), target, null),
         };
 
@@ -295,6 +304,10 @@ namespace XnaFiddle
                     continue;
                 if (pkg.Id.StartsWith("MonoGame.Framework."))
                     continue;
+                // DX12's native-binary runtime package is platform-specific — it belongs in the
+                // per-platform project, not the shared common library.
+                if (pkg.Id.StartsWith("MonoGame.Runtime."))
+                    continue;
                 if (pkg.Id == "nkast.Xna.Framework.Content.Pipeline.Builder")
                     continue;
                 if (pkg.Id == "MonoGame.Content.Builder.Task")
@@ -379,6 +392,30 @@ namespace XnaFiddle
                     packages.Add(new NuGetPackage { Id = "Microsoft.AspNetCore.Components.WebAssembly.DevServer", Version = "8.0.17" });
                 }
             }
+            else if (target == ExportTarget.MonoGameWindowsDX12 || target == ExportTarget.MonoGameDesktopVK)
+            {
+                // The MonoGame 3.8.5+ DirectX 12 and Vulkan backends use the unified managed
+                // framework (MonoGame.Framework.Native) plus one or more native-binary runtime
+                // packages. The shared game code compiles against any MonoGame framework and binds
+                // to Native at runtime (both ship an assembly named MonoGame.Framework). There is no
+                // MGCB content-builder task here — the legacy MGCB tool has no WindowsDX12/DesktopVK
+                // platform; the new backends use a separate content pipeline (out of scope for
+                // fiddles, which load no compiled content except a library's own shader). These
+                // packages ship only as 3.8.5 previews, so pin to the preview line.
+                string previewVersion = monoGameVersion ?? PackageVersions.MonoGameFrameworkPreview;
+                packages.Add(new NuGetPackage { Id = "MonoGame.Framework.Native", Version = previewVersion });
+                if (target == ExportTarget.MonoGameWindowsDX12)
+                {
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Windows.DX12", Version = previewVersion });
+                }
+                else
+                {
+                    // DesktopVK is cross-platform Vulkan — ship the native runtime for all three desktop OSes.
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Windows.Vulkan", Version = previewVersion });
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Linux.Vulkan", Version = previewVersion });
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Mac.Vulkan", Version = previewVersion });
+                }
+            }
             else
             {
                 string monoGamePkg = target switch
@@ -440,6 +477,7 @@ namespace XnaFiddle
                 packages = packages.FindAll(p =>
                     p.Id.Contains("Platform") ||
                     p.Id.StartsWith("MonoGame.Framework.") ||
+                    p.Id.StartsWith("MonoGame.Runtime.") ||
                     p.Id == "nkast.Xna.Framework.Content.Pipeline.Builder" ||
                     p.Id == "MonoGame.Content.Builder.Task" ||
                     p.Id == "Microsoft.AspNetCore.Components.WebAssembly" ||
@@ -522,6 +560,30 @@ namespace XnaFiddle
                     sb.AppendLine($"    <ApplicationId>com.companyname.{projectName}</ApplicationId>");
                     sb.AppendLine("    <ApplicationVersion>1</ApplicationVersion>");
                     sb.AppendLine("    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>");
+                    break;
+
+                case ExportTarget.MonoGameWindowsDX12:
+                    // net8.0 is intentional and verified: the DX12 native runtime
+                    // (MonoGame.Runtime.Windows.DX12) is netstandard2.1 and MonoGame.Framework.Native
+                    // ships a net8.0 assembly, so DX12 builds and runs at net8.0 — keeping it uniform
+                    // with the other MonoGame desktop targets and able to share the net8.0 common
+                    // project unchanged. MonoGame's own templates default to net9.0, but it is not required.
+                    sb.AppendLine("    <OutputType>WinExe</OutputType>");
+                    sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+                    sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
+                    sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
+                    sb.AppendLine("    <MonoGamePlatform>WindowsDX12</MonoGamePlatform>");
+                    break;
+
+                case ExportTarget.MonoGameDesktopVK:
+                    // net8.0 verified to build and run on the Vulkan backend (see WindowsDX12 note).
+                    // DesktopVK is cross-platform (Windows/Linux/macOS); the three Vulkan runtime
+                    // packages supply the per-OS native binaries.
+                    sb.AppendLine("    <OutputType>WinExe</OutputType>");
+                    sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+                    sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
+                    sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
+                    sb.AppendLine("    <MonoGamePlatform>DesktopVK</MonoGamePlatform>");
                     break;
 
                 case ExportTarget.FnaDesktop:
