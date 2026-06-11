@@ -328,6 +328,49 @@ public class Game1 : Game
         Assert.DoesNotContain(PackageVersions.MonoGameFramework + @"""", csproj);
     }
 
+    // ── MGCB dotnet-tools manifest ───────────────────────────────────────────
+
+    [Fact]
+    public void MonoGame_StableVersion_EmitsMgcbToolManifest()
+    {
+        // Apos.Shapes (and any buildTransitive MonoGameContentReference) needs `dotnet mgcb`,
+        // which only resolves when a .config/dotnet-tools.json manifest is present.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyFiddle");
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyFiddle/.config/dotnet-tools.json", files.Keys);
+        string manifest = files["MyFiddle/.config/dotnet-tools.json"];
+        Assert.Contains("dotnet-mgcb", manifest);
+        Assert.Contains(PackageVersions.MonoGameFramework, manifest);
+    }
+
+    [Fact]
+    public void MonoGame_PreviewVersion_EmitsMgcbToolManifest()
+    {
+        // The 3.8.5 preview still uses the legacy content-builder task (dotnet-mgcb exists at
+        // 3.8.5-preview.6), so the manifest is emitted for all MonoGame versions and pins the
+        // tool to the preview version in lockstep with the framework/builder packages.
+        byte[] zip = ProjectExporter.Export(
+            MinimalCode, ExportTarget.MonoGameDesktopGL, "MyFiddle",
+            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyFiddle/.config/dotnet-tools.json", files.Keys);
+        string manifest = files["MyFiddle/.config/dotnet-tools.json"];
+        Assert.Contains("dotnet-mgcb", manifest);
+        Assert.Contains(PackageVersions.MonoGameFrameworkPreview, manifest);
+    }
+
+    [Fact]
+    public void Kni_OmitsMgcbToolManifest()
+    {
+        // KNI uses a different content pipeline tool chain; no dotnet-mgcb manifest.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyFiddle");
+        var files = ExtractTextFiles(zip);
+
+        Assert.DoesNotContain("MyFiddle/.config/dotnet-tools.json", files.Keys);
+    }
+
     // ── Content linking in platform projects ─────────────────────────────────
 
     [Fact]
