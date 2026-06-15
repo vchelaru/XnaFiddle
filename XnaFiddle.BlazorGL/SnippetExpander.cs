@@ -41,8 +41,8 @@ namespace XnaFiddle
             // draw after user draw code so UI renders on top.
             if (model.IsGum)
             {
-                usings.Add("MonoGameGum");
-                usings.Add("MonoGameGum.GueDeriving");
+                usings.Add("Gum");
+                usings.Add("Gum.GueDeriving");
                 usings.Add("Gum.Forms");
                 usings.Add("Gum.Forms.Controls");
                 usings.Add("Gum.Mvvm");

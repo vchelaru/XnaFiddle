@@ -33,7 +33,6 @@ namespace XnaFiddle.Intellisense
         {
             "Microsoft.Xna.Framework",
             "Gum",
-            "MonoGameGum",
         };
 
         /// <summary>

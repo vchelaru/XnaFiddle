@@ -3,7 +3,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 
-using MonoGameGum;
+using Gum;
 using Gum.Forms;
 using Gum.Forms.Controls;
 
