@@ -138,7 +138,7 @@ public class Game1 : Game
         spriteBatchEffect.Projection = Matrix.CreateOrthographic(cameraViewWidth, cameraViewWidth / vp.AspectRatio, 0f, -1f);
 
         // Draw physics bodies (CullClockwise + FlipVertically for Y-up coordinate system)
-        spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, RasterizerState.CullClockwise, spriteBatchEffect);
+        spriteBatch.Begin(rasterizerState: RasterizerState.CullClockwise, effect: spriteBatchEffect);
         spriteBatch.Draw(playerTexture, playerBody.Position, null, Color.White, playerBody.Rotation,
             playerTextureOrigin, new Vector2(playerBodyRadius * 2f) / playerTextureSize, SpriteEffects.FlipVertically, 0f);
         spriteBatch.Draw(groundTexture, groundBody.Position, null, Color.White, groundBody.Rotation,
