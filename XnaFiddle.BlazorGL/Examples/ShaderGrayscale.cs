@@ -46,7 +46,7 @@ public class Game1 : Game
         spriteBatch.End();
 
         // Same image on the right, with the grayscale pixel shader applied.
-        spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, null, null, null, grayscale);
+        spriteBatch.Begin(blendState: BlendState.AlphaBlend, effect: grayscale);
         spriteBatch.Draw(logo, rightPos, null, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         spriteBatch.End();
 

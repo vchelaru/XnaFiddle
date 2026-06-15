@@ -26,7 +26,7 @@ public class Game1 : Game
         // TintShader.fx is compiled to an Effect in-browser when you press Run.
         effect = Content.Load<Effect>("TintShader");
         // The tint color is passed in from C#. Try changing it!
-        effect.Parameters["TintColor"]?.SetValue(new Vector4(1f, 0.5f, 0.5f, 1f));
+        effect.Parameters["TintColor"]?.SetValue(new Color(255, 128, 128).ToVector4());
     }
 
     protected override void Draw(GameTime gameTime)
@@ -47,7 +47,7 @@ public class Game1 : Game
         spriteBatch.End();
 
         // Same image on the right, with the shader applied.
-        spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, null, null, null, effect);
+        spriteBatch.Begin(blendState: BlendState.AlphaBlend, effect: effect);
         spriteBatch.Draw(logo, rightPos, null, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         spriteBatch.End();
 

@@ -51,7 +51,7 @@ public class Game1 : Game
         spriteBatch.End();
 
         // Same image on the right, with the shader applied.
-        spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, null, null, null, effect);
+        spriteBatch.Begin(blendState: BlendState.AlphaBlend, effect: effect);
         spriteBatch.Draw(logo, rightPos, null, Color.White, 0f, origin, scale, SpriteEffects.None, 0f);
         spriteBatch.End();
 
