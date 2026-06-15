@@ -12,7 +12,7 @@ namespace XnaFiddle.Plugins
         public string[] VersionAssemblies => ["GumCommon", "KniGum"];
 
         public bool IsUsedInSource(string source) =>
-            source.Contains("MonoGameGum") || source.Contains("Gum.");
+            source.Contains("MonoGameGum") || source.Contains("Gum.") || source.Contains("using Gum;");
 
         public List<ExportPackage> GetExportPackages(ExportTarget target, string source) =>
         [
@@ -23,7 +23,7 @@ namespace XnaFiddle.Plugins
         {
             try
             {
-                var gumServiceType = Type.GetType("MonoGameGum.GumService, KniGum");
+                var gumServiceType = Type.GetType("Gum.GumService, KniGum");
                 if (gumServiceType == null) return;
                 var defaultProp = gumServiceType.GetProperty("Default", BindingFlags.Static | BindingFlags.Public);
                 var gumService = defaultProp?.GetValue(null);

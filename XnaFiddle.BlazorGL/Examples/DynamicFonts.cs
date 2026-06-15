@@ -4,8 +4,8 @@ using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
-using MonoGameGum;
-using MonoGameGum.GueDeriving;
+using Gum;
+using Gum.GueDeriving;
 using Gum.Wireframe;
 using Gum.Forms;
 using Gum.Forms.Controls;

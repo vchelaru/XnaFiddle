@@ -16,7 +16,7 @@ namespace XnaFiddle
             // assemblies eagerly. Without this, the assemblies stay unloaded until a
             // game actually uses them, causing Roslyn to fail when compiling shared
             // #code= links that reference Gum, Shapes, or Extended.
-            _ = typeof(MonoGameGum.GumService);          // Gum.KNI
+            _ = typeof(Gum.GumService);                  // Gum.KNI
             _ = typeof(MonoGameAndGum.Renderables.ShapeRenderer); // Gum.Shapes.KNI
             _ = typeof(Apos.Shapes.ShapeBatch);           // Apos.Shapes.KNI
             _ = typeof(FlatRedBall.AnimationChain.AnimationChainList); // FlatRedBall.AnimationChain.KNI

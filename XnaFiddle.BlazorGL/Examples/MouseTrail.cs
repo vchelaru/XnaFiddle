@@ -3,8 +3,8 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 
-using MonoGameGum;
-using MonoGameGum.GueDeriving;
+using Gum;
+using Gum.GueDeriving;
 using Gum.Wireframe;
 using Gum.Forms;
 using Gum.Mvvm;

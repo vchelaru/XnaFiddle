@@ -46,7 +46,7 @@ public class Game1 : Game
     // Game code that references Gum
     const string GumCode = @"
 using Microsoft.Xna.Framework;
-using MonoGameGum;
+using Gum;
 public class Game1 : Game
 {
      protected override void Draw(GameTime gt) { }

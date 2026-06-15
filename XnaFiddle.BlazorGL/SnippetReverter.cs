@@ -31,7 +31,7 @@ namespace XnaFiddle
             "System", "Microsoft.Xna.Framework",
             "Microsoft.Xna.Framework.Graphics", "Microsoft.Xna.Framework.Input"
         };
-        static readonly string[] GumUsings            = { "MonoGameGum", "MonoGameGum.GueDeriving", "Gum.Forms", "Gum.Forms.Controls", "Gum.Mvvm" };
+        static readonly string[] GumUsings            = { "MonoGameGum", "MonoGameGum.GueDeriving", "Gum", "Gum.GueDeriving", "Gum.Forms", "Gum.Forms.Controls", "Gum.Mvvm" };
         static readonly string[] AposShapesUsings     = { "Apos.Shapes" };
         static readonly string[] MonoGameExtUsings    = { "MonoGame.Extended" };
 

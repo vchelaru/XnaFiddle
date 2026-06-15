@@ -10,7 +10,6 @@ public class AddUsingSuggesterTests
     {
         "Microsoft.Xna.Framework",
         "Gum",
-        "MonoGameGum",
     };
 
     [Theory]
@@ -19,8 +18,8 @@ public class AddUsingSuggesterTests
     [InlineData("Microsoft.Xna.Framework.Input.Touch", true)]
     [InlineData("Gum", true)]
     [InlineData("Gum.Wireframe", true)]
-    [InlineData("MonoGameGum", true)]
-    [InlineData("MonoGameGum.Forms", true)]
+    [InlineData("Gum.GueDeriving", true)]
+    [InlineData("Gum.Forms", true)]
     public void AllowedNamespaces_ReturnTrue(string ns, bool expected)
     {
         Assert.Equal(expected, AddUsingSuggester.IsAllowedNamespace(ns, Allowlist));
@@ -34,6 +33,8 @@ public class AddUsingSuggesterTests
     [InlineData("System.Collections.Generic")]
     [InlineData("Microsoft.Xna")]
     [InlineData("Microsoft.XnaFramework")]
+    [InlineData("MonoGameGum")]
+    [InlineData("MonoGameGum.Forms")]
     [InlineData("")]
     public void DisallowedNamespaces_ReturnFalse(string ns)
     {

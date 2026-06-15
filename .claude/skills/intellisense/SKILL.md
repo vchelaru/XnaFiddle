@@ -99,8 +99,10 @@ Surfaces `using NS;` suggestions for an unresolved identifier as clickable markd
 
 **Namespace allowlist** (`AddUsingSuggester.NamespaceAllowlist`):
 - `Microsoft.Xna.Framework` — XNA/KNI types (`SpriteBatch`, `Vector2`, `GraphicsDevice`, etc.). Without the allowlist, `Vector2` would ambiguously match both `System.Numerics` and `Microsoft.Xna.Framework`, and we want the game one.
-- `Gum` — Gum UI layer root namespace.
-- `MonoGameGum` — MonoGame-specific Gum integration.
+- `Gum` — Gum UI layer root namespace. The 2026-June Gum release unified the former
+  `MonoGameGum.*` types into `Gum.*`, so the allowlist now contains only
+  `Microsoft.Xna.Framework` and `Gum` (child-namespace matching covers `Gum.GueDeriving`,
+  `Gum.Forms`, etc.).
 
 Everything else — including `System.*` — is intentionally excluded for v1. Expand deliberately, only on concrete reports of missing useful cases.
 

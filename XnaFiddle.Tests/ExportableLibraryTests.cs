@@ -20,6 +20,14 @@ public class ExportableLibraryTests
     }
 
     [Fact]
+    public void Gum_DetectsBareGumUsing()
+    {
+        // Post-2026-June migration, examples like AetherPhysics/SoundPlayback carry only a
+        // bare `using Gum;` (no `Gum.` substring), so detection relies on this path.
+        Assert.True(new GumPlugin().IsUsedInSource("using Gum;"));
+    }
+
+    [Fact]
     public void Gum_DetectsGumDotNamespace()
     {
         var plugin = new GumPlugin();
@@ -64,7 +72,7 @@ public class ExportableLibraryTests
         // Plain Gum code (and base-Gum's ColoredRectangleRuntime, whose name contains
         // "RectangleRuntime") must NOT pull in the shapes package — only ShapeRenderer does.
         var plugin = new GumShapesPlugin();
-        Assert.False(plugin.IsUsedInSource("using MonoGameGum;"));
+        Assert.False(plugin.IsUsedInSource("using Gum;"));
         Assert.False(plugin.IsUsedInSource("var r = new ColoredRectangleRuntime();"));
     }
 
