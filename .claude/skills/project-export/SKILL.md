@@ -30,6 +30,10 @@ An exported zip must **build and run as-is via `dotnet restore`** — no manual 
 
 Third-party library packages are added per-target by scanning the user's source through registered `IExportableLibrary` plugins.
 
+## Shaders (`.fx`) — runtime ShadowDusk compilation (issue #39)
+
+Exports honor the contract above for shaders by shipping the **`.fx` source** (into `Content/`) plus a **ShadowDusk `PackageReference`**, and recompiling at runtime — no XNB, no MGCB. `Export` takes a `shaders` (`name.fx -> HLSL`) map. The seam: the shared/common project references **`ShadowDusk.Core`** (the `IShaderCompiler` interface, net8.0, no natives) and the generated content manager has an `Effect` branch that compiles against it; each **per-platform** project references the concrete compiler (`ShadowDusk.Compiler` desktop / `ShadowDusk.Wasm` Blazor) and its entry point injects it + the `PlatformTarget` (GL vs DX is just that value). `ProjectExporter.SupportsRuntimeShaders(target)` is the single source of truth for which targets are wired (desktop GL/DX + Blazor); Android/iOS, MonoGame DX12/VK, and FNA are gated (ship `.fx`, no compiler) — issue #52. Full detail lives in the **`shaders`** skill.
+
 ## Not yet documented (grow only on confusion)
 
 Multi-platform common-project split, Android resource embedding, `RawContentManager` / premultiply logic, the Blazor `index.html` JS bootstrap, and per-package version plumbing (`PackageVersions`, generated from the BlazorGL csproj) all exist in `ProjectExporter.cs`. Left shallow on purpose — deepen later if they actually cause confusion.
