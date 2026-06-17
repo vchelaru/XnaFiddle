@@ -730,6 +730,7 @@ public class Game1 : Game
     [InlineData(ExportTarget.KniWindowsDX)]
     [InlineData(ExportTarget.MonoGameWindowsDX)]
     [InlineData(ExportTarget.KniBlazorGL)]
+    [InlineData(ExportTarget.FnaDesktop)]
     public void SupportsRuntimeShaders_TrueForWiredTargets(ExportTarget target)
     {
         Assert.True(ProjectExporter.SupportsRuntimeShaders(target));
@@ -740,10 +741,29 @@ public class Game1 : Game
     [InlineData(ExportTarget.MonoGameAndroid)]
     [InlineData(ExportTarget.MonoGameWindowsDX12)]
     [InlineData(ExportTarget.MonoGameDesktopVK)]
-    [InlineData(ExportTarget.FnaDesktop)]
     public void SupportsRuntimeShaders_FalseForGatedTargets(ExportTarget target)
     {
         Assert.False(ProjectExporter.SupportsRuntimeShaders(target));
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_FnaDesktop_ShipsFxAndWiresFnaBackend()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.FnaDesktop, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // FNA ships the .fx and references the desktop compiler (it emits legacy D3D9 .fxb).
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.Contains($@"<PackageReference Include=""ShadowDusk.Compiler"" Version=""{PackageVersions.ShadowDusk}"" />",
+            files["MyGame/MyGame.csproj"]);
+
+        // The entry point injects EffectCompiler with the FNA backend.
+        string program = files["MyGame/Program.cs"];
+        Assert.Contains("new EffectCompiler()", program);
+        Assert.Contains("PlatformTarget.Fna", program);
+
+        // Effect-compiling content manager is present.
+        Assert.Contains("ShaderCompiler.Compile(", files["MyGame/RawContentManager.cs"]);
     }
 
     [Fact]

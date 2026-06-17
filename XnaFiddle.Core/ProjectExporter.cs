@@ -78,15 +78,15 @@ namespace XnaFiddle
         // exactly like the in-browser editor — no XNB, no MGCB. The shared/common project compiles
         // against ShadowDusk.Core's IShaderCompiler interface; each per-platform project supplies the
         // concrete compiler and the backend. Targets absent from GetShaderExportInfo are *gated*: the
-        // .fx still ships but no compiler is wired (Android/iOS have no ShadowDusk device backend;
-        // MonoGame DX12/Vulkan and FNA are tracked in the follow-up, issue #52).
+        // .fx still ships but no compiler is wired — Android/iOS (no ShadowDusk device backend) and
+        // MonoGame DX12/Vulkan are tracked in issue #52.
         struct ShaderExportInfo
         {
             public bool Supported;
             public string Package;            // concrete per-platform package: ShadowDusk.Compiler / ShadowDusk.Wasm
             public string CompilerNamespace;  // namespace of CompilerType (for the entry-point using)
             public string CompilerType;       // EffectCompiler (desktop) / WasmShaderCompiler (browser)
-            public string PlatformTarget;     // ShadowDusk.Core.PlatformTarget enum value: OpenGL / DirectX
+            public string PlatformTarget;     // ShadowDusk.Core.PlatformTarget enum value: OpenGL / DirectX / Fna
             public bool IsBrowser;            // browser compiler must be InitializeAsync()'d before the sync Compile()
         }
 
@@ -98,6 +98,10 @@ namespace XnaFiddle
             ExportTarget.MonoGameDesktopGL => DesktopShaderInfo("OpenGL"),
             ExportTarget.KniWindowsDX      => DesktopShaderInfo("DirectX"),
             ExportTarget.MonoGameWindowsDX => DesktopShaderInfo("DirectX"),
+            // FNA also uses the desktop ShadowDusk.Compiler, but emits legacy D3D9 fx_2_0 .fxb
+            // (MojoShader-readable) via PlatformTarget.Fna instead of an .mgfx container — FNA's
+            // Effect(gd, bytes) ctor reads that raw .fxb directly (issue #54).
+            ExportTarget.FnaDesktop        => DesktopShaderInfo("Fna"),
             // Browser: ShadowDusk.Wasm (net8.0-browser, [JSImport] WASM modules). GL only.
             ExportTarget.KniBlazorGL => new ShaderExportInfo
             {
@@ -108,7 +112,7 @@ namespace XnaFiddle
                 PlatformTarget = "OpenGL",
                 IsBrowser = true,
             },
-            _ => default,   // gated: Android, MonoGame DX12/VK, FNA
+            _ => default,   // gated: Android, MonoGame DX12/VK (issue #52)
         };
 
         static ShaderExportInfo DesktopShaderInfo(string platformTarget) => new ShaderExportInfo
