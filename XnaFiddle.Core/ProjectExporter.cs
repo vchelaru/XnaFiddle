@@ -636,7 +636,16 @@ namespace XnaFiddle
                     break;
 
                 case ExportTarget.KniBlazorGL:
-                    sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+                    // ShadowDusk.Wasm targets net8.0-browser (its [JSImport] shader backends); a plain
+                    // net8.0 reference fails NU1201 and the ShadowDusk.Wasm namespace won't resolve
+                    // (issue #26/#39). The TFM is conditioned on shaders — rather than always
+                    // net8.0-browser — because net8.0-browser + [JSImport] requires the wasm-tools
+                    // workload, whereas a shader-free KNI Blazor export builds with just `dotnet
+                    // restore` on net8.0 (the export contract). So we only take on net8.0-browser (and
+                    // its workload requirement) for exports that actually compile shaders in-browser.
+                    sb.AppendLine(includeShaders
+                        ? "    <TargetFramework>net8.0-browser</TargetFramework>"
+                        : "    <TargetFramework>net8.0</TargetFramework>");
                     sb.AppendLine("    <Nullable>disable</Nullable>");
                     sb.AppendLine("    <ImplicitUsings>disable</ImplicitUsings>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
