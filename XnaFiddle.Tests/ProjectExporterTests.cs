@@ -664,6 +664,28 @@ public class Game1 : Game
     }
 
     [Fact]
+    public void FnaDesktop_IncludesFnaCompatShim()
+    {
+        // FNA lacks MonoGame/KNI's optional-parameter SpriteBatch.Begin, so fiddle code authored
+        // against the in-browser KNI runtime needs the shim to compile on FNA (issue #48/#54).
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.FnaDesktop, "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/FnaCompat.cs", files.Keys);
+        string compat = files["MyGame/FnaCompat.cs"];
+        Assert.Contains("static class FnaSpriteBatchCompat", compat);
+        Assert.Contains("public static void Begin(this SpriteBatch", compat);
+    }
+
+    [Fact]
+    public void NonFna_OmitsFnaCompatShim()
+    {
+        // The shim is FNA-only; KNI/MonoGame exports have the real optional-parameter Begin.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame");
+        Assert.DoesNotContain("MyGame/FnaCompat.cs", ExtractTextFiles(zip).Keys);
+    }
+
+    [Fact]
     public void FnaDesktop_IncludesFnaNetReadme()
     {
         var targets = new List<ExportTarget> { ExportTarget.FnaDesktop };
