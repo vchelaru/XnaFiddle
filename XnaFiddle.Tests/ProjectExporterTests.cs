@@ -714,4 +714,175 @@ public class Game1 : Game
         Assert.Contains("MyGame.BlazorGL/Pages/Index.razor", files.Keys);
         Assert.Contains("MyGame.BlazorGL/wwwroot/index.html", files.Keys);
     }
+
+    // ── Runtime shader (.fx) export (issue #39) ──────────────────────────────
+
+    // Shaders are supplied to the exporter as a name -> HLSL-source map (not detected from the
+    // game source), so MinimalCode is enough to drive these.
+    static Dictionary<string, string> OneShader() => new()
+    {
+        ["Grayscale.fx"] = "// hlsl\nfloat4 PS() : COLOR0 { return 0; }",
+    };
+
+    [Theory]
+    [InlineData(ExportTarget.KniDesktopGL)]
+    [InlineData(ExportTarget.MonoGameDesktopGL)]
+    [InlineData(ExportTarget.KniWindowsDX)]
+    [InlineData(ExportTarget.MonoGameWindowsDX)]
+    [InlineData(ExportTarget.KniBlazorGL)]
+    public void SupportsRuntimeShaders_TrueForWiredTargets(ExportTarget target)
+    {
+        Assert.True(ProjectExporter.SupportsRuntimeShaders(target));
+    }
+
+    [Theory]
+    [InlineData(ExportTarget.KniAndroid)]
+    [InlineData(ExportTarget.MonoGameAndroid)]
+    [InlineData(ExportTarget.MonoGameWindowsDX12)]
+    [InlineData(ExportTarget.MonoGameDesktopVK)]
+    [InlineData(ExportTarget.FnaDesktop)]
+    public void SupportsRuntimeShaders_FalseForGatedTargets(ExportTarget target)
+    {
+        Assert.False(ProjectExporter.SupportsRuntimeShaders(target));
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_DesktopGL_ShipsFxAndWiresOpenGLCompiler()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // The .fx SOURCE ships under Content/, keyed by its full name.
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.Contains("float4 PS()", files["MyGame/Content/Grayscale.fx"]);
+
+        // Desktop references the native compiler package, pinned to the shared ShadowDusk version.
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains($@"<PackageReference Include=""ShadowDusk.Compiler"" Version=""{PackageVersions.ShadowDusk}"" />", csproj);
+
+        // The entry point injects the concrete compiler + OpenGL backend.
+        string program = files["MyGame/Program.cs"];
+        Assert.Contains("using ShadowDusk.Compiler;", program);
+        Assert.Contains("new EffectCompiler()", program);
+        Assert.Contains("PlatformTarget.OpenGL", program);
+
+        // The content manager compiles against the Core interface and has the Effect branch.
+        string rcm = files["MyGame/RawContentManager.cs"];
+        Assert.Contains("using ShadowDusk.Core;", rcm);
+        Assert.Contains("public IShaderCompiler ShaderCompiler", rcm);
+        Assert.Contains("typeof(T) == typeof(Effect)", rcm);
+        Assert.Contains("ShaderCompiler.Compile(", rcm);
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_WindowsDX_UsesDirectXBackend()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniWindowsDX, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // Same desktop compiler package, but the WindowsDX runtime needs DXBC, not GLSL.
+        Assert.Contains("ShadowDusk.Compiler", files["MyGame/MyGame.csproj"]);
+        Assert.Contains("PlatformTarget.DirectX", files["MyGame/Program.cs"]);
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_BlazorGL_AwaitsInitializeAsyncBeforeRun()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniBlazorGL, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // Blazor serves content from wwwroot/.
+        Assert.Contains("MyGame/wwwroot/Content/Grayscale.fx", files.Keys);
+
+        // Browser uses the WASM compiler package, which targets net8.0-browser — so the project
+        // must too, or the ShadowDusk.Wasm reference is NU1201-incompatible and its namespace won't
+        // resolve (the CS0234 a real multi-project export hit). Regression guard for that.
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains("ShadowDusk.Wasm", csproj);
+        Assert.Contains("<TargetFramework>net8.0-browser</TargetFramework>", csproj);
+
+        // The synchronous Compile inside Content.Load<Effect> needs the WASM modules loaded first,
+        // so InitializeAsync must be awaited before the render loop starts.
+        string razor = files["MyGame/Pages/Index.razor"];
+        Assert.Contains("WasmShaderCompiler", razor);
+        Assert.Contains("await _shaderCompiler.InitializeAsync();", razor);
+        Assert.Contains("ShadowDusk.Core.PlatformTarget.OpenGL", razor);
+    }
+
+    [Fact]
+    public void MultiPlatform_Shader_CoreInCommon_ConcreteCompilerPerPlatform()
+    {
+        // A mixed export: two supported GL/DX/Web targets plus a gated one (Android).
+        var targets = new List<ExportTarget>
+        {
+            ExportTarget.KniDesktopGL,
+            ExportTarget.KniBlazorGL,
+            ExportTarget.KniAndroid,
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // Common project references only the interface package; never the concrete (browser-only Wasm
+        // would break the net8.0 common lib, and desktop Compiler belongs per-platform).
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+        Assert.Contains("ShadowDusk.Core", common);
+        Assert.DoesNotContain("ShadowDusk.Compiler", common);
+        Assert.DoesNotContain("ShadowDusk.Wasm", common);
+
+        // Each supported platform brings its concrete compiler. The Blazor project must move to
+        // net8.0-browser alongside its ShadowDusk.Wasm reference (NU1201 / CS0234 otherwise).
+        Assert.Contains("ShadowDusk.Compiler", files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"]);
+        string blazor = files["MyGame.BlazorGL/MyGame.BlazorGL.csproj"];
+        Assert.Contains("ShadowDusk.Wasm", blazor);
+        Assert.Contains("<TargetFramework>net8.0-browser</TargetFramework>", blazor);
+
+        // The gated platform builds but wires no compiler.
+        Assert.DoesNotContain("ShadowDusk", files["MyGame.Android/MyGame.Android.csproj"]);
+
+        // The shared content manager (in common) has the Effect branch; .fx ships at solution root.
+        Assert.Contains("typeof(T) == typeof(Effect)", files["MyGameCommon/RawContentManager.cs"]);
+        Assert.Contains("Content/Grayscale.fx", files.Keys);
+    }
+
+    [Fact]
+    public void NoShaders_OmitsShadowDuskReferenceAndEffectBranch()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        Assert.DoesNotContain("ShadowDusk", files["MyGame/MyGame.csproj"]);
+        Assert.DoesNotContain("ShadowDusk", files["MyGame/Program.cs"]);
+        Assert.DoesNotContain(files.Keys, k => k.EndsWith(".fx"));
+
+        string rcm = files["MyGame/RawContentManager.cs"];
+        Assert.DoesNotContain("ShadowDusk", rcm);
+        Assert.DoesNotContain("typeof(T) == typeof(Effect)", rcm);
+    }
+
+    [Fact]
+    public void BlazorGL_WithoutShaders_StaysNet80_NoWasmToolsRequirement()
+    {
+        // A shader-free KNI Blazor export must keep building with just `dotnet restore` on net8.0;
+        // it must NOT be forced to net8.0-browser (which would drag in the wasm-tools workload).
+        byte[] single = ProjectExporter.Export(MinimalCode, ExportTarget.KniBlazorGL, "MyGame");
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>",
+            ExtractTextFiles(single)["MyGame/MyGame.csproj"]);
+
+        var multi = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniBlazorGL };
+        byte[] zip = ProjectExporter.Export(MinimalCode, multi, "MyGame");
+        Assert.Contains("<TargetFramework>net8.0</TargetFramework>",
+            ExtractTextFiles(zip)["MyGame.BlazorGL/MyGame.BlazorGL.csproj"]);
+    }
+
+    [Fact]
+    public void SinglePlatform_GatedTarget_Shader_ShipsFxButWiresNoCompiler()
+    {
+        // Android is gated: the .fx still ships (harmless), but no compiler is referenced or injected.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniAndroid, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.DoesNotContain("ShadowDusk", files["MyGame/MyGame.csproj"]);
+        Assert.DoesNotContain("typeof(T) == typeof(Effect)", files["MyGame/RawContentManager.cs"]);
+    }
 }

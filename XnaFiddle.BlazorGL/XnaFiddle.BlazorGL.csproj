@@ -68,7 +68,7 @@
          _content/ShadowDusk.Wasm/ — nothing to copy or configure. Browser-only: it targets
          net8.0-browser, so a plain net8.0 reference fails NU1201, which is why this is
          conditioned out of the test-only net8.0 build (which #if-s out the shader code). -->
-    <PackageReference Include="ShadowDusk.Wasm" Version="$(ShadowDuskWasmVersion)"
+    <PackageReference Include="ShadowDusk.Wasm" Version="$(ShadowDuskVersion)"
                       Condition=" '$(TargetFramework)' == 'net8.0-browser' " />
   </ItemGroup>
 

@@ -10,7 +10,7 @@ XnaFiddle compiles user HLSL `.fx` to KNI `.mgfx` entirely in the browser via th
 
 - `ShadowDusk.Wasm` is a `PackageReference` **conditioned to `net8.0-browser`** (`XnaFiddle.BlazorGL.csproj`). It targets `net8.0-browser` (its `[JSImport]` backends), so a plain `net8.0` reference fails NU1201. This is the same browser-vs-test-build split as `XnaFiddle.Core` (issue #26): the test-only `net8.0` build cannot reference it.
 - The `SHADOWDUSK` `DefineConstants` is set **only** for `net8.0-browser`. All shader-compile code is wrapped in `#if SHADOWDUSK`; the `net8.0` build `#if`s it out and `CompileRegisteredShadersAsync` becomes a no-op returning `null`.
-- Version is pinned by `$(ShadowDuskWasmVersion)` in `Directory.Build.props` (single source of truth). Unlike the other library versions there, it is **intentionally NOT** added to the generated `PackageVersions` class — exported projects ship pre-compiled and don't need the compiler.
+- Version is pinned by `$(ShadowDuskVersion)` in `Directory.Build.props` (single source of truth, currently `0.7.0`). All ShadowDusk packages release in lockstep on one version, so this property feeds **both** the editor's `ShadowDusk.Wasm` reference **and** the exporter's `PackageVersions.ShadowDusk` — because exported projects now compile their `.fx` at runtime via ShadowDusk too (issue #39, see "Export" below). 0.5.0+ is required for the exported path: it added `InitializeAsync()` + a synchronous `Compile()`.
 - The DXC + SPIRV-Cross wasm modules ship inside the package as static web assets served automatically at `_content/ShadowDusk.Wasm/`. Nothing to copy or configure.
 
 ## Compile flow (`Index.razor.cs` -> `CompileRegisteredShadersAsync`)
@@ -59,7 +59,7 @@ User-facing pattern: `Content.Load<Effect>("Name")` in `LoadContent`, optionally
 | **Share URL** (`#code=...&shaders=...`) | Yes — `_shareShaders` JSON in a `&shaders=` fragment |
 | **Snippet** (`#snippet=...`) | Yes — `SnippetModel.Shaders` (`List<ShaderFile>`). Not consumed by `SnippetExpander`; the page applies them separately via `ApplyShaderFilesAsync` |
 | **Gist** | Partly — the copy-to-clipboard puts **only the C#**; the UI warns the user to add each `.fx` as a separate gist file (same filename). Gist **import** reads every `.fx` file back into tabs |
-| **Export** | No — exports do **not** include shaders yet; the export dialog warns (needs the MGCB pipeline, tracked separately) |
+| **Export** | Yes (issue #39) — the `.fx` **source** ships in the export `Content/` and the exported project recompiles it at runtime via ShadowDusk (no XNB/MGCB), exactly like the editor. `ProjectExporter.Export` takes a `shaders` (`name.fx -> HLSL`) map; the export call site re-collects via `CollectShaderFilesAsync()`. Wired for desktop GL/DX (`ShadowDusk.Compiler`, `PlatformTarget.OpenGL`/`DirectX`) + Blazor (`ShadowDusk.Wasm`, awaits `InitializeAsync` before the render loop). Android/iOS, MonoGame DX12/VK, FNA are **gated** (ship `.fx`, no compiler wired) — issue #52. See the `project-export` skill. |
 
 `ShaderFile` (`ShaderFile.cs`) is the model: `Name` (filename incl. `.fx`) + `Source` (HLSL). `CollectShaderFilesAsync` snapshots open tabs into `_shareShaders` (refreshed on share/snippet build because shader edits don't fire the C#-only content callback). `ApplyShaderFilesAsync` clears stale tabs then re-opens the payload's shaders.
 
@@ -68,11 +68,12 @@ User-facing pattern: `Content.Load<Effect>("Name")` in `LoadContent`, optionally
 | File | Role |
 |---|---|
 | `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `CompileRegisteredShadersAsync`, `_shaderTabs`, tab ops, `_lastCompiledShaders`, share/snippet/gist shader handling |
-| `XnaFiddle.BlazorGL/Pages/Index.razor` | Tab strip, gist/export shader warnings (lines ~200, ~244) |
+| `XnaFiddle.BlazorGL/Pages/Index.razor` | Tab strip, gist shader warning (~200), export-dialog runtime-compile message (~244) |
+| `XnaFiddle.Core/ProjectExporter.cs` | Runtime shader export (issue #39): `GetShaderExportInfo`/`SupportsRuntimeShaders`, `WriteShaderSources`, the `IShaderCompiler`-seam content manager + per-platform compiler injection |
 | `XnaFiddle.BlazorGL/InMemoryContentManager.cs` | `Load<Effect>` branch: `new Effect(gd, bytes)` from registered `.mgfx` |
 | `XnaFiddle.BlazorGL/ShaderFile.cs` | Shader-tab model for share/snippet/gist payloads |
 | `XnaFiddle.BlazorGL/SnippetModel.cs` | `Shaders` field on the snippet payload |
 | `XnaFiddle.BlazorGL/ExampleGallery.cs` | `Shaders` category catalog entries |
 | `XnaFiddle.BlazorGL/Examples/Shader*.{cs,fx}` | Example shaders + the `Content.Load<Effect>` usage pattern |
 | `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj` | `ShadowDusk.Wasm` ref (net8.0-browser), `SHADOWDUSK` gate |
-| `Directory.Build.props` | `$(ShadowDuskWasmVersion)` (not in `PackageVersions`) |
+| `Directory.Build.props` | `$(ShadowDuskVersion)` — single source of truth for editor + exported `PackageVersions.ShadowDusk` |

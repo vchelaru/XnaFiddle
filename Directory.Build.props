@@ -64,10 +64,15 @@
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
     <KernSmithVersion>0.12.3</KernSmithVersion>
     <MlemVersion>8.1.0</MlemVersion>
-    <!-- In-browser HLSL .fx -> .mgfx compiler (ShadowDusk.Wasm NuGet). Build-time/runtime
-         tool only — intentionally NOT added to the generated PackageVersions class, since
-         exported projects ship pre-compiled .mgfx and don't need the compiler. -->
-    <ShadowDuskWasmVersion>0.2.0</ShadowDuskWasmVersion>
+    <!-- ShadowDusk HLSL .fx compiler. Drives BOTH the in-browser editor (ShadowDusk.Wasm, used by
+         XnaFiddle.BlazorGL) AND exported projects, which now compile their shipped .fx at runtime
+         via ShadowDusk (issue #39) instead of dropping shaders: desktop -> ShadowDusk.Compiler,
+         Blazor -> ShadowDusk.Wasm, shared/common code -> ShadowDusk.Core (the IShaderCompiler
+         interface). All ShadowDusk packages release in lockstep on a single version, so this one
+         property feeds the editor's PackageReference AND the exporter's PackageVersions.ShadowDusk.
+         0.5.0+ is required: it adds InitializeAsync() + a synchronous Compile(), which the exported
+         project needs to compile lazily inside the synchronous Content.Load<Effect> call site. -->
+    <ShadowDuskVersion>0.7.0</ShadowDuskVersion>
   </PropertyGroup>
 
 </Project>

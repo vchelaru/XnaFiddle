@@ -1532,6 +1532,18 @@ technique BasicColorDrawing
             return targets;
         }
 
+        // Selected platforms whose runtime can't compile shipped .fx via ShadowDusk (issue #39). The
+        // export dialog names these so the user knows the project builds but its shaders won't load
+        // there. Delegates to ProjectExporter.SupportsRuntimeShaders (the single source of truth).
+        List<ExportPlatform> GatedShaderPlatforms()
+        {
+            var list = new List<ExportPlatform>();
+            foreach (var p in _selectedPlatforms)
+                if (!ProjectExporter.SupportsRuntimeShaders(GetExportTarget(p)))
+                    list.Add(p);
+            return list;
+        }
+
         void TogglePlatform(ExportPlatform platform)
         {
             if (_selectedPlatforms.Contains(platform))
@@ -1596,7 +1608,21 @@ technique BasicColorDrawing
                 var targets = GetExportTargets();
                 // Pass the chosen MonoGame version only for MonoGame exports; KNI/FNA ignore it (null).
                 string monoGameVersion = _exportRuntime == ExportRuntime.MonoGame ? _monoGameVersion : null;
-                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null, libraryRegistry: LibraryRegistry, monoGameVersion: monoGameVersion);
+
+                // Ship each open shader's live .fx SOURCE so the exported project recompiles it at runtime
+                // via ShadowDusk (issue #39). Re-collect fresh — _shareShaders is only refreshed on
+                // share/snippet actions and can be stale here. Keyed by filename (e.g. "Grayscale.fx").
+                List<ShaderFile> shaderFiles = await CollectShaderFilesAsync();
+                Dictionary<string, string> shaders = null;
+                if (shaderFiles.Count > 0)
+                {
+                    shaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (ShaderFile s in shaderFiles)
+                        shaders[s.Name] = s.Source ?? "";
+                }
+
+                byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null,
+                    libraryRegistry: LibraryRegistry, monoGameVersion: monoGameVersion, shaders: shaders);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }

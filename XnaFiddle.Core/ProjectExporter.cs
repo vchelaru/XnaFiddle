@@ -73,6 +73,81 @@ namespace XnaFiddle
             _ => throw new ArgumentOutOfRangeException(nameof(target), target, null),
         };
 
+        // ── Runtime shader (.fx) export (issue #39) ──────────────────────────────
+        // Exported projects ship the .fx SOURCE and compile it to .mgfx at runtime via ShadowDusk,
+        // exactly like the in-browser editor — no XNB, no MGCB. The shared/common project compiles
+        // against ShadowDusk.Core's IShaderCompiler interface; each per-platform project supplies the
+        // concrete compiler and the backend. Targets absent from GetShaderExportInfo are *gated*: the
+        // .fx still ships but no compiler is wired (Android/iOS have no ShadowDusk device backend;
+        // MonoGame DX12/Vulkan and FNA are tracked in the follow-up, issue #52).
+        struct ShaderExportInfo
+        {
+            public bool Supported;
+            public string Package;            // concrete per-platform package: ShadowDusk.Compiler / ShadowDusk.Wasm
+            public string CompilerNamespace;  // namespace of CompilerType (for the entry-point using)
+            public string CompilerType;       // EffectCompiler (desktop) / WasmShaderCompiler (browser)
+            public string PlatformTarget;     // ShadowDusk.Core.PlatformTarget enum value: OpenGL / DirectX
+            public bool IsBrowser;            // browser compiler must be InitializeAsync()'d before the sync Compile()
+        }
+
+        static ShaderExportInfo GetShaderExportInfo(ExportTarget target) => target switch
+        {
+            // Desktop GL and DX share ShadowDusk.Compiler (net8.0, native backends); only the
+            // PlatformTarget differs — a GL runtime needs GLSL .mgfx, a DX runtime needs DXBC .mgfx.
+            ExportTarget.KniDesktopGL      => DesktopShaderInfo("OpenGL"),
+            ExportTarget.MonoGameDesktopGL => DesktopShaderInfo("OpenGL"),
+            ExportTarget.KniWindowsDX      => DesktopShaderInfo("DirectX"),
+            ExportTarget.MonoGameWindowsDX => DesktopShaderInfo("DirectX"),
+            // Browser: ShadowDusk.Wasm (net8.0-browser, [JSImport] WASM modules). GL only.
+            ExportTarget.KniBlazorGL => new ShaderExportInfo
+            {
+                Supported = true,
+                Package = "ShadowDusk.Wasm",
+                CompilerNamespace = "ShadowDusk.Wasm",
+                CompilerType = "WasmShaderCompiler",
+                PlatformTarget = "OpenGL",
+                IsBrowser = true,
+            },
+            _ => default,   // gated: Android, MonoGame DX12/VK, FNA
+        };
+
+        static ShaderExportInfo DesktopShaderInfo(string platformTarget) => new ShaderExportInfo
+        {
+            Supported = true,
+            Package = "ShadowDusk.Compiler",
+            CompilerNamespace = "ShadowDusk.Compiler",
+            CompilerType = "EffectCompiler",
+            PlatformTarget = platformTarget,
+        };
+
+        /// <summary>
+        /// True if the exported project for <paramref name="target"/> can compile shipped <c>.fx</c>
+        /// shaders at runtime via ShadowDusk (issue #39). The export dialog uses this to message which
+        /// selected platforms are gated. Single source of truth for the supported-target set.
+        /// </summary>
+        public static bool SupportsRuntimeShaders(ExportTarget target) => GetShaderExportInfo(target).Supported;
+
+        // True when shaders ship AND at least one target compiles them at runtime, so the generated
+        // content manager gets the Effect-compiling branch and the common project references ShadowDusk.Core.
+        static bool AnyShaderTargetSupported(IReadOnlyList<ExportTarget> targets)
+        {
+            for (int i = 0; i < targets.Count; i++)
+                if (GetShaderExportInfo(targets[i]).Supported)
+                    return true;
+            return false;
+        }
+
+        // Writes each open shader's .fx SOURCE into the export's content folder. The exported project
+        // recompiles it at runtime; the bare name (minus .fx) is the Content.Load<Effect> key.
+        static void WriteShaderSources(ZipArchive archive, string contentDir, IReadOnlyDictionary<string, string> shaders)
+        {
+            foreach (var kvp in shaders)
+            {
+                string fxName = kvp.Key.EndsWith(".fx", StringComparison.OrdinalIgnoreCase) ? kvp.Key : kvp.Key + ".fx";
+                AddTextEntry(archive, $"{contentDir}/{fxName}", kvp.Value ?? "");
+            }
+        }
+
         /// <summary>
         /// Exports a multi-platform solution when multiple targets are specified.
         /// Delegates to the single-target <see cref="Export(string, ExportTarget, string, IReadOnlyDictionary{string, byte[]})"/>
@@ -84,20 +159,21 @@ namespace XnaFiddle
             string projectName = "MyFiddle",
             IReadOnlyDictionary<string, byte[]> assets = null,
             LibraryRegistry libraryRegistry = null,
-            string monoGameVersion = null)
+            string monoGameVersion = null,
+            IReadOnlyDictionary<string, string> shaders = null)
         {
             if (targets == null || targets.Count == 0)
                 throw new ArgumentException("At least one export target is required.", nameof(targets));
 
             if (targets.Count == 1)
-                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry, monoGameVersion);
+                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry, monoGameVersion, shaders);
 
             // FNA is single-target only — it must never reach the multi-platform common-project
             // path (GenerateCommonCsproj's isMonoGame framework-reference logic assumes KNI/MonoGame).
             if (targets.Contains(ExportTarget.FnaDesktop))
                 throw new ArgumentException("FnaDesktop cannot be combined with other export targets.", nameof(targets));
 
-            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry, monoGameVersion);
+            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry, monoGameVersion, shaders);
         }
 
         // monoGameVersion, when non-null, overrides the MonoGame framework + content-builder package
@@ -109,11 +185,21 @@ namespace XnaFiddle
             string projectName = "MyFiddle",
             IReadOnlyDictionary<string, byte[]> assets = null,
             LibraryRegistry libraryRegistry = null,
-            string monoGameVersion = null)
+            string monoGameVersion = null,
+            IReadOnlyDictionary<string, string> shaders = null)
         {
+            // hasShaders gates shipping the .fx; includeShaderLoader (target must be supported) gates
+            // the runtime-compile wiring (Effect branch, ShadowDusk reference, entry-point injection).
+            bool hasShaders = shaders != null && shaders.Count > 0;
+            bool includeShaderLoader = hasShaders && GetShaderExportInfo(target).Supported;
+
             List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
             string slnx = GenerateSlnx(projectName, target);
-            string csproj = GenerateCsproj(projectName, target, packages, assets != null && assets.Count > 0);
+            // Shaders are content too: the .fx must be copied to the build output so the runtime
+            // compiler can read it, so the content-linking csproj block fires for shaders as well.
+            bool hasContent = (assets != null && assets.Count > 0) || hasShaders;
+            string csproj = GenerateCsproj(projectName, target, packages, hasContent,
+                includeShaders: includeShaderLoader);
             string gameCs = GenerateGameClass(projectName, expandedSource);
 
             using var memoryStream = new MemoryStream();
@@ -141,33 +227,34 @@ namespace XnaFiddle
                     AddTextEntry(archive, $"{projectName}/App.razor", GenerateBlazorAppRazor());
                     AddTextEntry(archive, $"{projectName}/MainLayout.razor", GenerateBlazorMainLayoutRazor());
                     AddTextEntry(archive, $"{projectName}/_Imports.razor", GenerateBlazorImportsRazor(projectName));
-                    AddTextEntry(archive, $"{projectName}/Pages/Index.razor", GenerateBlazorIndexRazor());
+                    AddTextEntry(archive, $"{projectName}/Pages/Index.razor", GenerateBlazorIndexRazor(includeShaderLoader));
                     AddTextEntry(archive, $"{projectName}/wwwroot/index.html", GenerateBlazorIndexHtml(projectName));
                 }
                 else
                 {
-                    AddTextEntry(archive, $"{projectName}/Program.cs", GenerateProgram(projectName));
+                    AddTextEntry(archive, $"{projectName}/Program.cs", GenerateProgram(projectName, target, includeShaderLoader));
                 }
 
                 AddTextEntry(archive, $"{projectName}/Game1.cs", gameCs);
 
                 // Neither KNI nor MonoGame reliably load raw image files via Content.Load
                 // on all platforms (e.g. Android packs assets in the APK). Include a shim
-                // ContentManager that handles raw textures via FromStream.
-                AddTextEntry(archive, $"{projectName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(packages)));
+                // ContentManager that handles raw textures via FromStream (and, when shaders ship,
+                // compiles .fx to Effect at runtime — issue #39).
+                AddTextEntry(archive, $"{projectName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(packages), includeShaderLoader));
 
                 // FNA.NET bundles win-x64 and osx natives, but on linux-x64 it ships only
                 // libtheorafile — SDL3/FNA3D/FAudio are expected from system packages.
                 if (target == ExportTarget.FnaDesktop)
                     AddTextEntry(archive, $"{projectName}/README.txt", GenerateFnaReadme());
 
+                // BlazorGL serves content from wwwroot/; all other targets use Content/
+                string contentDir = target == ExportTarget.KniBlazorGL
+                    ? $"{projectName}/wwwroot/Content"
+                    : $"{projectName}/Content";
+
                 if (assets != null)
                 {
-                    // BlazorGL serves content from wwwroot/; all other targets use Content/
-                    string contentDir = target == ExportTarget.KniBlazorGL
-                        ? $"{projectName}/wwwroot/Content"
-                        : $"{projectName}/Content";
-
                     foreach (var kvp in assets)
                     {
                         // Skip keys that are extensionless duplicates (InMemoryContentManager stores both)
@@ -178,6 +265,9 @@ namespace XnaFiddle
                         stream.Write(kvp.Value, 0, kvp.Value.Length);
                     }
                 }
+
+                if (hasShaders)
+                    WriteShaderSources(archive, contentDir, shaders);
             }
 
             return memoryStream.ToArray();
@@ -189,16 +279,23 @@ namespace XnaFiddle
             string projectName,
             IReadOnlyDictionary<string, byte[]> assets,
             LibraryRegistry libraryRegistry,
-            string monoGameVersion)
+            string monoGameVersion,
+            IReadOnlyDictionary<string, string> shaders = null)
         {
             bool hasAssets = assets != null && assets.Count > 0;
+            // hasShaders ships the .fx; includeShaderLoader (any target supported) gates the shared
+            // Effect-compiling content manager and the common project's ShadowDusk.Core reference.
+            bool hasShaders = shaders != null && shaders.Count > 0;
+            bool includeShaderLoader = hasShaders && AnyShaderTargetSupported(targets);
+            // Shaders ship under Content/ and must be linked/copied to output like raw assets.
+            bool hasContent = hasAssets || hasShaders;
             string commonName = $"{projectName}Common";
             string gameCs = GenerateGameClass(projectName, expandedSource);
 
             // The common project holds Game1.cs, RawContentManager.cs and shared code.
             // Each platform project references the common project and adds its entry point.
             List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0], libraryRegistry, monoGameVersion);
-            string commonCsproj = GenerateCommonCsproj(projectName, commonName, commonPackages);
+            string commonCsproj = GenerateCommonCsproj(projectName, commonName, commonPackages, includeShaderLoader);
             string slnx = GenerateSlnx(projectName, commonName, targets);
 
             using var memoryStream = new MemoryStream();
@@ -209,15 +306,20 @@ namespace XnaFiddle
                 // Common project
                 AddTextEntry(archive, $"{commonName}/{commonName}.csproj", commonCsproj);
                 AddTextEntry(archive, $"{commonName}/Game1.cs", gameCs);
-                AddTextEntry(archive, $"{commonName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(commonPackages)));
+                AddTextEntry(archive, $"{commonName}/RawContentManager.cs", GenerateRawContentManager(projectName, UsesAnimationChain(commonPackages), includeShaderLoader));
 
                 // Per-platform projects
                 foreach (var target in targets)
                 {
                     string suffix = GetPlatformSuffix(target);
                     string platformDir = $"{projectName}.{suffix}";
+                    // Only platforms whose runtime can compile .fx get the concrete ShadowDusk package
+                    // and the entry-point compiler injection; gated platforms (e.g. Android) build but
+                    // leave the content manager's compiler unset (issue #39).
+                    bool wireShaders = hasShaders && GetShaderExportInfo(target).Supported;
                     List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
-                    string csproj = GenerateCsproj(projectName, target, packages, hasAssets, isMultiPlatform: true, commonProjectName: commonName);
+                    string csproj = GenerateCsproj(projectName, target, packages, hasContent, isMultiPlatform: true, commonProjectName: commonName,
+                        includeShaders: wireShaders);
 
                     AddTextEntry(archive, $"{platformDir}/{platformDir}.csproj", csproj);
 
@@ -240,12 +342,12 @@ namespace XnaFiddle
                         AddTextEntry(archive, $"{platformDir}/App.razor", GenerateBlazorAppRazor());
                         AddTextEntry(archive, $"{platformDir}/MainLayout.razor", GenerateBlazorMainLayoutRazor());
                         AddTextEntry(archive, $"{platformDir}/_Imports.razor", GenerateBlazorImportsRazor(projectName));
-                        AddTextEntry(archive, $"{platformDir}/Pages/Index.razor", GenerateBlazorIndexRazor());
+                        AddTextEntry(archive, $"{platformDir}/Pages/Index.razor", GenerateBlazorIndexRazor(wireShaders));
                         AddTextEntry(archive, $"{platformDir}/wwwroot/index.html", GenerateBlazorIndexHtml(projectName));
                     }
                     else
                     {
-                        AddTextEntry(archive, $"{platformDir}/Program.cs", GenerateProgram(projectName));
+                        AddTextEntry(archive, $"{platformDir}/Program.cs", GenerateProgram(projectName, target, wireShaders));
                     }
                 }
 
@@ -261,6 +363,9 @@ namespace XnaFiddle
                         stream.Write(kvp.Value, 0, kvp.Value.Length);
                     }
                 }
+
+                if (hasShaders)
+                    WriteShaderSources(archive, "Content", shaders);
             }
 
             return memoryStream.ToArray();
@@ -272,7 +377,7 @@ namespace XnaFiddle
         /// (Platform SDKs, content pipeline, Blazor hosting) belong in each
         /// platform project's csproj instead.
         /// </summary>
-        static string GenerateCommonCsproj(string projectName, string commonName, List<NuGetPackage> packages)
+        static string GenerateCommonCsproj(string projectName, string commonName, List<NuGetPackage> packages, bool includeShaderCore = false)
         {
             var sb = new StringBuilder();
             sb.AppendLine(@"<Project Sdk=""Microsoft.NET.Sdk"">");
@@ -319,6 +424,12 @@ namespace XnaFiddle
 
                 sb.AppendLine($@"    <PackageReference Include=""{pkg.Id}"" Version=""{pkg.Version}"" />");
             }
+
+            // The shared content manager compiles against ShadowDusk.Core's IShaderCompiler interface
+            // (net8.0, no native deps). The concrete compiler is referenced per-platform instead, so
+            // the net8.0 common lib never pulls the browser-only ShadowDusk.Wasm package (issue #39).
+            if (includeShaderCore)
+                sb.AppendLine($@"    <PackageReference Include=""ShadowDusk.Core"" Version=""{PackageVersions.ShadowDusk}"" />");
 
             sb.AppendLine("  </ItemGroup>");
             sb.AppendLine();
@@ -466,7 +577,7 @@ namespace XnaFiddle
         }
 
         static string GenerateCsproj(string projectName, ExportTarget target, List<NuGetPackage> packages, bool hasAssets,
-            bool isMultiPlatform = false, string commonProjectName = null)
+            bool isMultiPlatform = false, string commonProjectName = null, bool includeShaders = false)
         {
             var sb = new StringBuilder();
 
@@ -491,6 +602,18 @@ namespace XnaFiddle
             sb.AppendLine($@"<Project Sdk=""{sdk}"">");
             sb.AppendLine();
             sb.AppendLine("  <PropertyGroup>");
+
+            // A project must target net8.0-browser (instead of net8.0) when it references a
+            // browser-only package — i.e. one doing native [JSImport]/wasm interop, which is
+            // NU1201-incompatible with a plain net8.0 reference. Today the only such dependency is the
+            // runtime shader compiler (ShadowDusk.Wasm), but this is kept as a general "needs the
+            // browser TFM" flag: future browser-native references should OR into it rather than adding
+            // another feature check to the per-target TFM logic. It is conditional (not always
+            // net8.0-browser) on purpose — net8.0-browser + [JSImport] pulls in the wasm-tools
+            // workload, whereas a project without such a dependency builds with just `dotnet restore`
+            // on net8.0 (the export contract). Only the Blazor target can honor this; the desktop/
+            // Android targets pin their own TFM regardless.
+            bool needsBrowserTarget = includeShaders;
 
             // OutputType and TargetFramework vary by platform
             switch (target)
@@ -525,7 +648,11 @@ namespace XnaFiddle
                     break;
 
                 case ExportTarget.KniBlazorGL:
-                    sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+                    // net8.0-browser only when a browser-only dependency requires it (see
+                    // needsBrowserTarget above); otherwise plain net8.0 keeps the restore-only path.
+                    sb.AppendLine(needsBrowserTarget
+                        ? "    <TargetFramework>net8.0-browser</TargetFramework>"
+                        : "    <TargetFramework>net8.0</TargetFramework>");
                     sb.AppendLine("    <Nullable>disable</Nullable>");
                     sb.AppendLine("    <ImplicitUsings>disable</ImplicitUsings>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
@@ -601,6 +728,16 @@ namespace XnaFiddle
             sb.AppendLine("  <ItemGroup>");
             foreach (var pkg in packages)
                 sb.AppendLine($@"    <PackageReference Include=""{pkg.Id}"" Version=""{pkg.Version}"" />");
+
+            // Concrete ShadowDusk compiler for runtime shader compilation (issue #39): ShadowDusk.Compiler
+            // (net8.0) on desktop, ShadowDusk.Wasm (net8.0-browser) for Blazor. Platform-specific, so it
+            // belongs in the per-platform project, not the common library. Only emitted for supported targets.
+            if (includeShaders)
+            {
+                ShaderExportInfo shaderInfo = GetShaderExportInfo(target);
+                sb.AppendLine($@"    <PackageReference Include=""{shaderInfo.Package}"" Version=""{PackageVersions.ShadowDusk}"" />");
+            }
+
             sb.AppendLine("  </ItemGroup>");
 
             // In multi-platform mode, reference the common project.
@@ -672,10 +809,28 @@ namespace XnaFiddle
             return sb.ToString();
         }
 
-        static string GenerateProgram(string projectName)
+        static string GenerateProgram(string projectName, ExportTarget target, bool includeShaders)
         {
-            return $@"using System;
+            ShaderExportInfo info = includeShaders ? GetShaderExportInfo(target) : default;
+            // Browser shaders are wired in Index.razor (it must await InitializeAsync), not here.
+            bool wireShaders = info.Supported && !info.IsBrowser;
 
+            string shaderUsings = wireShaders
+                ? $"using {info.CompilerNamespace};\nusing ShadowDusk.Core;\n"
+                : "";
+
+            // Inject the concrete ShadowDusk compiler + backend so Content.Load<Effect> can compile the
+            // shipped .fx at runtime. On desktop InitializeAsync is a no-op, so the synchronous Compile
+            // inside Content.Load runs directly — no startup await needed (issue #39).
+            string contentSetup = wireShaders
+                ? $@"        var content = new RawContentManager(game.Services, ""Content"");
+        content.ShaderCompiler = new {info.CompilerType}();
+        content.ShaderTarget = PlatformTarget.{info.PlatformTarget};
+        game.Content = content;"
+                : @"        game.Content = new RawContentManager(game.Services, ""Content"");";
+
+            return $@"using System;
+{shaderUsings}
 namespace {projectName};
 
 public static class Program
@@ -684,7 +839,7 @@ public static class Program
     static void Main()
     {{
         using var game = new Game1();
-        game.Content = new RawContentManager(game.Services, ""Content"");
+{contentSetup}
         game.Run();
     }}
 }}
@@ -890,9 +1045,11 @@ internal class Program
 ";
         }
 
-        static string GenerateBlazorIndexRazor()
+        static string GenerateBlazorIndexRazor(bool includeShaders)
         {
-            return @"@page ""/""
+            if (!includeShaders)
+            {
+                return @"@page ""/""
 @inject IJSRuntime JsRuntime
 
 <div id=""canvasHolder"" style=""position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000;"">
@@ -918,6 +1075,50 @@ internal class Program
         {
             _game = new Game1();
             _game.Content = new RawContentManager(_game.Services, ""Content"");
+            _game.Run();
+        }
+        _game.Tick();
+    }
+}
+";
+            }
+
+            // Shader-enabled Blazor host (issue #39): the browser ShadowDusk compiler must finish loading
+            // its WASM modules before the synchronous Content.Load<Effect> path runs, so await
+            // InitializeAsync BEFORE starting the render loop (initRenderJS) — the first Tick, which
+            // creates the game and triggers LoadContent, only happens after init completes.
+            return @"@page ""/""
+@inject IJSRuntime JsRuntime
+
+<div id=""canvasHolder"" style=""position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000;"">
+    <canvas id=""theCanvas"" style=""touch-action:none;""></canvas>
+</div>
+
+@code {
+    Microsoft.Xna.Framework.Game _game;
+    ShadowDusk.Wasm.WasmShaderCompiler _shaderCompiler;
+
+    protected override async void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        if (firstRender)
+        {
+            _shaderCompiler = new ShadowDusk.Wasm.WasmShaderCompiler();
+            await _shaderCompiler.InitializeAsync();
+            await JsRuntime.InvokeAsync<object>(""initRenderJS"", DotNetObjectReference.Create(this));
+        }
+    }
+
+    [JSInvokable]
+    public void TickDotNet()
+    {
+        if (_game == null)
+        {
+            _game = new Game1();
+            var content = new RawContentManager(_game.Services, ""Content"");
+            content.ShaderCompiler = _shaderCompiler;
+            content.ShaderTarget = ShadowDusk.Core.PlatformTarget.OpenGL;
+            _game.Content = content;
             _game.Run();
         }
         _game.Tick();
@@ -992,16 +1193,37 @@ internal class Program
             return false;
         }
 
-        static string GenerateRawContentManager(string projectName, bool includeAnimationChain)
+        static string GenerateRawContentManager(string projectName, bool includeAnimationChain, bool includeShaderLoader = false)
         {
+            // System.Collections.Generic is needed by the .achx branch (HashSet) and the shader
+            // branch (the Effect cache); emit it once if either feature is on.
+            string genericsUsing = includeAnimationChain || includeShaderLoader
+                ? "using System.Collections.Generic;\n"
+                : "";
+
             // The .achx branch references types from FlatRedBall.AnimationChain, which is only
             // referenced when the source uses it, so emit these pieces conditionally.
             string achxUsings = includeAnimationChain
-                ? "using System.Collections.Generic;\nusing FlatRedBall.AnimationChain;\n"
+                ? "using FlatRedBall.AnimationChain;\n"
+                : "";
+
+            // The shader branch compiles against ShadowDusk.Core's IShaderCompiler interface (issue #39).
+            string shaderUsings = includeShaderLoader
+                ? "using ShadowDusk.Core;\n"
                 : "";
 
             string achxField = includeAnimationChain
                 ? "    AchxLoader _achxLoader;\n"
+                : "";
+
+            // The per-platform entry point injects the concrete ShadowDusk compiler + backend; the
+            // synchronous Compile inside Load<Effect> turns shipped .fx into an Effect on demand.
+            // Compiled effects are cached so repeated loads don't recompile (issue #39).
+            string shaderField = includeShaderLoader
+                ? @"    public IShaderCompiler ShaderCompiler { get; set; }
+    public PlatformTarget ShaderTarget { get; set; }
+    readonly Dictionary<string, Effect> _effectCache = new Dictionary<string, Effect>(StringComparer.OrdinalIgnoreCase);
+"
                 : "";
 
             string achxLoadBranch = includeAnimationChain
@@ -1027,6 +1249,39 @@ internal class Program
             AnimationChainList chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
             SanitizeFrames(chainList);
             return (T)(object)chainList;
+        }
+
+"
+                : "";
+
+            // Effect branch: read the shipped .fx text and compile it to a runtime Effect via the
+            // injected ShadowDusk compiler. A null compiler means this platform is gated (issue #52);
+            // throw a clear message instead of a NullReferenceException.
+            string shaderLoadBranch = includeShaderLoader
+                ? @"        if (typeof(T) == typeof(Effect))
+        {
+            if (_effectCache.TryGetValue(assetName, out Effect cachedEffect))
+                return (T)(object)cachedEffect;
+
+            string fxName = assetName.EndsWith("".fx"", StringComparison.OrdinalIgnoreCase) ? assetName : assetName + "".fx"";
+            byte[] fxBytes = TryReadAllBytes(Path.Combine(RootDirectory, fxName));
+            if (fxBytes != null)
+            {
+                if (ShaderCompiler == null)
+                    throw new InvalidOperationException(
+                        ""Cannot compile shader '"" + fxName + ""': runtime shader compilation is not supported on this platform."");
+
+                string hlsl = System.Text.Encoding.UTF8.GetString(fxBytes);
+                var result = ShaderCompiler.Compile(hlsl, new CompilerOptions { Target = ShaderTarget, SourceFileName = fxName });
+                if (result.IsFailure)
+                    throw new InvalidOperationException(
+                        ""Shader compilation failed for '"" + fxName + ""': "" +
+                        string.Join("" | "", Array.ConvertAll(result.Error, e => e.FxcFormattedMessage)));
+
+                Effect effect = new Effect(_graphics.GraphicsDevice, result.Value.Data);
+                _effectCache[assetName] = effect;
+                return (T)(object)effect;
+            }
         }
 
 "
@@ -1087,7 +1342,7 @@ internal class Program
 
             return $@"using System;
 using System.IO;
-{achxUsings}using Microsoft.Xna.Framework;
+{genericsUsing}{achxUsings}{shaderUsings}using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
@@ -1119,7 +1374,7 @@ public class RawContentManager : ContentManager
         (asmName.StartsWith(""Xna.Framework"") || asmName == ""FNA.NET"");
 
     readonly IGraphicsDeviceService _graphics;
-{achxField}
+{achxField}{shaderField}
     static void PremultiplyAlpha(Texture2D texture)
     {{
         Color[] pixels = new Color[texture.Width * texture.Height];
@@ -1170,7 +1425,7 @@ public class RawContentManager : ContentManager
             }}
         }}
 
-{achxLoadBranch}        return base.Load<T>(assetName);
+{shaderLoadBranch}{achxLoadBranch}        return base.Load<T>(assetName);
     }}
 
     static bool IsXnb(byte[] bytes) =>

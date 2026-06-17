@@ -243,9 +243,15 @@
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
             @if (_shaderTabs.Count > 0)
             {
-                <div style="color: #dcdcaa; font-size: 12px; line-height: 1.5; background: #2d2a1e; border: 1px solid #5c5320; border-radius: 3px; padding: 6px 8px;">
-                    &#9888; Shaders aren't included in exports yet &mdash; the exported project won't contain your
-                    @_shaderTabs.Count <b>.fx</b> file(s) (exporting shaders needs the MGCB content pipeline; tracked separately).
+                @* issue #39: shaders now export — the .fx source ships and the exported project
+                   recompiles it at runtime via ShadowDusk, like the in-browser editor. *@
+                var gatedShaderPlatforms = GatedShaderPlatforms();
+                <div style="color: #9cdcaa; font-size: 12px; line-height: 1.5; background: #1e2d20; border: 1px solid #2d5c34; border-radius: 3px; padding: 6px 8px;">
+                    &#10003; Your @_shaderTabs.Count <b>.fx</b> shader file(s) will be compiled at runtime via ShadowDusk in the exported project.
+                    @if (gatedShaderPlatforms.Count > 0)
+                    {
+                        <span style="color: #dcdcaa;">Not yet supported on <b>@string.Join(", ", gatedShaderPlatforms)</b> &mdash; those projects still build, but shaders won't load there (issue #52).</span>
+                    }
                 </div>
             }
             @* Row 1: Runtime + Platform *@
