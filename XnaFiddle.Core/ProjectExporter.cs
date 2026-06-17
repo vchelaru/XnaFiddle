@@ -78,15 +78,15 @@ namespace XnaFiddle
         // exactly like the in-browser editor — no XNB, no MGCB. The shared/common project compiles
         // against ShadowDusk.Core's IShaderCompiler interface; each per-platform project supplies the
         // concrete compiler and the backend. Targets absent from GetShaderExportInfo are *gated*: the
-        // .fx still ships but no compiler is wired (Android/iOS have no ShadowDusk device backend;
-        // MonoGame DX12/Vulkan and FNA are tracked in the follow-up, issue #52).
+        // .fx still ships but no compiler is wired — Android/iOS (no ShadowDusk device backend) and
+        // MonoGame DX12/Vulkan are tracked in issue #52.
         struct ShaderExportInfo
         {
             public bool Supported;
             public string Package;            // concrete per-platform package: ShadowDusk.Compiler / ShadowDusk.Wasm
             public string CompilerNamespace;  // namespace of CompilerType (for the entry-point using)
             public string CompilerType;       // EffectCompiler (desktop) / WasmShaderCompiler (browser)
-            public string PlatformTarget;     // ShadowDusk.Core.PlatformTarget enum value: OpenGL / DirectX
+            public string PlatformTarget;     // ShadowDusk.Core.PlatformTarget enum value: OpenGL / DirectX / Fna
             public bool IsBrowser;            // browser compiler must be InitializeAsync()'d before the sync Compile()
         }
 
@@ -98,6 +98,10 @@ namespace XnaFiddle
             ExportTarget.MonoGameDesktopGL => DesktopShaderInfo("OpenGL"),
             ExportTarget.KniWindowsDX      => DesktopShaderInfo("DirectX"),
             ExportTarget.MonoGameWindowsDX => DesktopShaderInfo("DirectX"),
+            // FNA also uses the desktop ShadowDusk.Compiler, but emits legacy D3D9 fx_2_0 .fxb
+            // (MojoShader-readable) via PlatformTarget.Fna instead of an .mgfx container — FNA's
+            // Effect(gd, bytes) ctor reads that raw .fxb directly (issue #54).
+            ExportTarget.FnaDesktop        => DesktopShaderInfo("Fna"),
             // Browser: ShadowDusk.Wasm (net8.0-browser, [JSImport] WASM modules). GL only.
             ExportTarget.KniBlazorGL => new ShaderExportInfo
             {
@@ -108,7 +112,7 @@ namespace XnaFiddle
                 PlatformTarget = "OpenGL",
                 IsBrowser = true,
             },
-            _ => default,   // gated: Android, MonoGame DX12/VK, FNA
+            _ => default,   // gated: Android, MonoGame DX12/VK (issue #52)
         };
 
         static ShaderExportInfo DesktopShaderInfo(string platformTarget) => new ShaderExportInfo
@@ -246,7 +250,12 @@ namespace XnaFiddle
                 // FNA.NET bundles win-x64 and osx natives, but on linux-x64 it ships only
                 // libtheorafile — SDL3/FNA3D/FAudio are expected from system packages.
                 if (target == ExportTarget.FnaDesktop)
+                {
                     AddTextEntry(archive, $"{projectName}/README.txt", GenerateFnaReadme());
+                    // Bridges MonoGame/KNI API conveniences that FNA's strict XNA4 surface lacks, so
+                    // fiddle code authored against the in-browser KNI runtime compiles on FNA unchanged.
+                    AddTextEntry(archive, $"{projectName}/FnaCompat.cs", GenerateFnaCompat());
+                }
 
                 // BlazorGL serves content from wwwroot/; all other targets use Content/
                 string contentDir = target == ExportTarget.KniBlazorGL
@@ -855,6 +864,43 @@ FAudio, etc.) and is distributed via NuGet, so it builds and runs as-is via
 
 If you prefer upstream FNA instead, replace the FNA.NET PackageReference in the
 .csproj with a project/source reference to FNA.
+";
+        }
+
+        // FNA-only source-compat shim. XnaFiddle runs fiddles on the in-browser KNI runtime, which —
+        // like MonoGame — collapsed SpriteBatch.Begin into a single all-optional-parameter method.
+        // FNA keeps XNA4's discrete Begin overloads with no optional/named parameters, so a fiddle
+        // calling e.g. Begin(blendState: x, effect: y) fails to compile on FNA (CS1501). This adds the
+        // optional-parameter Begin back via an extension method, so the same fiddle code exports to FNA
+        // unchanged. Emitted only into FNA exports. Deliberately minimal — grow it only when a real
+        // example/common pattern surfaces another gap, not speculatively (issues #48/#54).
+        static string GenerateFnaCompat()
+        {
+            return @"using Microsoft.Xna.Framework;
+
+namespace Microsoft.Xna.Framework.Graphics
+{
+    // An extension method is only consulted when no instance overload matches, so explicit positional
+    // Begin(...) calls keep binding to FNA's own overloads — and the forwarding calls below bind to
+    // those instance overloads too, so there is no recursion back into this method.
+    internal static class FnaSpriteBatchCompat
+    {
+        public static void Begin(this SpriteBatch spriteBatch,
+            SpriteSortMode sortMode = SpriteSortMode.Deferred,
+            BlendState blendState = null,
+            SamplerState samplerState = null,
+            DepthStencilState depthStencilState = null,
+            RasterizerState rasterizerState = null,
+            Effect effect = null,
+            Matrix? transformMatrix = null)
+        {
+            if (transformMatrix.HasValue)
+                spriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix.Value);
+            else
+                spriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect);
+        }
+    }
+}
 ";
         }
 

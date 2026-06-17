@@ -664,6 +664,28 @@ public class Game1 : Game
     }
 
     [Fact]
+    public void FnaDesktop_IncludesFnaCompatShim()
+    {
+        // FNA lacks MonoGame/KNI's optional-parameter SpriteBatch.Begin, so fiddle code authored
+        // against the in-browser KNI runtime needs the shim to compile on FNA (issue #48/#54).
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.FnaDesktop, "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/FnaCompat.cs", files.Keys);
+        string compat = files["MyGame/FnaCompat.cs"];
+        Assert.Contains("static class FnaSpriteBatchCompat", compat);
+        Assert.Contains("public static void Begin(this SpriteBatch", compat);
+    }
+
+    [Fact]
+    public void NonFna_OmitsFnaCompatShim()
+    {
+        // The shim is FNA-only; KNI/MonoGame exports have the real optional-parameter Begin.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame");
+        Assert.DoesNotContain("MyGame/FnaCompat.cs", ExtractTextFiles(zip).Keys);
+    }
+
+    [Fact]
     public void FnaDesktop_IncludesFnaNetReadme()
     {
         var targets = new List<ExportTarget> { ExportTarget.FnaDesktop };
@@ -730,6 +752,7 @@ public class Game1 : Game
     [InlineData(ExportTarget.KniWindowsDX)]
     [InlineData(ExportTarget.MonoGameWindowsDX)]
     [InlineData(ExportTarget.KniBlazorGL)]
+    [InlineData(ExportTarget.FnaDesktop)]
     public void SupportsRuntimeShaders_TrueForWiredTargets(ExportTarget target)
     {
         Assert.True(ProjectExporter.SupportsRuntimeShaders(target));
@@ -740,10 +763,29 @@ public class Game1 : Game
     [InlineData(ExportTarget.MonoGameAndroid)]
     [InlineData(ExportTarget.MonoGameWindowsDX12)]
     [InlineData(ExportTarget.MonoGameDesktopVK)]
-    [InlineData(ExportTarget.FnaDesktop)]
     public void SupportsRuntimeShaders_FalseForGatedTargets(ExportTarget target)
     {
         Assert.False(ProjectExporter.SupportsRuntimeShaders(target));
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_FnaDesktop_ShipsFxAndWiresFnaBackend()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.FnaDesktop, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // FNA ships the .fx and references the desktop compiler (it emits legacy D3D9 .fxb).
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.Contains($@"<PackageReference Include=""ShadowDusk.Compiler"" Version=""{PackageVersions.ShadowDusk}"" />",
+            files["MyGame/MyGame.csproj"]);
+
+        // The entry point injects EffectCompiler with the FNA backend.
+        string program = files["MyGame/Program.cs"];
+        Assert.Contains("new EffectCompiler()", program);
+        Assert.Contains("PlatformTarget.Fna", program);
+
+        // Effect-compiling content manager is present.
+        Assert.Contains("ShaderCompiler.Compile(", files["MyGame/RawContentManager.cs"]);
     }
 
     [Fact]
