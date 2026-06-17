@@ -603,6 +603,18 @@ namespace XnaFiddle
             sb.AppendLine();
             sb.AppendLine("  <PropertyGroup>");
 
+            // A project must target net8.0-browser (instead of net8.0) when it references a
+            // browser-only package — i.e. one doing native [JSImport]/wasm interop, which is
+            // NU1201-incompatible with a plain net8.0 reference. Today the only such dependency is the
+            // runtime shader compiler (ShadowDusk.Wasm), but this is kept as a general "needs the
+            // browser TFM" flag: future browser-native references should OR into it rather than adding
+            // another feature check to the per-target TFM logic. It is conditional (not always
+            // net8.0-browser) on purpose — net8.0-browser + [JSImport] pulls in the wasm-tools
+            // workload, whereas a project without such a dependency builds with just `dotnet restore`
+            // on net8.0 (the export contract). Only the Blazor target can honor this; the desktop/
+            // Android targets pin their own TFM regardless.
+            bool needsBrowserTarget = includeShaders;
+
             // OutputType and TargetFramework vary by platform
             switch (target)
             {
@@ -636,14 +648,9 @@ namespace XnaFiddle
                     break;
 
                 case ExportTarget.KniBlazorGL:
-                    // ShadowDusk.Wasm targets net8.0-browser (its [JSImport] shader backends); a plain
-                    // net8.0 reference fails NU1201 and the ShadowDusk.Wasm namespace won't resolve
-                    // (issue #26/#39). The TFM is conditioned on shaders — rather than always
-                    // net8.0-browser — because net8.0-browser + [JSImport] requires the wasm-tools
-                    // workload, whereas a shader-free KNI Blazor export builds with just `dotnet
-                    // restore` on net8.0 (the export contract). So we only take on net8.0-browser (and
-                    // its workload requirement) for exports that actually compile shaders in-browser.
-                    sb.AppendLine(includeShaders
+                    // net8.0-browser only when a browser-only dependency requires it (see
+                    // needsBrowserTarget above); otherwise plain net8.0 keeps the restore-only path.
+                    sb.AppendLine(needsBrowserTarget
                         ? "    <TargetFramework>net8.0-browser</TargetFramework>"
                         : "    <TargetFramework>net8.0</TargetFramework>");
                     sb.AppendLine("    <Nullable>disable</Nullable>");
