@@ -284,8 +284,15 @@ technique BasicColorDrawing
                 string hash = await JsRuntime.InvokeAsync<string>("eval", "window.location.hash");
                 if (hash.StartsWith("#snippet="))
                 {
-                    if (await LoadFromSnippet(hash.Substring(9)))
+                    // #snippet=<model>[&assets=<...>] — assets optional. Issue #56.
+                    string fragment = hash.Substring(1); // drop '#', keeps "snippet=..."
+                    string snippetPart = ExtractFragmentParam(fragment, "snippet");
+                    string assetsPart = ExtractFragmentParam(fragment, "assets");
+
+                    if (await LoadFromSnippet(snippetPart))
                         autoCompile = true;
+
+                    await ApplyAssetsFragmentAsync(assetsPart);
                 }
                 else if (hash.StartsWith("#code="))
                 {
@@ -301,23 +308,7 @@ technique BasicColorDrawing
                     if (shadersPart != null)
                         await ApplyShadersFragmentAsync(shadersPart);
 
-                    if (assetsPart != null)
-                    {
-                        try
-                        {
-                            string json = UrlCodec.Decode(assetsPart);
-                            string[] urls = JsonSerializer.Deserialize<string[]>(json);
-                            if (urls != null && urls.Length > 0)
-                            {
-                                await FetchAssetUrls(urls);
-                                StateHasChanged();
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Console.WriteLine($"[XnaFiddle] Failed to parse asset URLs: {e.Message}");
-                        }
-                    }
+                    await ApplyAssetsFragmentAsync(assetsPart);
                 }
 
                 if (autoCompile)
@@ -344,10 +335,18 @@ technique BasicColorDrawing
         private string GetAssetUrlsFragment()
         {
             var urls = new List<string>();
+            string baseUri = Navigation.BaseUri;
             foreach (var asset in _assets)
             {
-                if (!string.IsNullOrEmpty(asset.SourceUrl))
-                    urls.Add(asset.SourceUrl);
+                if (string.IsNullOrEmpty(asset.SourceUrl)) continue;
+                string sourceUrl = asset.SourceUrl;
+                // Same-origin assets (example assets served from {origin}/examples/...) are encoded
+                // as origin-relative paths so the link resolves against whatever origin opens it, not
+                // the origin that generated it — a link shared from localhost must still load on
+                // xnafiddle.net. External (user-fetched) URLs stay absolute. Issue #56.
+                if (sourceUrl.StartsWith(baseUri, StringComparison.OrdinalIgnoreCase))
+                    sourceUrl = sourceUrl.Substring(baseUri.Length);
+                urls.Add(sourceUrl);
             }
             if (urls.Count == 0) return "";
             string json = JsonSerializer.Serialize(urls);
@@ -404,6 +403,27 @@ technique BasicColorDrawing
             catch (Exception e)
             {
                 Console.WriteLine($"[XnaFiddle] Failed to parse shaders fragment: {e.Message}");
+            }
+        }
+
+        // Decodes an "&assets=" fragment value and fetches each asset URL it carries. Shared by the
+        // #code= and #snippet= share-open paths. Null/empty is a no-op. Issue #56.
+        private async Task ApplyAssetsFragmentAsync(string assetsPart)
+        {
+            if (string.IsNullOrEmpty(assetsPart)) return;
+            try
+            {
+                string json = UrlCodec.Decode(assetsPart);
+                string[] urls = JsonSerializer.Deserialize<string[]>(json);
+                if (urls != null && urls.Length > 0)
+                {
+                    await FetchAssetUrls(urls);
+                    StateHasChanged();
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[XnaFiddle] Failed to parse asset URLs: {e.Message}");
             }
         }
 
@@ -835,6 +855,11 @@ technique BasicColorDrawing
 
         private async Task FetchAndAddAssetUrl(string url)
         {
+            // Origin-relative asset URLs (from share links — see GetAssetUrlsFragment) are resolved
+            // against the current origin so a link generated on one origin still loads on another.
+            if (!Uri.IsWellFormedUriString(url, UriKind.Absolute))
+                url = Navigation.ToAbsoluteUri(url).ToString();
+
             string fileName = System.IO.Path.GetFileName(new Uri(url).AbsolutePath);
             if (string.IsNullOrEmpty(fileName))
                 fileName = "asset";
@@ -1279,7 +1304,10 @@ technique BasicColorDrawing
                 new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault, WriteIndented = true });
 
             string encoded = UrlCodec.Encode(compactJson);
-            _snippetPreviewUrl = "https://xnafiddle.net/#snippet=" + encoded;
+            // Append the assets fragment so the previewed URL (a readonly, user-selectable input)
+            // matches what CopyShareUrl produces — otherwise copying from the textbox yields an
+            // asset-less snippet link, re-losing example assets. Mirrors the #code= path. Issue #56.
+            _snippetPreviewUrl = "https://xnafiddle.net/#snippet=" + encoded + GetAssetUrlsFragment();
         }
 
         private async Task CopyShareUrl()
@@ -1309,8 +1337,9 @@ technique BasicColorDrawing
                     Shaders     = _shareShaders.Count > 0 ? _shareShaders : null,
                 };
                 string encoded = UrlCodec.Encode(JsonSerializer.Serialize(model, opts));
-                url = "https://xnafiddle.net/#snippet=" + encoded;
-                await JsRuntime.InvokeVoidAsync("eval", $"history.replaceState(null,'','#snippet={encoded}')");
+                string assetsFragment = GetAssetUrlsFragment();
+                url = "https://xnafiddle.net/#snippet=" + encoded + assetsFragment;
+                await JsRuntime.InvokeVoidAsync("eval", $"history.replaceState(null,'','#snippet={encoded}{assetsFragment}')");
             }
             else
             {
