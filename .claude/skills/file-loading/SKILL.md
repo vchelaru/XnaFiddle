@@ -70,7 +70,7 @@ Current static copies: `AetherPhysics/CircleSprite.png`, `AetherPhysics/GroundSp
 
 ## Drag-and-drop flow
 
-1. JS `fileDropInterop` listens on `#canvasHolder` for `drop` events
+1. JS `fileDropInterop` listens on `window` for `dragenter`/`dragover`/`dragleave`/`drop` in the **capture phase**, so the whole UI is a drop target (issue #28). Handlers are gated on `e.dataTransfer.types` containing `'Files'`; for a real file drag they `preventDefault()` + `stopPropagation()` so the event is intercepted *before* Monaco sees it (no text-insertion caret, no Monaco file handling). Non-file drags early-return untouched, leaving Monaco's internal text drag-drop intact. The dashed affordance is a top-level `pointer-events:none` overlay `<div>` positioned over whichever panel (`#editorPanel` / `#canvasHolder`) the pointer is over — an `outline` on the panel itself gets occluded by Monaco's stacking context. Routing is **not** location-based.
 2. All dropped files are passed through to C# — no JS-side MIME or extension filtering
 3. File is read as base64 via `FileReader`, sent to C# `OnFileDropped(fileName, base64)`
 4. C# validates extension against `SupportedAssetExtensions`, enforces 10 MB limit

@@ -1075,31 +1075,110 @@ window.keyboardInterop = {
     }
 };
 
-// Drag-and-drop file upload (images → .NET interop)
+// Drag-and-drop file upload (images, fonts, .fx shaders → .NET interop).
+//
+// Drops are accepted anywhere over the XnaFiddle UI (issue #28), not just the
+// canvas. We listen on window so both the editor panel and the canvas are valid
+// targets. Routing stays purely extension-based on the C# side (OnFileDropped):
+// the drop region only drives the hover outline, never where the file ends up.
 window.fileDropInterop = {
     _dotNetRef: null,
+    _initialized: false,
 
     init: function (dotNetRef) {
+        // Always refresh the ref; the window listeners below close over the live
+        // value via window.fileDropInterop._dotNetRef, so re-inits just update it.
         this._dotNetRef = dotNetRef;
-        var dropTarget = document.getElementById('canvasHolder');
-        if (!dropTarget) return;
+        if (this._initialized) return;   // window listeners are global — attach once
+        this._initialized = true;
 
-        dropTarget.addEventListener('dragover', function (e) {
+        // True only when the OS is dragging real files. Monaco's internal text
+        // drag-drop reports types like 'text/plain' (never 'Files'), so gating on
+        // this leaves Monaco's own drag-drop — and the browser's default text
+        // handling — completely untouched.
+        function isFileDrag(e) {
+            var t = e.dataTransfer && e.dataTransfer.types;
+            if (!t) return false;
+            if (typeof t.indexOf === 'function') return t.indexOf('Files') !== -1;
+            if (typeof t.contains === 'function') return t.contains('Files');
+            return Array.prototype.indexOf.call(t, 'Files') !== -1;
+        }
+
+        // Resolve which panel the pointer is over (the event target may be a deep
+        // descendant, e.g. a Monaco line), or null when over neither.
+        function regionFor(target) {
+            return target && target.closest
+                ? target.closest('#editorPanel, #canvasHolder')
+                : null;
+        }
+
+        // The drop affordance is drawn as a top-level overlay rather than an
+        // `outline` on the panel itself. Monaco creates its own stacking context
+        // and paints over an inset outline set on #editorPanel, which made the
+        // dashed border vanish across the editor area. A fixed, pointer-events:none
+        // overlay on top of everything is never occluded, and — being pointer-
+        // transparent — lets the drag events fall through so region detection works.
+        var overlay = null;
+        function ensureOverlay() {
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.style.position = 'fixed';
+                overlay.style.pointerEvents = 'none';
+                overlay.style.zIndex = '2147483647';
+                overlay.style.border = '2px dashed #007acc';
+                overlay.style.boxSizing = 'border-box';
+                overlay.style.display = 'none';
+                document.body.appendChild(overlay);
+            }
+            return overlay;
+        }
+        function showOverlayOver(region) {
+            if (!region) { hideOverlay(); return; }
+            var r = region.getBoundingClientRect();
+            var o = ensureOverlay();
+            var inset = 4;
+            o.style.left = (r.left + inset) + 'px';
+            o.style.top = (r.top + inset) + 'px';
+            o.style.width = Math.max(0, r.width - inset * 2) + 'px';
+            o.style.height = Math.max(0, r.height - inset * 2) + 'px';
+            o.style.display = 'block';
+        }
+        function hideOverlay() {
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        // Listen in the CAPTURE phase so these run before Monaco's own drag-drop
+        // listeners (which sit lower in the tree). For a real file drag we
+        // stopPropagation(), so Monaco never sees the event and won't show its
+        // text-insertion caret or try to handle the file. Non-file drags return
+        // early without touching the event, leaving Monaco's text drag-drop intact.
+        window.addEventListener('dragenter', function (e) {
+            if (!isFileDrag(e)) return;
             e.preventDefault();
+            e.stopPropagation();
+        }, true);
+
+        window.addEventListener('dragover', function (e) {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();             // permit the drop + suppress browser open-file
+            e.stopPropagation();            // keep the file drag away from Monaco
             e.dataTransfer.dropEffect = 'copy';
-            dropTarget.style.outline = '2px dashed #007acc';
-            dropTarget.style.outlineOffset = '-4px';
-        });
+            showOverlayOver(regionFor(e.target));
+        }, true);
 
-        dropTarget.addEventListener('dragleave', function (e) {
-            dropTarget.style.outline = '';
-            dropTarget.style.outlineOffset = '';
-        });
+        // dragleave also fires when crossing between child elements; only a true
+        // exit from the window (relatedTarget === null) should clear the overlay.
+        // Region switches within the window are handled by dragover above.
+        window.addEventListener('dragleave', function (e) {
+            if (!isFileDrag(e)) return;
+            if (!e.relatedTarget) hideOverlay();
+        }, true);
 
-        dropTarget.addEventListener('drop', function (e) {
+        window.addEventListener('drop', function (e) {
+            if (!isFileDrag(e)) return;
             e.preventDefault();
-            dropTarget.style.outline = '';
-            dropTarget.style.outlineOffset = '';
+            e.stopPropagation();
+            hideOverlay();
             var files = e.dataTransfer.files;
             for (var i = 0; i < files.length; i++) {
                 (function (file) {
@@ -1111,6 +1190,6 @@ window.fileDropInterop = {
                     reader.readAsDataURL(file);
                 })(files[i]);
             }
-        });
+        }, true);
     }
 };
