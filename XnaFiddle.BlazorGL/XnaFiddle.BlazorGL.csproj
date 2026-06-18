@@ -92,5 +92,31 @@
     <WriteLinesToFile File="wwwroot/js/build-version.js" Lines="window._buildVersion = &quot;$(_BuildTimestamp)&quot;%3B" Overwrite="true" />
   </Target>
 
+  <!-- Mirror embedded example assets to static web files so share links can re-fetch them.
+       Example assets are stored flat as Examples\{Name}.{File} and embedded as resources
+       (see EmbeddedResource above). A share link encodes an asset URL of
+       {origin}/examples/{Name}/{File}, which only resolves if a static copy exists under
+       wwwroot. This target derives those copies from the same source files, so adding a new
+       example asset never requires hand-copying into wwwroot. Issue #56. -->
+  <Target Name="CopyExampleStaticAssets" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <_ExampleStaticAsset Include="Examples\*.*" Exclude="Examples\*.cs" />
+      <!-- Define Dest in a separate ItemGroup, NOT inline on the Include above: when the
+           regex property function references %(Filename) inline on a multi-item wildcard
+           Include, MSBuild evaluates it un-batched and yields an empty path. Adding the
+           metadata after the items exist batches it per item. -->
+      <!-- Split the flat name on its FIRST dot: example name before, asset file after
+           (e.g. ShaderGrayscale.KniIcon.png -> ShaderGrayscale/KniIcon.png). This assumes
+           example names contain no '.', which matches ExampleGallery.LoadAssets's runtime
+           split on the "{exampleName}." boundary. Keep example names dot-free or the static
+           copy path and the share-link URL will disagree (404). -->
+      <_ExampleStaticAsset>
+        <Dest>wwwroot/examples/$([System.Text.RegularExpressions.Regex]::Replace('%(Filename)%(Extension)', '^([^.]+)\.', '$1/'))</Dest>
+      </_ExampleStaticAsset>
+    </ItemGroup>
+    <Copy SourceFiles="@(_ExampleStaticAsset)"
+          DestinationFiles="@(_ExampleStaticAsset->'%(Dest)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
