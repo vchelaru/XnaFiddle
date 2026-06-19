@@ -284,6 +284,40 @@ public class Game1 : Game
     }
 
     [Fact]
+    public void CommonCsproj_MonoGame_PreviewVersion_UsesNativeFramework()
+    {
+        // MonoGame 3.8.5+ shared libraries compile against the renderer-agnostic
+        // MonoGame.Framework.Native (the mg2dstartkit convention), not DesktopGL.
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX };
+        byte[] zip = ProjectExporter.Export(
+            MinimalCode, targets, "MyGame",
+            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        var files = ExtractTextFiles(zip);
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Framework.Native"" Version=""{PackageVersions.MonoGameFrameworkPreview}"" PrivateAssets=""All"" />",
+            common);
+        // The common project must not pin a concrete backend as its framework reference.
+        Assert.DoesNotContain("MonoGame.Framework.DesktopGL", common);
+    }
+
+    [Fact]
+    public void CommonCsproj_MonoGame_DefaultVersion_UsesDesktopGLFramework()
+    {
+        // Stable 3.8.4 keeps the legacy DesktopGL shared reference (no .Native package yet).
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
+        var files = ExtractTextFiles(zip);
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{PackageVersions.MonoGameFramework}"" PrivateAssets=""All"" />",
+            common);
+        Assert.DoesNotContain("MonoGame.Framework.Native", common);
+    }
+
+    [Fact]
     public void CommonCsproj_IsLibrary()
     {
         var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
