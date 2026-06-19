@@ -45,6 +45,7 @@ namespace XnaFiddle
             new ExampleInfo { Name = "Grayscale",       Category = "2D Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
             new ExampleInfo { Name = "Invert",          Category = "2D Shaders", Description = "Invert an image's colors" },
             new ExampleInfo { Name = "Pixelated",       Category = "2D Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
+            new ExampleInfo { Name = "RenderTargetMipmaps", Category = "2D Shaders", Description = "Diagnostic: render into a mipmapped render target, then sample explicit mip LODs (SampleLevel) — six thumbnails should go sharp to blurry if RT mipmaps work" },
             new ExampleInfo { Name = "Saturate",        Category = "2D Shaders", Description = "Bloom / brightness boost with adjustable parameters" },
             new ExampleInfo { Name = "Scanlines",       Category = "2D Shaders", Description = "CRT-style scanlines" },
             new ExampleInfo { Name = "Sepia",           Category = "2D Shaders", Description = "Sepia tone, with a tint parameter set from C#" },
