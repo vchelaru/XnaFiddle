@@ -34,17 +34,22 @@ namespace XnaFiddle
             new ExampleInfo { Name = "SoundPlayback",   Category = "Basics", Description = "Load and play a WAV sound effect with keyboard controls" },
             new ExampleInfo { Name = "TextureLoading",  Category = "Basics", Description = "Load and display a texture from a file" },
 
-            // Shaders (compiled in-browser from HLSL .fx via ShadowDusk; HiDef, but the OpenGL
-            // .mgfx is profile-agnostic so it loads under Reach/WebGL1 too)
-            new ExampleInfo { Name = "ShaderGrayscale", Category = "Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
-            new ExampleInfo { Name = "ShaderInvert",    Category = "Shaders", Description = "Invert an image's colors" },
-            new ExampleInfo { Name = "ShaderSepia",     Category = "Shaders", Description = "Sepia tone, with a tint parameter set from C#" },
-            new ExampleInfo { Name = "ShaderTint",      Category = "Shaders", Description = "Multiply an image by a tint color passed from C#" },
-            new ExampleInfo { Name = "ShaderSaturate",  Category = "Shaders", Description = "Bloom / brightness boost with adjustable parameters" },
-            new ExampleInfo { Name = "ShaderPixelated", Category = "Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
-            new ExampleInfo { Name = "ShaderScanlines", Category = "Shaders", Description = "CRT-style scanlines" },
-            new ExampleInfo { Name = "ShaderFading",    Category = "Shaders", Description = "Vertical fade driven by texture coordinates" },
-            new ExampleInfo { Name = "ShaderDots",      Category = "Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
+            // 2D Shaders — post-processing pixel shaders applied to a sprite. Compiled in-browser
+            // from HLSL .fx via ShadowDusk; HiDef, but the OpenGL .mgfx is profile-agnostic so it
+            // loads under Reach/WebGL1 too.
+            new ExampleInfo { Name = "ShaderGrayscale", Category = "2D Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
+            new ExampleInfo { Name = "ShaderInvert",    Category = "2D Shaders", Description = "Invert an image's colors" },
+            new ExampleInfo { Name = "ShaderSepia",     Category = "2D Shaders", Description = "Sepia tone, with a tint parameter set from C#" },
+            new ExampleInfo { Name = "ShaderTint",      Category = "2D Shaders", Description = "Multiply an image by a tint color passed from C#" },
+            new ExampleInfo { Name = "ShaderSaturate",  Category = "2D Shaders", Description = "Bloom / brightness boost with adjustable parameters" },
+            new ExampleInfo { Name = "ShaderPixelated", Category = "2D Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
+            new ExampleInfo { Name = "ShaderScanlines", Category = "2D Shaders", Description = "CRT-style scanlines" },
+            new ExampleInfo { Name = "ShaderFading",    Category = "2D Shaders", Description = "Vertical fade driven by texture coordinates" },
+            new ExampleInfo { Name = "ShaderDots",      Category = "2D Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
+
+            // 3D Shaders — full-scene procedural shaders (vertex + pixel) that render a 3D scene,
+            // not a post-process over a sprite.
+            new ExampleInfo { Name = "ShaderOcean",     Category = "3D Shaders", Description = "Procedural raymarched ocean with a day/night sky — drag to rotate the camera" },
 
             // Libraries (alphabetical)
             new ExampleInfo { Name = "AetherPhysics",                Category = "Aether.Physics2D",  Description = "2D physics simulation with a bouncing ball and keyboard controls" },
@@ -71,7 +76,7 @@ namespace XnaFiddle
         /// Built-in categories that are part of XnaFiddle itself (not a third-party library).
         /// These render above the divider in the example browser, with no library separator.
         /// </summary>
-        public static readonly string[] BuiltInCategories = { "Basics", "Shaders" };
+        public static readonly string[] BuiltInCategories = { "Basics", "2D Shaders", "3D Shaders" };
 
         /// <summary>
         /// Third-party library categories, in catalog order. The example browser draws a
