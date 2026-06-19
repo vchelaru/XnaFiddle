@@ -34,24 +34,24 @@ namespace XnaFiddle
             new ExampleInfo { Name = "SoundPlayback",   Category = "Basics", Description = "Load and play a WAV sound effect with keyboard controls" },
             new ExampleInfo { Name = "TextureLoading",  Category = "Basics", Description = "Load and display a texture from a file" },
 
-            // 2D Shaders — post-processing pixel shaders applied to a sprite. Compiled in-browser
-            // from HLSL .fx via ShadowDusk; HiDef, but the OpenGL .mgfx is profile-agnostic so it
-            // loads under Reach/WebGL1 too.
-            new ExampleInfo { Name = "ShaderGrayscale", Category = "2D Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
-            new ExampleInfo { Name = "ShaderInvert",    Category = "2D Shaders", Description = "Invert an image's colors" },
-            new ExampleInfo { Name = "ShaderSepia",     Category = "2D Shaders", Description = "Sepia tone, with a tint parameter set from C#" },
-            new ExampleInfo { Name = "ShaderTint",      Category = "2D Shaders", Description = "Multiply an image by a tint color passed from C#" },
-            new ExampleInfo { Name = "ShaderSaturate",  Category = "2D Shaders", Description = "Bloom / brightness boost with adjustable parameters" },
-            new ExampleInfo { Name = "ShaderPixelated", Category = "2D Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
-            new ExampleInfo { Name = "ShaderScanlines", Category = "2D Shaders", Description = "CRT-style scanlines" },
-            new ExampleInfo { Name = "ShaderFading",    Category = "2D Shaders", Description = "Vertical fade driven by texture coordinates" },
-            new ExampleInfo { Name = "ShaderDots",      Category = "2D Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
-            new ExampleInfo { Name = "ShaderBlur",      Category = "2D Shaders", Description = "Two-pass separable Gaussian blur using render targets" },
-            new ExampleInfo { Name = "ShaderBlurPostProcess", Category = "2D Shaders", Description = "Full-screen post-processing blur: the same Blur.fx applied to the whole scene via a screen-sized render target (Space toggles, Up/Down adjust)" },
+            // 2D Shaders (alphabetical) — post-processing pixel shaders applied to a sprite.
+            // Compiled in-browser from HLSL .fx via ShadowDusk; HiDef, but the OpenGL .mgfx is
+            // profile-agnostic so it loads under Reach/WebGL1 too.
+            new ExampleInfo { Name = "Blur",            Category = "2D Shaders", Description = "Two-pass separable Gaussian blur using render targets" },
+            new ExampleInfo { Name = "BlurPostProcess", Category = "2D Shaders", Description = "Full-screen post-processing blur: the same Blur.fx applied to the whole scene via a screen-sized render target (Space toggles, Up/Down adjust)" },
+            new ExampleInfo { Name = "Dots",            Category = "2D Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
+            new ExampleInfo { Name = "Fading",          Category = "2D Shaders", Description = "Vertical fade driven by texture coordinates" },
+            new ExampleInfo { Name = "Grayscale",       Category = "2D Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
+            new ExampleInfo { Name = "Invert",          Category = "2D Shaders", Description = "Invert an image's colors" },
+            new ExampleInfo { Name = "Pixelated",       Category = "2D Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
+            new ExampleInfo { Name = "Saturate",        Category = "2D Shaders", Description = "Bloom / brightness boost with adjustable parameters" },
+            new ExampleInfo { Name = "Scanlines",       Category = "2D Shaders", Description = "CRT-style scanlines" },
+            new ExampleInfo { Name = "Sepia",           Category = "2D Shaders", Description = "Sepia tone, with a tint parameter set from C#" },
+            new ExampleInfo { Name = "Tint",            Category = "2D Shaders", Description = "Multiply an image by a tint color passed from C#" },
 
             // 3D Shaders — full-scene procedural shaders (vertex + pixel) that render a 3D scene,
             // not a post-process over a sprite.
-            new ExampleInfo { Name = "ShaderOcean",     Category = "3D Shaders", Description = "Procedural raymarched ocean with a day/night sky — drag to rotate the camera" },
+            new ExampleInfo { Name = "Ocean",           Category = "3D Shaders", Description = "Procedural raymarched ocean with a day/night sky — drag to rotate the camera" },
 
             // Libraries (alphabetical)
             new ExampleInfo { Name = "AetherPhysics",                Category = "Aether.Physics2D",  Description = "2D physics simulation with a bouncing ball and keyboard controls" },
