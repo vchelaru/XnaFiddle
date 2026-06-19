@@ -168,7 +168,7 @@ public class Game1 : Game
         base.Draw(gameTime);
     }
 
-    // Draws the scene into whichever render target is currently bound: a single ROW of
+    // Draws the scene into whichever render target is currently bound: a 3x3 grid of
     // bright neon squares stepping through the hue wheel, every one the 1x1 white pixel
     // stretched and tinted (no generated textures, no loaded assets). A near-black clear
     // keeps the background from blooming; only the squares are above the bright-pass
@@ -178,21 +178,26 @@ public class Game1 : Game
     {
         GraphicsDevice.Clear(SceneBackground);
 
-        // Nine squares evenly distributed across a centered 86%-width band, so the row
-        // reads as a rainbow sweep (red -> orange -> ... -> magenta). Each square sits in
-        // its own 1/Count slot and is centered within it; the row stays vertically centered.
+        // Nine squares in a centered 3x3 grid with a visible gap between cells. The hue
+        // sweeps row-major across the grid (red top-left -> magenta bottom-right). Square
+        // cells sized off the smaller screen dimension keep the grid centered on any window.
         const int Count = 9;
-        int size = (int)(Math.Min(w, h) * 0.09f);
-        int y = (h - size) / 2;
-        float bandWidth = w * 0.86f;
-        float bandLeft = (w - bandWidth) / 2f;
-        float step = bandWidth / Count;
+        const int Cols = 3;
+        const int Rows = 3;                          // Cols * Rows == Count
+        int size = (int)(Math.Min(w, h) * 0.16f);    // each square
+        int gap = (int)(size * 0.5f);                // spacing between squares
+        int gridW = Cols * size + (Cols - 1) * gap;
+        int gridH = Rows * size + (Rows - 1) * gap;
+        int left = (w - gridW) / 2;
+        int top = (h - gridH) / 2;
 
         spriteBatch.Begin();
         for (int i = 0; i < Count; i++)
         {
-            float centerX = bandLeft + step * (i + 0.5f);
-            int x = (int)(centerX - size / 2f);
+            int col = i % Cols;
+            int row = i / Cols;
+            int x = left + col * (size + gap);
+            int y = top + row * (size + gap);
             Color color = FromHue(i * (360f / Count));
             spriteBatch.Draw(pixel, new Rectangle(x, y, size, size), color);
         }
