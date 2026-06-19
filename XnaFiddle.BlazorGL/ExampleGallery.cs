@@ -31,6 +31,7 @@ namespace XnaFiddle
             // Basics (always first)
             new ExampleInfo { Name = "BouncingBall",    Category = "Basics", Description = "A ball that bounces off the edges of the screen" },
             new ExampleInfo { Name = "MouseTrail",      Category = "Basics", Description = "Trail of circles that follow the mouse cursor" },
+            new ExampleInfo { Name = "RenderTarget", Category = "Basics", Description = "Render the scene into a texture, then rotate and scale that texture as a single sprite — the render-to-texture round trip" },
             new ExampleInfo { Name = "SoundPlayback",   Category = "Basics", Description = "Load and play a WAV sound effect with keyboard controls" },
             new ExampleInfo { Name = "TextureLoading",  Category = "Basics", Description = "Load and display a texture from a file" },
 
