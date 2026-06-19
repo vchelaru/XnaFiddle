@@ -20,9 +20,11 @@ using Microsoft.Xna.Framework.Graphics;
 // linear filtering. Everything here is already proven to render in this app.
 //
 // PIPELINE (each step renders into a RenderTarget2D, then is sampled by the next):
-//   1. Scene      -> sceneTarget     : draw the bright shapes on a near-black field.
+//   1. Scene      -> sceneTarget     : draw a row of bright neon squares stepping through
+//                                      the hue wheel, drawn from a single white pixel (no
+//                                      assets), on a near-black field.
 //   2. Bright-pass -> extractTarget  : Bloom.BloomExtract.fx keeps only what is above
-//                                      Threshold, so only the shapes will glow.
+//                                      Threshold, so only the squares will glow.
 //   3. Pyramid     -> levelA[0..N-1] : repeatedly halve the image, and separably blur
 //                                      (Bloom.Blur.fx, horizontal then vertical) at
 //                                      each scale. levelA[i] holds the blurred result.
@@ -43,10 +45,6 @@ public class Game1 : Game
     // 1x1 white texture: the standard way to draw a solid-color rectangle with
     // SpriteBatch (tint it any color, stretch it to any Rectangle).
     Texture2D pixel;
-    // Hard-edged opaque masks generated in memory (no content files): white where
-    // the shape is filled, fully transparent outside. Tinted when drawn.
-    Texture2D circleTex;
-    Texture2D triangleTex;
 
     Effect bloomExtract; // Bloom.BloomExtract.fx — the bright-pass (Threshold)
     Effect blur;         // Bloom.Blur.fx — separable Gaussian reused at each scale (Offset)
@@ -85,12 +83,9 @@ public class Game1 : Game
     {
         spriteBatch = new SpriteBatch(GraphicsDevice);
 
-        // In-memory GPU resources, NOT file I/O — this example loads no content files.
+        // In-memory GPU resource, NOT file I/O — this example loads no content files.
         pixel = new Texture2D(GraphicsDevice, 1, 1);
         pixel.SetData(new[] { Color.White });
-
-        circleTex = CreateCircleTexture(256);
-        triangleTex = CreateTriangleTexture(256);
 
         // Compiled in-browser when you press Run. The Content.Load key is the shader
         // tab's filename minus ".fx"; the example loader strips the "Bloom." prefix, so
@@ -173,81 +168,54 @@ public class Game1 : Game
         base.Draw(gameTime);
     }
 
-    // Draws the bright shapes into whichever render target is currently bound. A near-
-    // black clear keeps the background from blooming; only the shapes are above the
-    // bright-pass threshold. A plain SpriteBatch pass here also primes SpriteBatch's
-    // vertex shader, which the pixel-only effects later rely on being active.
+    // Draws the scene into whichever render target is currently bound: a single ROW of
+    // bright neon squares stepping through the hue wheel, every one the 1x1 white pixel
+    // stretched and tinted (no generated textures, no loaded assets). A near-black clear
+    // keeps the background from blooming; only the squares are above the bright-pass
+    // threshold. The plain SpriteBatch pass here also primes SpriteBatch's vertex shader,
+    // which the pixel-only effects later rely on being active.
     void DrawScene(int w, int h)
     {
         GraphicsDevice.Clear(SceneBackground);
 
-        int unit = Math.Min(w, h);
+        // Nine squares evenly distributed across a centered 86%-width band, so the row
+        // reads as a rainbow sweep (red -> orange -> ... -> magenta). Each square sits in
+        // its own 1/Count slot and is centered within it; the row stays vertically centered.
+        const int Count = 9;
+        int size = (int)(Math.Min(w, h) * 0.09f);
+        int y = (h - size) / 2;
+        float bandWidth = w * 0.86f;
+        float bandLeft = (w - bandWidth) / 2f;
+        float step = bandWidth / Count;
+
         spriteBatch.Begin();
-
-        // Blue square (the 1x1 pixel stretched to a rectangle), on the left.
-        int sq = (int)(unit * 0.18f);
-        spriteBatch.Draw(pixel, CenteredRect(w * 0.22f, h * 0.50f, sq, sq), new Color(80, 160, 255));
-
-        // Red/orange circle, in the middle.
-        int cs = (int)(unit * 0.22f);
-        spriteBatch.Draw(circleTex, CenteredRect(w * 0.50f, h * 0.42f, cs, cs), new Color(255, 140, 60));
-
-        // Green triangle, on the right.
-        int ts = (int)(unit * 0.24f);
-        spriteBatch.Draw(triangleTex, CenteredRect(w * 0.78f, h * 0.56f, ts, ts), new Color(110, 255, 110));
-
+        for (int i = 0; i < Count; i++)
+        {
+            float centerX = bandLeft + step * (i + 0.5f);
+            int x = (int)(centerX - size / 2f);
+            Color color = FromHue(i * (360f / Count));
+            spriteBatch.Draw(pixel, new Rectangle(x, y, size, size), color);
+        }
         spriteBatch.End();
     }
 
-    // A destination rectangle of the given size centered on (cx, cy).
-    static Rectangle CenteredRect(float cx, float cy, int width, int height)
+    // Fully saturated, full-value color at the given hue (degrees, 0..360). Pure code,
+    // so the row sweeps the whole hue wheel without any art assets.
+    static Color FromHue(float hueDegrees)
     {
-        return new Rectangle((int)(cx - width / 2f), (int)(cy - height / 2f), width, height);
-    }
-
-    // White inside the circle, fully transparent outside — a hard edge (no AA needed,
-    // the bloom blur softens everything anyway). Generated in memory via SetData.
-    Texture2D CreateCircleTexture(int size)
-    {
-        Color[] data = new Color[size * size];
-        float center = size / 2f;
-        float radius = center - 1f;
-        float radiusSquared = radius * radius;
-        for (int y = 0; y < size; y++)
+        float h = (hueDegrees / 60f) % 6f;
+        float x = 1f - Math.Abs(h % 2f - 1f);
+        float r = 0f, g = 0f, b = 0f;
+        switch ((int)h)
         {
-            for (int x = 0; x < size; x++)
-            {
-                float dx = x + 0.5f - center;
-                float dy = y + 0.5f - center;
-                bool inside = dx * dx + dy * dy <= radiusSquared;
-                data[y * size + x] = inside ? Color.White : new Color(0, 0, 0, 0);
-            }
+            case 0: r = 1; g = x; break;
+            case 1: r = x; g = 1; break;
+            case 2: g = 1; b = x; break;
+            case 3: g = x; b = 1; break;
+            case 4: r = x; b = 1; break;
+            default: r = 1; b = x; break;
         }
-        Texture2D texture = new Texture2D(GraphicsDevice, size, size);
-        texture.SetData(data);
-        return texture;
-    }
-
-    // White inside an upward-pointing triangle (apex at the top, base along the bottom),
-    // fully transparent outside. At row y the filled half-width grows linearly from 0 at
-    // the apex to half the texture at the base.
-    Texture2D CreateTriangleTexture(int size)
-    {
-        Color[] data = new Color[size * size];
-        float center = size / 2f;
-        for (int y = 0; y < size; y++)
-        {
-            float t = (float)y / (size - 1); // 0 at the top apex, 1 at the bottom base
-            float halfWidth = t * center;
-            for (int x = 0; x < size; x++)
-            {
-                bool inside = Math.Abs(x + 0.5f - center) <= halfWidth;
-                data[y * size + x] = inside ? Color.White : new Color(0, 0, 0, 0);
-            }
-        }
-        Texture2D texture = new Texture2D(GraphicsDevice, size, size);
-        texture.SetData(data);
-        return texture;
+        return new Color(r, g, b);
     }
 
     // Recreate every render target when the back buffer size changes (e.g. the user
@@ -306,8 +274,6 @@ public class Game1 : Game
                 }
             }
             pixel?.Dispose();
-            circleTex?.Dispose();
-            triangleTex?.Dispose();
             bloomExtract?.Dispose();
             blur?.Dispose();
         }
