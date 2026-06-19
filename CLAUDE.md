@@ -22,3 +22,5 @@ Available agents:
 - **skills-writer** — Creating or updating skill files for Claude Code agent context
 
 Select the agent that best matches the task at hand. For tasks that span multiple concerns (e.g., implement a feature and write tests), invoke the relevant agents in sequence.
+
+For handling issues, follow the process in `.claude/ISSUE_WORKFLOW.md`.
