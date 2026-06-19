@@ -46,6 +46,8 @@ namespace XnaFiddle
             new ExampleInfo { Name = "ShaderScanlines", Category = "2D Shaders", Description = "CRT-style scanlines" },
             new ExampleInfo { Name = "ShaderFading",    Category = "2D Shaders", Description = "Vertical fade driven by texture coordinates" },
             new ExampleInfo { Name = "ShaderDots",      Category = "2D Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
+            new ExampleInfo { Name = "ShaderBlur",      Category = "2D Shaders", Description = "Two-pass separable Gaussian blur using render targets" },
+            new ExampleInfo { Name = "ShaderBlurPostProcess", Category = "2D Shaders", Description = "Full-screen post-processing blur: the same Blur.fx applied to the whole scene via a screen-sized render target (Space toggles, Up/Down adjust)" },
 
             // 3D Shaders — full-scene procedural shaders (vertex + pixel) that render a 3D scene,
             // not a post-process over a sprite.
