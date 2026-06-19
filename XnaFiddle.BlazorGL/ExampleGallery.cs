@@ -46,6 +46,7 @@ namespace XnaFiddle
             new ExampleInfo { Name = "ShaderFading",    Category = "Shaders", Description = "Vertical fade driven by texture coordinates" },
             new ExampleInfo { Name = "ShaderDots",      Category = "Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
             new ExampleInfo { Name = "ShaderBlur",      Category = "Shaders", Description = "Two-pass separable Gaussian blur using render targets" },
+            new ExampleInfo { Name = "ShaderBlurPostProcess", Category = "Shaders", Description = "Full-screen post-processing blur: the same Blur.fx applied to the whole scene via a screen-sized render target (Space toggles, Up/Down adjust)" },
 
             // Libraries (alphabetical)
             new ExampleInfo { Name = "AetherPhysics",                Category = "Aether.Physics2D",  Description = "2D physics simulation with a bouncing ball and keyboard controls" },
