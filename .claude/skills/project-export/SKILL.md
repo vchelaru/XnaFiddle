@@ -24,6 +24,18 @@ XnaFiddle **always** runs the user's code in the browser via KNI's **BlazorGL** 
 - **MonoGame:** DesktopGL, WindowsDX, Android
 - **FNA:** Desktop only (single target `FnaDesktop`, via the `FNA.NET` NuGet package — an opinionated third-party fork that bundles native libs)
 
+## MonoGame 3.8.5 (preview) — policy and the `.Native` convention
+
+**Policy — do not relitigate, do not warn.** MonoGame 3.8.5 is in preview but near shipping. Treat it as a first-class, supported target — NOT risky/experimental to be avoided or hedged. **Never warn the user that 3.8.5 is "preview."** We actively track and support it so we are ready the moment stable drops. When work touches MonoGame, prefer adopting 3.8.5's conventions.
+
+**`.Native` is the renderer-agnostic compile reference for shared libraries.** `MonoGame.Framework.Native` is a backend-agnostic *managed* framework assembly — no graphics backend baked in — that functions like a reference assembly / `netstandard` lowest-common-denominator. The 3.8.5 `mg2dstartkit` template references it from the shared `.Core` library with `PrivateAssets=All`; each platform head then supplies the concrete backend (`MonoGame.Framework.DesktopGL` / `WindowsDX` / etc. for classic backends; `MonoGame.Framework.Native` + native `MonoGame.Runtime.*.{DX12,Vulkan}` for the new backends). Compiling the shared lib against `.Native` prevents leaking renderer-specific API. Going forward, exported shared/common projects should follow this convention.
+
+**Two independent layers — do not conflate:**
+- *Managed reference* — `.Native` is the agnostic contract; ANY backend's `MonoGame.Framework.dll` satisfies it at runtime. Classic and native backends are interchangeable at this layer (the template compiles `.Core` against `.Native` yet ships all-classic heads).
+- *Compiled content* — effects / `.xnb` do NOT cross between the classic MGCB pipeline (GL/DX) and the new native Content Builder (DX12/Vulkan). This is the real incompatibility (e.g. Apos.Shapes / Gum shaders failing on DX12/VK) and it is orthogonal to the reference choice.
+
+**Exporter note:** `ProjectExporter.cs` currently hardwires `MonoGame.Framework.DesktopGL` as the shared-project compile reference (~line 411, the `isMonoGame` branch). The convention-correct reference is `MonoGame.Framework.Native`.
+
 ## The core design contract
 
 An exported zip must **build and run as-is via `dotnet restore`** — no manual setup steps. Every target is wired up purely through NuGet `<PackageReference>` entries (framework packages, platform package, content-pipeline package, plus per-target third-party packages). **Any new target must honor this constraint.**

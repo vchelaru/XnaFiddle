@@ -380,6 +380,33 @@ namespace XnaFiddle
             return memoryStream.ToArray();
         }
 
+        // True when the MonoGame framework version is >= 3.8.5, the first release whose
+        // mg2dstartkit convention references the renderer-agnostic MonoGame.Framework.Native
+        // from the shared library. Parses the leading Major.Minor.Patch (prerelease suffix
+        // dropped); short/non-numeric strings fall back to false (DesktopGL).
+        static bool UsesNativeSharedFramework(string version)
+        {
+            if (string.IsNullOrEmpty(version))
+                return false;
+
+            // Drop any prerelease suffix, e.g. "3.8.5-preview.6" -> "3.8.5".
+            int dash = version.IndexOf('-');
+            string core = dash >= 0 ? version.Substring(0, dash) : version;
+
+            string[] parts = core.Split('.');
+            int[] v = new int[3];
+            for (int i = 0; i < 3; i++)
+            {
+                if (i >= parts.Length || !int.TryParse(parts[i], out v[i]))
+                    v[i] = 0;
+            }
+
+            // Compare (Major, Minor, Patch) against (3, 8, 5).
+            if (v[0] != 3) return v[0] > 3;
+            if (v[1] != 8) return v[1] > 8;
+            return v[2] >= 5;
+        }
+
         /// <summary>
         /// Generates a common (shared) .csproj for multi-platform exports.
         /// Contains only platform-agnostic packages; platform-specific packages
@@ -400,15 +427,19 @@ namespace XnaFiddle
             sb.AppendLine();
             sb.AppendLine("  <ItemGroup>");
 
-            // MonoGame bundles the framework into platform-specific packages (e.g.
-            // MonoGame.Framework.DesktopGL). The common library still needs a framework
-            // reference to compile against, so we pick DesktopGL as the default.
-            // Each platform project brings its own correct package at runtime.
+            // The common library compiles against a renderer-agnostic framework reference
+            // (PrivateAssets=All); each platform head still supplies its concrete backend.
+            // For MonoGame 3.8.5+ that agnostic reference is MonoGame.Framework.Native — the
+            // contract any backend's MonoGame.Framework.dll satisfies at runtime (the
+            // mg2dstartkit convention). For 3.8.4 it stays MonoGame.Framework.DesktopGL.
             bool isMonoGame = packages.Exists(p => p.Id.StartsWith("MonoGame.Framework."));
             if (isMonoGame)
             {
                 var mgPkg = packages.Find(p => p.Id.StartsWith("MonoGame.Framework."));
-                sb.AppendLine($@"    <PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{mgPkg.Version}"" PrivateAssets=""All"" />");
+                string frameworkId = UsesNativeSharedFramework(mgPkg.Version)
+                    ? "MonoGame.Framework.Native"
+                    : "MonoGame.Framework.DesktopGL";
+                sb.AppendLine($@"    <PackageReference Include=""{frameworkId}"" Version=""{mgPkg.Version}"" PrivateAssets=""All"" />");
             }
 
             foreach (var pkg in packages)
