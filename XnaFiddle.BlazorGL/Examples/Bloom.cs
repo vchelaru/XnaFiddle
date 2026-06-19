@@ -20,7 +20,7 @@ using Microsoft.Xna.Framework.Graphics;
 // linear filtering. Everything here is already proven to render in this app.
 //
 // PIPELINE (each step renders into a RenderTarget2D, then is sampled by the next):
-//   1. Scene      -> sceneTarget     : draw a row of bright neon squares stepping through
+//   1. Scene      -> sceneTarget     : draw a 3x3 grid of bright neon squares stepping through
 //                                      the hue wheel, drawn from a single white pixel (no
 //                                      assets), on a near-black field.
 //   2. Bright-pass -> extractTarget  : Bloom.BloomExtract.fx keeps only what is above
@@ -205,7 +205,7 @@ public class Game1 : Game
     }
 
     // Fully saturated, full-value color at the given hue (degrees, 0..360). Pure code,
-    // so the row sweeps the whole hue wheel without any art assets.
+    // so the grid sweeps the whole hue wheel without any art assets.
     static Color FromHue(float hueDegrees)
     {
         float h = (hueDegrees / 60f) % 6f;
