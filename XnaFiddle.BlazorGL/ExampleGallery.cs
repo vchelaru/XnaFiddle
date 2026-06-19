@@ -38,6 +38,7 @@ namespace XnaFiddle
             // 2D Shaders (alphabetical) — post-processing pixel shaders applied to a sprite.
             // Compiled in-browser from HLSL .fx via ShadowDusk; HiDef, but the OpenGL .mgfx is
             // profile-agnostic so it loads under Reach/WebGL1 too.
+            new ExampleInfo { Name = "Bloom",           Category = "2D Shaders", Description = "Multi-scale bloom: bright areas are extracted, blurred at several downsampled scales, and added back as a soft glow" },
             new ExampleInfo { Name = "Blur",            Category = "2D Shaders", Description = "Two-pass separable Gaussian blur using render targets" },
             new ExampleInfo { Name = "BlurPostProcess", Category = "2D Shaders", Description = "Full-screen post-processing blur: the same Blur.fx applied to the whole scene via a screen-sized render target (Space toggles, Up/Down adjust)" },
             new ExampleInfo { Name = "Dots",            Category = "2D Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
