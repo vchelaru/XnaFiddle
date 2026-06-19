@@ -813,6 +813,24 @@ namespace XnaFiddle
                 sb.AppendLine(@"  </Target>");
             }
 
+            // MGCB targets compile content (e.g. Apos.Shapes' shader) via the local `mgcb` tool, which
+            // only resolves through the shipped .config/dotnet-tools.json manifest (see NeedsMgcbToolManifest).
+            // When the exported .zip is downloaded and extracted on Windows, that manifest gets tagged with
+            // the "Mark of the Web" (a Zone.Identifier stream); `dotnet tool restore` then refuses to read it,
+            // so mgcb is never restored and the build fails with MSB3073. Strip the mark from the project tree
+            // before MGCB's tool-restore runs. Windows-only ('$(OS)' guard) — other OSes have no such tag, so
+            // it's a no-op there. ContinueOnError so a missing powershell never makes the build worse than today.
+            if (NeedsMgcbToolManifest(target))
+            {
+                sb.AppendLine();
+                sb.AppendLine(@"  <Target Name=""_UnblockMarkOfTheWeb""");
+                sb.AppendLine(@"          BeforeTargets=""_RestoreMGCBTool;CollectPackageReferences""");
+                sb.AppendLine(@"          Condition=""'$(OS)' == 'Windows_NT'"">");
+                sb.AppendLine(@"    <Exec Command=""powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;Get-ChildItem -LiteralPath '$(MSBuildProjectDirectory)' -Recurse -File | Unblock-File&quot;""");
+                sb.AppendLine(@"          ContinueOnError=""true"" />");
+                sb.AppendLine(@"  </Target>");
+            }
+
             sb.AppendLine();
             sb.AppendLine("</Project>");
             return sb.ToString();
