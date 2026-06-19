@@ -436,6 +436,35 @@ public class Game1 : Game
         Assert.DoesNotContain("MyFiddle/.config/dotnet-tools.json", files.Keys);
     }
 
+    // ── Mark-of-the-Web unblock target ───────────────────────────────────────
+
+    [Fact]
+    public void MonoGame_EmitsMarkOfTheWebUnblockTarget()
+    {
+        // A downloaded+extracted .zip tags .config/dotnet-tools.json with the Mark of the Web,
+        // which makes `dotnet tool restore` refuse the manifest and breaks the MGCB content build.
+        // The csproj ships a Windows-only target that strips the mark before tool-restore runs.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyFiddle");
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyFiddle/MyFiddle.csproj"];
+        Assert.Contains("_UnblockMarkOfTheWeb", csproj);
+        Assert.Contains(@"BeforeTargets=""_RestoreMGCBTool", csproj);
+        Assert.Contains(@"Condition=""'$(OS)' == 'Windows_NT'""", csproj);
+        Assert.Contains("Unblock-File", csproj);
+    }
+
+    [Fact]
+    public void Kni_OmitsMarkOfTheWebUnblockTarget()
+    {
+        // KNI ships no dotnet-tools manifest and runs no mgcb, so there is nothing to unblock.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyFiddle");
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyFiddle/MyFiddle.csproj"];
+        Assert.DoesNotContain("_UnblockMarkOfTheWeb", csproj);
+    }
+
     // ── Content linking in platform projects ─────────────────────────────────
 
     [Fact]
