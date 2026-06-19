@@ -45,6 +45,7 @@ namespace XnaFiddle
             new ExampleInfo { Name = "ShaderScanlines", Category = "Shaders", Description = "CRT-style scanlines" },
             new ExampleInfo { Name = "ShaderFading",    Category = "Shaders", Description = "Vertical fade driven by texture coordinates" },
             new ExampleInfo { Name = "ShaderDots",      Category = "Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
+            new ExampleInfo { Name = "ShaderBlur",      Category = "Shaders", Description = "Two-pass separable Gaussian blur using render targets" },
 
             // Libraries (alphabetical)
             new ExampleInfo { Name = "AetherPhysics",                Category = "Aether.Physics2D",  Description = "2D physics simulation with a bouncing ball and keyboard controls" },
