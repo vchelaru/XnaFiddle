@@ -76,6 +76,11 @@ Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit n
 
 It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced only after the metadata-reference cache made compiles fast (~0.7s vs several seconds): fast iteration means a user naturally does 10+ Runs in one page session before refreshing, which is what reaches the context cap. It is **not** a GC-churn regression (see dead end #1).
 
+## Render targets (WebGL)
+
+- **Mipmapped render targets work.** `new RenderTarget2D(gd, w, h, mipMap:true, …)` builds a real mip chain — KNI runs `GL.GenerateMipmap` on `SetRenderTarget(null)` whenever the target's `LevelCount > 1` — and a shader reads explicit levels via `Texture.SampleLevel` (verified incl. screen-sized NPOT under WebGL2). (Earlier "mipmaps are flaky on GL" lore did **not** hold for this KNI+WebGL2 stack.)
+- **Multi-texture effect + resize = crash.** An `Effect` sampling a *second* texture (bound via an Effect parameter, e.g. a bloom combine reading the scene as `BaseTexture`) leaves that texture in a `GraphicsDevice.Textures[]` slot. Disposing that render target on resize **without clearing the slot first** throws WebGL `INVALID_OPERATION: texParameter: no texture bound to target`: `ConcreteGraphicsContext.PlatformApplyTexturesAndSamplers` only re-binds *dirty* slots but applies sampler state to *every populated* slot, so the next single-texture pass hits the now-empty unit. **Fix:** null the used `GraphicsDevice.Textures[i]` before disposing the targets in your resize/`EnsureRenderTargets` path.
+
 ## Dead ends — DO NOT retry
 
 1. **`GC.Collect()` / `GC.WaitForPendingFinalizers()` to reclaim leaked GL resources.** Useless: the leaked WebGL contexts are JS-side objects pinned in the `nkJSObject` registry, not .NET objects — GC can't touch them. (KNI's `GraphicsResource` finalizer does delete GL handles, but that was never the leak.)
