@@ -2,41 +2,38 @@ using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
-// BLOOM — multi-scale glow via a DOWNSAMPLED RENDER-TARGET PYRAMID.
+// BLOOM — the canonical XNA "Bloom Postprocess" pipeline: EXTRACT -> BLUR -> COMBINE.
 //
-// Bloom makes bright areas bleed light into their surroundings. The classic way to
-// get a soft, WIDE glow cheaply is to blur at several SCALES and add the results
-// together: a small blur on a half-size image already reaches as far (in screen
-// pixels) as a much larger blur on the full image, and a tiny blur on a 1/32-size
-// image reaches across most of the screen. Summing a few of these gives the smooth,
-// far-spreading falloff that a single blur can't afford.
+// Bloom makes bright areas bleed light into their surroundings. The classic four-step
+// structure (the one in the original XNA Bloom sample) is:
+//   1. Scene        -> sceneTarget   : draw a 3x3 grid of bright neon squares stepping
+//                                      through the hue wheel, drawn from a single white
+//                                      pixel (no assets), on a near-black field.
+//   2. Bright-pass  -> bloomTarget1  : Bloom.BloomExtract.fx keeps only what is above
+//                                      Threshold, so only the squares survive to glow.
+//   3. Separable    -> bloomTarget2  : Bloom.Blur.fx, a Gaussian run twice — horizontal
+//      Gaussian     -> bloomTarget1    then vertical — softens the bright-pass into a glow.
+//   4. Combine      -> screen        : Bloom.BloomCombine.fx samples BOTH the blurred glow
+//                                      and the original scene and mixes them in ONE pass.
 //
-// HOW THE SCALES ARE BUILT — and what this example deliberately does NOT use.
-// A common trick is to generate mipmaps and sample coarse levels with LOD. This
-// example avoids that entirely: mipmaps, RenderTarget2D(mipMap:true), tex2Dlod /
-// SampleLevel, and float surface formats are all UNVERIFIED on this WebGL runtime,
-// so instead we build the pyramid by hand as a chain of progressively smaller plain
-// Color render targets and downsample by simply drawing each one into the next with
-// linear filtering. Everything here is already proven to render in this app.
+// WHY ONE COMBINE PASS (and not additive draws): the combine shader does a screen-style
+// blend (it darkens the base where the bloom is strong, then adds). With the intensities
+// at 1 that stays inside [0,1] and cannot clip, so a saturated hue can't fringe toward a
+// primary the way summed additive draws do once a single channel saturates first.
 //
-// PIPELINE (each step renders into a RenderTarget2D, then is sampled by the next):
-//   1. Scene      -> sceneTarget     : draw a 3x3 grid of bright neon squares stepping through
-//                                      the hue wheel, drawn from a single white pixel (no
-//                                      assets), on a near-black field.
-//   2. Bright-pass -> extractTarget  : Bloom.BloomExtract.fx keeps only what is above
-//                                      Threshold, so only the squares will glow.
-//   3. Pyramid     -> levelA[0..N-1] : repeatedly halve the image, and separably blur
-//                                      (Bloom.Blur.fx, horizontal then vertical) at
-//                                      each scale. levelA[i] holds the blurred result.
-//   4. Composite   -> screen         : draw the original scene, then ADD every blurred
-//                                      level back on top (BlendState.Additive), each
-//                                      stretched to full screen and weighted.
+// The bloom targets are HALF resolution — purely a standard performance/blur-width choice:
+// a small blur on a half-size image reaches twice as far in screen pixels for half the
+// fill cost, which is why the classic sample downsamples the bright-pass.
 //
-// TUNABLE KNOBS (first-pass defaults — meant to be tuned visually by a human later):
-//   threshold  how bright a pixel must be to bloom (higher = only the brightest glow)
-//   radiusPx   blur reach per level, in that level's pixels (a few taps is plenty)
-//   Weights    how much each scale contributes; coarser (wider) levels weighted up
-//   Levels     how many halvings, i.e. how far the widest glow reaches
+// Bloom.BloomExtract.fx gates on the MAX channel and scales the whole color uniformly,
+// which PRESERVES HUE. (The original XNA extract thresholds per channel — simpler, but it
+// crushes each color's weaker channel and tints saturated colors toward a pure primary.)
+//
+// COMBINE KNOBS (the classic sample's parameters; tune these live):
+//   BloomIntensity    how strongly the glow is added
+//   BaseIntensity     how strongly the original scene shows through
+//   BloomSaturation   >1 makes the glow a touch more vivid, <1 washes it toward gray
+//   BaseSaturation    same, applied to the underlying scene
 public class Game1 : Game
 {
     GraphicsDeviceManager graphics;
@@ -47,42 +44,25 @@ public class Game1 : Game
     Texture2D pixel;
 
     Effect bloomExtract; // Bloom.BloomExtract.fx — the bright-pass (Threshold)
-    Effect blur;         // Bloom.Blur.fx — separable Gaussian reused at each scale (Offset)
+    Effect blur;         // Bloom.Blur.fx — separable Gaussian, run H then V (Offset)
+    Effect bloomCombine; // Bloom.BloomCombine.fx — mixes the glow over the scene in one pass
 
-    RenderTarget2D sceneTarget;   // the whole scene, full screen size
-    RenderTarget2D extractTarget; // bright-pass result, full screen size
+    RenderTarget2D sceneTarget;   // full-res: the scene
+    RenderTarget2D bloomTarget1;  // HALF-res: bright-pass, then the H+V blurred bloom
+    RenderTarget2D bloomTarget2;  // HALF-res: ping-pong between the blur passes
 
-    // The pyramid. levelA[i] holds level i's blurred result; levelB[i] is the
-    // ping-pong target between the horizontal and vertical blur passes. levelW/levelH
-    // cache each level's pixel size (needed to turn radiusPx into a UV-space Offset).
-    const int Levels = 5;
-    RenderTarget2D[] levelA;
-    RenderTarget2D[] levelB;
-    int[] levelW;
-    int[] levelH;
+    // Half-res bloom-target size, cached so the blur can turn a pixel radius into a
+    // UV-space Offset (radius / width horizontally, radius / height vertically).
+    int bloomW;
+    int bloomH;
 
-    // First-pass defaults; a human will tune these against the real visual.
-    float threshold = 0.45f;
-    float radiusPx = 2.5f;
-    // How strongly each pyramid level adds into the glow. LINEAR (see LinearAdditive
-    // below): the level's color is added straight, scaled by its weight. Kept low on
-    // purpose -- if the summed glow drives a channel past 1.0 it clips, and because an
-    // in-between hue (e.g. orange = full red + partial green) clips its strong channel
-    // first, the glow fringes toward that primary. Raise these for a punchier glow, but
-    // back off if red/green/blue fringes start creeping in around the squares.
-    static readonly float[] Weights = [0.15f, 0.20f, 0.25f, 0.30f, 0.35f];
-
-    // Plain additive (One, One): each blurred level is ADDED to the screen scaled only
-    // by its weight. BlendState.Additive uses SourceAlpha as the source factor, which --
-    // since SpriteBatch also scales the tint's alpha -- made the weights behave like
-    // weight^2 and clamp above 1. This keeps the weight knob linear and predictable.
-    static readonly BlendState LinearAdditive = new BlendState
-    {
-        ColorSourceBlend = Blend.One,
-        ColorDestinationBlend = Blend.One,
-        AlphaSourceBlend = Blend.One,
-        AlphaDestinationBlend = Blend.One,
-    };
+    // Tunable knobs (the classic XNA Bloom sample's parameters; tune these live).
+    float threshold = 0.40f;       // bright-pass cutoff (Bloom.BloomExtract.fx)
+    float blurRadiusPx = 3.0f;     // Gaussian reach per pass, in bloom-target pixels (Bloom.Blur.fx Offset)
+    float bloomIntensity = 1.3f;   // how strongly the glow is added
+    float baseIntensity = 1.0f;    // how strongly the original scene shows through
+    float bloomSaturation = 1.2f;  // >1 makes the glow a touch more vivid
+    float baseSaturation = 1.0f;
 
     static readonly Color SceneBackground = new Color(8, 8, 12); // near-black so the glow reads
 
@@ -107,80 +87,61 @@ public class Game1 : Game
 
         // Compiled in-browser when you press Run. The Content.Load key is the shader
         // tab's filename minus ".fx"; the example loader strips the "Bloom." prefix, so
-        // Bloom.BloomExtract.fx -> tab "BloomExtract.fx" -> key "BloomExtract", and
-        // Bloom.Blur.fx -> tab "Blur.fx" -> key "Blur".
+        // Bloom.BloomExtract.fx -> "BloomExtract", Bloom.Blur.fx -> "Blur", and
+        // Bloom.BloomCombine.fx -> "BloomCombine".
         bloomExtract = Content.Load<Effect>("BloomExtract");
         blur = Content.Load<Effect>("Blur");
+        bloomCombine = Content.Load<Effect>("BloomCombine");
     }
 
     protected override void Draw(GameTime gameTime)
     {
         EnsureRenderTargets();
+        int w = sceneTarget.Width, h = sceneTarget.Height;
+        Rectangle full = new Rectangle(0, 0, w, h);
+        Rectangle bloomRect = new Rectangle(0, 0, bloomW, bloomH);
 
-        int w = sceneTarget.Width;
-        int h = sceneTarget.Height;
-        Rectangle fullScreen = new Rectangle(0, 0, w, h);
-
-        // 1) Render the scene into a full-screen render target.
+        // 1) Scene -> sceneTarget (full res).
         GraphicsDevice.SetRenderTarget(sceneTarget);
         DrawScene(w, h);
 
-        // 2) Bright-pass: keep only what is above the threshold. Opaque blend because
-        //    we are fully replacing extractTarget with the filtered scene.
+        // 2) Bright-pass: sceneTarget -> bloomTarget1, downsampling to half res (LinearClamp
+        //    averages as it shrinks). Keeps only pixels above Threshold.
         bloomExtract.Parameters["Threshold"]?.SetValue(threshold);
-        GraphicsDevice.SetRenderTarget(extractTarget);
+        GraphicsDevice.SetRenderTarget(bloomTarget1);
         GraphicsDevice.Clear(Color.Black);
         spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp, effect: bloomExtract);
-        spriteBatch.Draw(sceneTarget, fullScreen, Color.White);
+        spriteBatch.Draw(sceneTarget, bloomRect, Color.White);
         spriteBatch.End();
 
-        // 3) Build the pyramid. Each level downsamples the PREVIOUS level's blurred
-        //    result (the bright-pass for level 0), then blurs it separably in place.
-        for (int i = 0; i < Levels; i++)
-        {
-            RenderTarget2D source = i == 0 ? extractTarget : levelA[i - 1];
-            Rectangle levelRect = new Rectangle(0, 0, levelW[i], levelH[i]);
+        // 3) Horizontal blur: bloomTarget1 -> bloomTarget2. Offset is in UV units.
+        blur.Parameters["Offset"]?.SetValue(new Vector2(blurRadiusPx / bloomW, 0f));
+        GraphicsDevice.SetRenderTarget(bloomTarget2);
+        GraphicsDevice.Clear(Color.Black);
+        spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp, effect: blur);
+        spriteBatch.Draw(bloomTarget1, Vector2.Zero, Color.White);
+        spriteBatch.End();
 
-            // Downsample: drawing a larger image into a smaller render target with
-            // LinearClamp averages neighbouring texels — a cheap box downsample.
-            GraphicsDevice.SetRenderTarget(levelA[i]);
-            GraphicsDevice.Clear(Color.Black);
-            spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp);
-            spriteBatch.Draw(source, levelRect, Color.White);
-            spriteBatch.End();
+        // 4) Vertical blur: bloomTarget2 -> bloomTarget1. bloomTarget1 now holds the final glow.
+        blur.Parameters["Offset"]?.SetValue(new Vector2(0f, blurRadiusPx / bloomH));
+        GraphicsDevice.SetRenderTarget(bloomTarget1);
+        GraphicsDevice.Clear(Color.Black);
+        spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp, effect: blur);
+        spriteBatch.Draw(bloomTarget2, Vector2.Zero, Color.White);
+        spriteBatch.End();
 
-            // Horizontal blur: levelA[i] -> levelB[i]. Offset is in UV units, so we
-            // divide the pixel radius by this level's width.
-            blur.Parameters["Offset"]?.SetValue(new Vector2(radiusPx / levelW[i], 0f));
-            GraphicsDevice.SetRenderTarget(levelB[i]);
-            GraphicsDevice.Clear(Color.Black);
-            spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp, effect: blur);
-            spriteBatch.Draw(levelA[i], Vector2.Zero, Color.White);
-            spriteBatch.End();
-
-            // Vertical blur: levelB[i] -> levelA[i]. levelA[i] now holds this level's
-            // final, fully-blurred result, ready to be added in during composite.
-            blur.Parameters["Offset"]?.SetValue(new Vector2(0f, radiusPx / levelH[i]));
-            GraphicsDevice.SetRenderTarget(levelA[i]);
-            GraphicsDevice.Clear(Color.Black);
-            spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp, effect: blur);
-            spriteBatch.Draw(levelB[i], Vector2.Zero, Color.White);
-            spriteBatch.End();
-        }
-
-        // 4) Composite to the screen: the crisp scene first, then ADD every blurred
-        //    level on top. Additive blend is what turns the overlapping glows into a
-        //    soft buildup of light instead of painting over each other.
+        // 5) Combine to the screen: the combine shader samples BOTH the blurred bloom
+        //    (the sprite we draw, slot 0) and the original scene (BaseTexture parameter),
+        //    mixes them in one pass, and writes once — no intermediate clipping.
         GraphicsDevice.SetRenderTarget(null);
         GraphicsDevice.Clear(Color.Black);
-
-        spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp);
-        spriteBatch.Draw(sceneTarget, fullScreen, Color.White);
-        spriteBatch.End();
-
-        spriteBatch.Begin(blendState: LinearAdditive, samplerState: SamplerState.LinearClamp);
-        for (int i = 0; i < Levels; i++)
-            spriteBatch.Draw(levelA[i], fullScreen, Color.White * Weights[i]);
+        bloomCombine.Parameters["BaseTexture"]?.SetValue(sceneTarget);
+        bloomCombine.Parameters["BloomIntensity"]?.SetValue(bloomIntensity);
+        bloomCombine.Parameters["BaseIntensity"]?.SetValue(baseIntensity);
+        bloomCombine.Parameters["BloomSaturation"]?.SetValue(bloomSaturation);
+        bloomCombine.Parameters["BaseSaturation"]?.SetValue(baseSaturation);
+        spriteBatch.Begin(blendState: BlendState.Opaque, samplerState: SamplerState.LinearClamp, effect: bloomCombine);
+        spriteBatch.Draw(bloomTarget1, full, Color.White);   // sprite stretched to full screen; UVs 0..1 align bloom & base
         spriteBatch.End();
 
         base.Draw(gameTime);
@@ -243,8 +204,9 @@ public class Game1 : Game
 
     // Recreate every render target when the back buffer size changes (e.g. the user
     // resizes the window). A render target's pixel size is fixed at creation, so a stale
-    // one would no longer match the screen. The pyramid levels are 1/2, 1/4, ... of the
-    // screen; max(1, ...) keeps them at least one pixel on very small or very wide windows.
+    // one would no longer match the screen. The bloom targets are HALF res (a standard,
+    // cheap way to get a wider, softer blur); max(1, ...) keeps them at least one pixel
+    // on very small windows.
     void EnsureRenderTargets()
     {
         int w = GraphicsDevice.Viewport.Width;
@@ -253,33 +215,16 @@ public class Game1 : Game
             return;
 
         sceneTarget?.Dispose();
-        extractTarget?.Dispose();
-        if (levelA != null)
-        {
-            for (int i = 0; i < Levels; i++)
-            {
-                levelA[i]?.Dispose();
-                levelB[i]?.Dispose();
-            }
-        }
+        bloomTarget1?.Dispose();
+        bloomTarget2?.Dispose();
 
         // Plain Color render targets — no mipmaps, no custom/float format.
         sceneTarget = new RenderTarget2D(GraphicsDevice, w, h);
-        extractTarget = new RenderTarget2D(GraphicsDevice, w, h);
 
-        levelA = new RenderTarget2D[Levels];
-        levelB = new RenderTarget2D[Levels];
-        levelW = new int[Levels];
-        levelH = new int[Levels];
-        for (int i = 0; i < Levels; i++)
-        {
-            int lw = Math.Max(1, w >> (i + 1));
-            int lh = Math.Max(1, h >> (i + 1));
-            levelW[i] = lw;
-            levelH[i] = lh;
-            levelA[i] = new RenderTarget2D(GraphicsDevice, lw, lh);
-            levelB[i] = new RenderTarget2D(GraphicsDevice, lw, lh);
-        }
+        bloomW = Math.Max(1, w / 2);
+        bloomH = Math.Max(1, h / 2);
+        bloomTarget1 = new RenderTarget2D(GraphicsDevice, bloomW, bloomH);
+        bloomTarget2 = new RenderTarget2D(GraphicsDevice, bloomW, bloomH);
     }
 
     protected override void Dispose(bool disposing)
@@ -287,18 +232,12 @@ public class Game1 : Game
         if (disposing)
         {
             sceneTarget?.Dispose();
-            extractTarget?.Dispose();
-            if (levelA != null)
-            {
-                for (int i = 0; i < Levels; i++)
-                {
-                    levelA[i]?.Dispose();
-                    levelB[i]?.Dispose();
-                }
-            }
+            bloomTarget1?.Dispose();
+            bloomTarget2?.Dispose();
             pixel?.Dispose();
             bloomExtract?.Dispose();
             blur?.Dispose();
+            bloomCombine?.Dispose();
         }
 
         base.Dispose(disposing);
