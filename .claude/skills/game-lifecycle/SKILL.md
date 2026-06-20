@@ -1,5 +1,5 @@
 ---
-description: The compile-to-run pipeline and WebGL/GraphicsDevice resource lifecycle in XnaFiddle — how a Run rebuilds the game, the per-run WebGL context leak and its UseReferenceDevice fix, Roslyn metadata-reference caching, and documented dead-ends. Load when working on DoCompileAndRun, game restart/lifecycle, GraphicsDevice/WebGL/canvas issues, "Shader Compilation Failed"/CONTEXT_LOST_WEBGL/"Too many active WebGL contexts" crashes, compile performance, or CompilationService.
+description: The compile-to-run pipeline and WebGL/GraphicsDevice resource lifecycle in XnaFiddle — how a Run rebuilds the game, the per-run WebGL context leak and its UseReferenceDevice fix, Roslyn metadata-reference caching, and documented dead-ends. Load when working on DoCompileAndRun, game restart/lifecycle, GraphicsDevice/WebGL/canvas issues, render targets / mipmapped RenderTarget2D / explicit-LOD (SampleLevel) sampling / multi-texture effects, "Shader Compilation Failed"/CONTEXT_LOST_WEBGL/"Too many active WebGL contexts"/"texParameter: no texture bound" crashes, compile performance, or CompilationService.
 ---
 
 # Game Lifecycle
