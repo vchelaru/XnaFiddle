@@ -43,7 +43,7 @@ For each tab in `_shaderTabs`:
 
 The editor is tabbed: one C# program tab (`CSharpTabName`) plus one Monaco model per `.fx`, tracked in `_shaderTabs` (filenames including extension, e.g. `Grayscale.fx`). Shader models use the **`hlsl`** Monaco language.
 
-Tab switching goes through `monacoInterop.switchToModel` (`monaco-interop.js`), which swaps the editor model via `setModel()`. Monaco does **not** persist per-model scroll/cursor across `setModel()`, so `switchToModel` saves the outgoing tab's `saveViewState()` into `_viewStates[name]` and restores the incoming tab's on the way in (issue #70). `disposeModel`/`resetToCSharpOnly`/`createModel`-replace clear stale entries, and `renameModel` carries the entry to the new name — so a reused tab name never inherits a closed tab's position.
+Tab switching goes through `monacoInterop.switchToModel` (`monaco-interop.js`), which swaps the editor model via `setModel()`. Monaco does **not** persist per-model scroll/cursor across `setModel()`, so `switchToModel` saves the outgoing tab's `saveViewState()` into `_viewStates[name]` and restores the incoming tab's on the way in, then calls `editor.focus()` (restoreViewState positions the caret but doesn't give the editor DOM focus, so without it the incoming tab shows an inactive caret) (issue #70). `disposeModel`/`resetToCSharpOnly`/`createModel`-replace clear stale entries, and `renameModel` carries the entry to the new name — so a reused tab name never inherits a closed tab's position.
 
 | Operation | Notes |
 |---|---|

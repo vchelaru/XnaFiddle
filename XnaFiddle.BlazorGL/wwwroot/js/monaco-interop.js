@@ -882,6 +882,10 @@ window.monacoInterop = {
             var saved = interop._viewStates[name];
             if (saved) interop._editor.restoreViewState(saved);
             interop._activeName = name;
+            // restoreViewState positions the caret but does NOT give the editor DOM focus,
+            // so the incoming tab shows an inactive caret and the user has to click in before
+            // typing. focus() activates the editor at the restored selection (issue #70).
+            interop._editor.focus();
         }
     },
 
