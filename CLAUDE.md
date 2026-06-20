@@ -23,4 +23,4 @@ Available agents:
 
 Select the agent that best matches the task at hand. For tasks that span multiple concerns (e.g., implement a feature and write tests), invoke the relevant agents in sequence.
 
-For handling issues, follow the process in `.claude/ISSUE_WORKFLOW.md`.
+When the user references a GitHub issue (a URL or `#N`) and asks to work on it, the **issue-workflow** skill carries the process (read the issue + comments, branch, build-verify, open the PR immediately). It is one of the skills the *Skills* check above should load.
