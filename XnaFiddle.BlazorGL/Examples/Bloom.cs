@@ -64,7 +64,25 @@ public class Game1 : Game
     // First-pass defaults; a human will tune these against the real visual.
     float threshold = 0.45f;
     float radiusPx = 2.5f;
-    static readonly float[] Weights = [0.5f, 0.7f, 0.9f, 1.1f, 1.3f];
+    // How strongly each pyramid level adds into the glow. LINEAR (see LinearAdditive
+    // below): the level's color is added straight, scaled by its weight. Kept low on
+    // purpose -- if the summed glow drives a channel past 1.0 it clips, and because an
+    // in-between hue (e.g. orange = full red + partial green) clips its strong channel
+    // first, the glow fringes toward that primary. Raise these for a punchier glow, but
+    // back off if red/green/blue fringes start creeping in around the squares.
+    static readonly float[] Weights = [0.15f, 0.20f, 0.25f, 0.30f, 0.35f];
+
+    // Plain additive (One, One): each blurred level is ADDED to the screen scaled only
+    // by its weight. BlendState.Additive uses SourceAlpha as the source factor, which --
+    // since SpriteBatch also scales the tint's alpha -- made the weights behave like
+    // weight^2 and clamp above 1. This keeps the weight knob linear and predictable.
+    static readonly BlendState LinearAdditive = new BlendState
+    {
+        ColorSourceBlend = Blend.One,
+        ColorDestinationBlend = Blend.One,
+        AlphaSourceBlend = Blend.One,
+        AlphaDestinationBlend = Blend.One,
+    };
 
     static readonly Color SceneBackground = new Color(8, 8, 12); // near-black so the glow reads
 
@@ -160,7 +178,7 @@ public class Game1 : Game
         spriteBatch.Draw(sceneTarget, fullScreen, Color.White);
         spriteBatch.End();
 
-        spriteBatch.Begin(blendState: BlendState.Additive, samplerState: SamplerState.LinearClamp);
+        spriteBatch.Begin(blendState: LinearAdditive, samplerState: SamplerState.LinearClamp);
         for (int i = 0; i < Levels; i++)
             spriteBatch.Draw(levelA[i], fullScreen, Color.White * Weights[i]);
         spriteBatch.End();
