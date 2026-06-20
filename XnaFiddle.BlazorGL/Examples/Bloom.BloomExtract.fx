@@ -14,8 +14,9 @@ sampler2D SpriteTextureSampler = sampler_state
     Texture = <SpriteTexture>;
 };
 
-// Bright-pass cutoff in [0,1]. Only the part of each channel ABOVE Threshold
-// survives; everything dimmer is pushed to black so the later blur passes glow
+// Bright-pass cutoff in [0,1]. A pixel blooms only when its brightness (max channel)
+// exceeds Threshold; the whole color is then scaled uniformly by how far above it is,
+// so hue is preserved and dimmer pixels fade to black -- the later blur passes glow
 // only around the bright shapes, not the whole frame. Set per-Run from C#
 // (bloomExtract.Parameters["Threshold"]). Lower = more of the scene blooms.
 float Threshold;
