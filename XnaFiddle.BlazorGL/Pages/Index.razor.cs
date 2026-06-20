@@ -63,6 +63,7 @@ namespace XnaFiddle.Pages
         bool _gistOpen;
         bool _gistCodeCopied;
         bool _layoutVertical;
+        bool _editorCollapsed;
         bool _embedMode;
         bool _shareOpen;
         bool _shareAsSnippet;
@@ -1712,6 +1713,15 @@ technique BasicColorDrawing
         {
             _layoutVertical = !_layoutVertical;
             await JsRuntime.InvokeVoidAsync("setLayoutMode", _layoutVertical);
+        }
+
+        // Issue #74: fully collapse the editor so the canvas fills the viewport (clean
+        // screenshots/video). The JS layout owns sizing; the canvas auto-resizes from
+        // #canvasHolder each rAF frame, so nothing else needs to be told about the new size.
+        private async Task ToggleEditorCollapsed()
+        {
+            _editorCollapsed = !_editorCollapsed;
+            await JsRuntime.InvokeVoidAsync("setEditorCollapsed", _editorCollapsed);
         }
 
         private void OpenExampleBrowser()
