@@ -843,6 +843,23 @@ technique BasicColorDrawing
             StateHasChanged();
         }
 
+        // Returns a data: URI for an image asset so the asset list can show a hover thumbnail,
+        // or null for non-image assets (which get no preview). The PNG bytes are already held
+        // in InMemoryContentManager.Files, so this needs no fetch. We inline the bytes as a
+        // base64 data URI rather than a JS object URL on purpose: it works for drag-dropped
+        // assets too (which have no SourceUrl) with zero interop or cleanup. The trade-off is
+        // the base64 string lives in the DOM — fine for the small example PNGs, heavier for a
+        // large user-dropped image. See the file-loading skill ("Asset thumbnail previews")
+        // for the decision record and how to back this out.
+        private static string ImagePreviewUri(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName) || !fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (!InMemoryContentManager.Files.TryGetValue(fileName, out byte[] bytes) || bytes == null)
+                return null;
+            return "data:image/png;base64," + Convert.ToBase64String(bytes);
+        }
+
         private async Task OnAssetUrlKeyDown(KeyboardEventArgs e)
         {
             if (e.Key == "Enter")

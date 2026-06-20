@@ -146,7 +146,23 @@
     @if (_assetsOpen)
     {
         <div style="padding: 4px 12px; background: #252526; border-bottom: 1px solid #333; flex-shrink: 0;
-                    display: flex; flex-direction: column; gap: 4px; min-height: 28px;">
+                    display: flex; flex-direction: column; gap: 4px; min-height: 28px;
+                    position: relative; z-index: 30;">
+            @* Unified hover popup for an asset: the thumbnail (image assets only) plus the same
+               info the native title showed. It opens BELOW the chip (top:100%); the asset bar
+               carries position:relative + z-index:30 so the popup paints OVER the Monaco editor
+               wrapper, which is a positioned, later-in-DOM sibling that would otherwise occlude
+               it. (A first cut opened it above the chip — but the asset bar sits near the top of
+               the window, so "above" was off-screen.) See the file-loading skill. *@
+            <style>
+                .xf-asset-chip { position: relative; }
+                .xf-asset-popup { display: none; position: absolute; top: 100%; left: 0; margin-top: 6px;
+                    z-index: 1000; padding: 6px; background: #1e1e1e; border: 1px solid #555; border-radius: 3px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.6); max-width: 220px; }
+                .xf-asset-chip:hover .xf-asset-popup { display: block; }
+                .xf-asset-popup img { display: block; max-width: 128px; max-height: 128px; margin: 0 auto 6px; }
+                .xf-asset-popup-text { display: block; font-size: 11px; color: #9cdcfe; word-break: break-all; }
+            </style>
             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
                 @if (_assets.Count == 0)
                 {
@@ -160,11 +176,21 @@
                         var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(name);
                         var loadCode = $"Content.Load<Texture2D>(\"{nameNoExt}\")";
                         var sizeKb = asset.Size < 1024 ? asset.Size + " B" : (asset.Size / 1024) + " KB";
-                        <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+                        var previewUri = ImagePreviewUri(name);
+                        var hoverInfo = !string.IsNullOrEmpty(asset.SourceUrl) ? asset.SourceUrl + " — click to copy load code" : "Click to copy load code";
+                        <span class="xf-asset-chip" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
                                     background: #3c3c3c; border-radius: 3px; font-size: 12px; color: #d4d4d4;">
+                            @if (previewUri != null)
+                            {
+                                <span class="xf-asset-popup">
+                                    <img src="@previewUri" alt="@name preview" />
+                                    <span class="xf-asset-popup-text">@hoverInfo</span>
+                                </span>
+                            }
+                            @* When the popup is showing (image assets) drop the native title so the two don't compete. *@
                             <span @onclick="() => CopyToClipboard(loadCode)"
                                   style="color: @(!string.IsNullOrEmpty(asset.SourceUrl) ? "#dcdcaa" : "#9cdcfe"); cursor: pointer;"
-                                  title="@(!string.IsNullOrEmpty(asset.SourceUrl) ? asset.SourceUrl + " — click to copy load code" : "Click to copy load code")">@name</span>
+                                  title="@(previewUri != null ? null : hoverInfo)">@name</span>
                             <span style="color: #888;">@sizeKb</span>
                             @if (asset.FntTextures != null)
                             {
