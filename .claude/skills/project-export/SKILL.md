@@ -24,6 +24,10 @@ XnaFiddle **always** runs the user's code in the browser via KNI's **BlazorGL** 
 - **MonoGame:** DesktopGL, WindowsDX, Android
 - **FNA:** Desktop only (single target `FnaDesktop`, via the `FNA.NET` NuGet package — an opinionated third-party fork that bundles native libs)
 
+## One runtime family per export — platforms never mix
+
+The export dialog has a single **runtime** selector (`_exportRuntime`: KNI / MonoGame / FNA); the platform checkboxes are *within* that family. So a multi-platform export is always one family — **KNI and MonoGame can never be combined**, and FNA is single-target. This is enforced in the UI (`SetExportRuntime`, the runtime radios), so `ExportMultiPlatform`'s shared common project only ever sees one family. The exporter itself hard-blocks only the FNA-mixing case (`Export(targets,…)` throws); the KNI/MonoGame split is a UI guarantee. Design consequence: per-target logic never has to reconcile two framework families in one solution.
+
 ## MonoGame 3.8.5 (preview) — policy and the `.Native` convention
 
 **Policy — do not relitigate, do not warn.** MonoGame 3.8.5 is in preview but near shipping. Treat it as a first-class, supported target — NOT risky/experimental to be avoided or hedged. **Never warn the user that 3.8.5 is "preview."** We actively track and support it so we are ready the moment stable drops. When work touches MonoGame, prefer adopting 3.8.5's conventions.
@@ -45,6 +49,12 @@ Third-party library packages are added per-target by scanning the user's source 
 ## Shaders (`.fx`) — runtime ShadowDusk compilation (issue #39)
 
 Exports honor the contract above for shaders by shipping the **`.fx` source** (into `Content/`) plus a **ShadowDusk `PackageReference`**, and recompiling at runtime — no XNB, no MGCB. `Export` takes a `shaders` (`name.fx -> HLSL`) map. The seam: the shared/common project references **`ShadowDusk.Core`** (the `IShaderCompiler` interface, net8.0, no natives) and the generated content manager has an `Effect` branch that compiles against it; each **per-platform** project references the concrete compiler (`ShadowDusk.Compiler` desktop+FNA / `ShadowDusk.Wasm` Blazor) and its entry point injects it + the `PlatformTarget` (GL vs DX vs `Fna` is just that value; FNA emits legacy D3D9 `.fxb` instead of `.mgfx`). `ProjectExporter.SupportsRuntimeShaders(target)` is the single source of truth for which targets are wired (desktop GL/DX + Blazor + FNA Desktop); Android/iOS and MonoGame DX12/VK are gated (ship `.fx`, no compiler) — issue #52. Full detail lives in the **`shaders`** skill.
+
+### Opt-in MGCB shader mode (`ShaderCompileMode.ContentPipeline`)
+
+`Export` takes a `shaderCompileMode` (default `ShadowDusk`). `ContentPipeline` routes user `.fx` through the **classic MonoGame Content Pipeline** (build-time `.xnb`) instead of ShadowDusk — for a canonical, ShadowDusk-free MonoGame project. It is honored **only on classic MonoGame targets** (`IsMonoGameClassic`: DesktopGL/WindowsDX/Android); every other target ignores it and stays ShadowDusk. Per-target strategy resolves to ShadowDusk / Mgcb / Gated via `UsesShadowDuskShaders` / `UsesMgcbShaders`; `CompilesShippedShaders(target, mode)` is the mode-aware "will shaders load here" predicate the dialog uses for the gated-platform message.
+
+MGCB path mechanics: emit a `Content.mgcb` (EffectImporter/EffectProcessor per `.fx`) + a `<MonoGameContentReference>`, drop the `.fx`/`.mgcb` from the raw `<None>` copy (Exclude on Include forms, `<None Remove>` on the single-platform Update form), and **suppress** all ShadowDusk wiring for that head (no package, no entry-point injection, no `Effect` branch — `Content.Load<Effect>` falls through `RawContentManager` to the stock loader reading the `.xnb`). One **shared** `Content.mgcb` serves every head: `MonoGame.Content.Builder.Task` overrides `/platform` (and out/intermediate dirs) per project from `$(MonoGamePlatform)` at build time, so the file's `/platform` line is just a default. `/profile` is **not** overridden — set to `HiDef` to match how the editor runs shaders. The existing MGCB infra (`NeedsMgcbToolManifest` = `IsMonoGameClassic`, the dotnet-mgcb manifest, the Mark-of-the-Web unblock) is reused unchanged.
 
 ## Library MGCB content compiles into the NuGet cache at build time (not shipped)
 
