@@ -140,12 +140,32 @@
             var dragging = false;
             var splitterSize = 5;
             var isVertical = false;
+            var collapsed = false;
 
             function applyLayout() {
                 var panel = document.getElementById('editorPanel');
                 var spl = document.getElementById('splitter');
                 var holder = document.getElementById('canvasHolder');
                 if (!panel || !spl || !holder) return;
+
+                // Collapsed: hide the editor + splitter and let the canvas fill the whole
+                // viewport so the game can be captured cleanly for screenshots/video (issue #74).
+                // applyLayout is the single source of truth, so a window resize while collapsed
+                // keeps it collapsed instead of snapping back to the split ratio.
+                if (collapsed) {
+                    panel.style.display = 'none';
+                    spl.style.display = 'none';
+                    holder.style.left = '0';
+                    holder.style.top = '0';
+                    holder.style.right = '0';
+                    holder.style.bottom = '0';
+                    return;
+                }
+
+                // editorPanel and splitter are laid out with display:flex inline; restore that
+                // (a prior collapse may have set display:none).
+                panel.style.display = 'flex';
+                spl.style.display = 'flex';
 
                 if (isVertical) {
                     var h = window.innerHeight;
@@ -219,6 +239,11 @@
             window.setLayoutMode = function (vertical) {
                 isVertical = vertical;
                 splitRatio = 0.45;
+                applyLayout();
+            };
+
+            window.setEditorCollapsed = function (value) {
+                collapsed = value;
                 applyLayout();
             };
 
