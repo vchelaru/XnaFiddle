@@ -130,7 +130,20 @@ namespace XnaFiddle.Pages
 
         // Starter content for a new shader tab: a pass-through SpriteBatch pixel shader that
         // compiles as-is. The user edits MainPS to change pixels.
-        const string DefaultShaderTemplate = @"#if OPENGL
+        const string DefaultShaderTemplate = @"// This is a SpriteBatch pixel shader (.fx). It is compiled in your browser when you
+// press Run -- just edit MainPS below and Run again to see your changes.
+//
+// Use it from your C# game code by loading it with this tab's filename WITHOUT the
+// .fx extension (the content key is the tab name; renaming the tab changes it):
+//     Effect effect = Content.Load<Effect>(""Shader"");
+//     spriteBatch.Begin(effect: effect);
+//
+// Keep the #if OPENGL block below: XnaFiddle runs on OpenGL/WebGL and it selects the
+// matching shader profiles -- deleting it breaks compilation.
+//
+// GL gotcha: the legacy tex2Dlod intrinsic does NOT compile here. For an explicit mip
+// level use SpriteTexture.SampleLevel(SpriteTextureSampler, uv, lod) instead.
+#if OPENGL
 	#define SV_POSITION POSITION
 	#define VS_SHADERMODEL vs_3_0
 	#define PS_SHADERMODEL ps_3_0

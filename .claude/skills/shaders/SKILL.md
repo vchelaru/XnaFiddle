@@ -30,6 +30,11 @@ For each tab in `_shaderTabs`:
 
 **Stale-effect cleanup:** `_lastCompiledShaders` (a `HashSet`) tracks what was compiled last Run. After compiling, any bare name in the old set not in the current set is `InMemoryContentManager.RemoveFile`d, so a removed/renamed shader can't resolve old bytes via a stale `Content.Load<Effect>`.
 
+## Headless compile-checking & HLSL gotchas
+
+- **Compile-gate `.fx` without the browser** with the official `ShadowDusk.Cli` dotnet tool: `ShadowDuskCLI <in.fx> <out.mgfx> /Profile:OpenGL`. Its output is byte-identical to the editor's `ShadowDusk.Wasm`, so a green run is an authoritative check for a shader edit (gate edits without launching the app). `/Profile:OpenGL` is **mandatory** — the default is `DirectX_11`, which is not what the editor targets. Pin the tool to `$(ShadowDuskVersion)`.
+- **Legacy LOD/sampling intrinsics are rejected on the OpenGL target.** `tex2Dlod` (and friends) won't compile; use the modern texture-object form `Texture.SampleLevel(sampler, uv, lod)`. The compiler error names the rewrite.
+
 ## Effect resolution (`InMemoryContentManager`)
 
 `Load<Effect>` has a branch: `new Effect(GetGraphicsDevice(), bytes)`. The `.mgfx` bytes carry MGFB magic (never XNB), so the XNB short-circuit skips them. Because `RegisterContentFile` stores under the bare name, `Content.Load<Effect>("Grayscale")` resolves the bytes registered for `Grayscale.fx`. See the `file-loading` skill for `RegisterContentFile` / the static `_files` store.
