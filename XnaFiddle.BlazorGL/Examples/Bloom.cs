@@ -21,9 +21,11 @@ using Microsoft.Xna.Framework.Graphics;
 // at 1 that stays inside [0,1] and cannot clip, so a saturated hue can't fringe toward a
 // primary the way summed additive draws do once a single channel saturates first.
 //
-// The bloom targets are HALF resolution — purely a standard performance/blur-width choice:
-// a small blur on a half-size image reaches twice as far in screen pixels for half the
-// fill cost, which is why the classic sample downsamples the bright-pass.
+// The bloom targets are QUARTER resolution — a standard performance/blur-width choice:
+// a small blur on a quarter-size image reaches four times as far in screen pixels for a
+// fraction of the fill cost, which is how you get a WIDE soft glow without a huge tap
+// count. (A bigger glow is "spread the same light wider", so to keep it bright you also
+// lift BloomIntensity — see the knobs below.)
 //
 // Bloom.BloomExtract.fx gates on the MAX channel and scales the whole color uniformly,
 // which PRESERVES HUE. (The original XNA extract thresholds per channel — simpler, but it
@@ -48,20 +50,24 @@ public class Game1 : Game
     Effect bloomCombine; // Bloom.BloomCombine.fx — mixes the glow over the scene in one pass
 
     RenderTarget2D sceneTarget;   // full-res: the scene
-    RenderTarget2D bloomTarget1;  // HALF-res: bright-pass, then the H+V blurred bloom
-    RenderTarget2D bloomTarget2;  // HALF-res: ping-pong between the blur passes
+    RenderTarget2D bloomTarget1;  // QUARTER-res: bright-pass, then the H+V blurred bloom
+    RenderTarget2D bloomTarget2;  // QUARTER-res: ping-pong between the blur passes
 
-    // Half-res bloom-target size, cached so the blur can turn a pixel radius into a
+    // Quarter-res bloom-target size, cached so the blur can turn a pixel radius into a
     // UV-space Offset (radius / width horizontally, radius / height vertically).
     int bloomW;
     int bloomH;
 
     // Tunable knobs (the classic XNA Bloom sample's parameters; tune these live).
-    float threshold = 0.40f;       // bright-pass cutoff (Bloom.BloomExtract.fx)
-    float blurRadiusPx = 3.0f;     // Gaussian reach per pass, in bloom-target pixels (Bloom.Blur.fx Offset)
-    float bloomIntensity = 1.3f;   // how strongly the glow is added
-    float baseIntensity = 1.0f;    // how strongly the original scene shows through
-    float bloomSaturation = 1.2f;  // >1 makes the glow a touch more vivid
+    float threshold = 0.40f;        // bright-pass cutoff (Bloom.BloomExtract.fx)
+    float blurRadiusPx = 10.0f;     // Gaussian reach per pass, in bloom-target pixels (Bloom.Blur.fx Offset)
+    float bloomIntensity = 1.6f;    // how strongly the glow is added
+    float baseIntensity = 1.0f;     // how strongly the original scene shows through
+    // Keep this at 1.0. Pushing it above 1 amplifies each color's WEAKER channel until it
+    // clips, which collapses neighbouring hues toward a shared secondary (orange and
+    // chartreuse both drift to yellow, spring-green and azure both to cyan, etc.) — so the
+    // 2nd and 3rd columns of the grid end up looking identical. 1.0 leaves the hue alone.
+    float bloomSaturation = 1.0f;
     float baseSaturation = 1.0f;
 
     static readonly Color SceneBackground = new Color(8, 8, 12); // near-black so the glow reads
@@ -204,7 +210,7 @@ public class Game1 : Game
 
     // Recreate every render target when the back buffer size changes (e.g. the user
     // resizes the window). A render target's pixel size is fixed at creation, so a stale
-    // one would no longer match the screen. The bloom targets are HALF res (a standard,
+    // one would no longer match the screen. The bloom targets are QUARTER res (a standard,
     // cheap way to get a wider, softer blur); max(1, ...) keeps them at least one pixel
     // on very small windows.
     void EnsureRenderTargets()
@@ -232,8 +238,8 @@ public class Game1 : Game
         // Plain Color render targets — no mipmaps, no custom/float format.
         sceneTarget = new RenderTarget2D(GraphicsDevice, w, h);
 
-        bloomW = Math.Max(1, w / 2);
-        bloomH = Math.Max(1, h / 2);
+        bloomW = Math.Max(1, w / 4);
+        bloomH = Math.Max(1, h / 4);
         bloomTarget1 = new RenderTarget2D(GraphicsDevice, bloomW, bloomH);
         bloomTarget2 = new RenderTarget2D(GraphicsDevice, bloomW, bloomH);
     }

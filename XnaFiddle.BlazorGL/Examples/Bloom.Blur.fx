@@ -21,7 +21,7 @@ sampler2D SpriteTextureSampler = sampler_state
 // compile-time constant so the GPU can unroll the loop below -- but XnaFiddle
 // recompiles this .fx every time you press Run, so just change the number and
 // re-Run. Higher = smoother and more GPU work; lower = faster but more banding.
-static const int SampleCount = 8;
+static const int SampleCount = 12;
 
 // Gaussian falloff shape, derived from the tap count. Smaller = peakier.
 static const float Sigma = SampleCount / 2.0f;
