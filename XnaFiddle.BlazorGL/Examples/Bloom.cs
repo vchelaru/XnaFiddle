@@ -214,6 +214,17 @@ public class Game1 : Game
         if (sceneTarget != null && sceneTarget.Width == w && sceneTarget.Height == h)
             return;
 
+        // Release any texture slots that still reference the targets we are about to
+        // dispose. The combine pass binds the scene as a SECOND sampler texture
+        // (BaseTexture); the GraphicsDevice keeps that reference until something
+        // overwrites it. SpriteBatch only ever re-sets slot 0, so slot 1 would still
+        // point at the scene target we dispose here — and the next single-texture pass
+        // then applies sampler state to an empty texture unit, which WebGL rejects with
+        // INVALID_OPERATION ("no texture bound to target") on resize. Clearing the slots
+        // first means we never dispose a texture the device still has bound.
+        for (int i = 0; i < 4; i++)
+            GraphicsDevice.Textures[i] = null;
+
         sceneTarget?.Dispose();
         bloomTarget1?.Dispose();
         bloomTarget2?.Dispose();
