@@ -30,6 +30,21 @@ namespace XnaFiddle
     }
 
     /// <summary>
+    /// How an exported project turns user-authored <c>.fx</c> shaders into a loadable Effect.
+    /// </summary>
+    public enum ShaderCompileMode
+    {
+        // Ship the .fx SOURCE and recompile it at runtime via ShadowDusk, exactly like the
+        // in-browser editor (issue #39). The default; works on every shader-supported target.
+        ShadowDusk,
+        // Compile the .fx to .xnb at build time via the classic MonoGame Content Pipeline (MGCB).
+        // Opt-in, and honored ONLY on classic MonoGame targets (DesktopGL/WindowsDX/Android) — every
+        // other target ignores it and stays on ShadowDusk, because no other target has MGCB wired
+        // (KNI/FNA use different tooling; MonoGame DX12/Vulkan use the separate native builder).
+        ContentPipeline
+    }
+
+    /// <summary>
     /// Generates a complete, buildable project (zip) from the user's fiddle code.
     /// NuGet package versions come from <see cref="PackageVersions"/>, which is
     /// auto-generated from MSBuild properties in XnaFiddle.BlazorGL.csproj.
@@ -131,12 +146,49 @@ namespace XnaFiddle
         /// </summary>
         public static bool SupportsRuntimeShaders(ExportTarget target) => GetShaderExportInfo(target).Supported;
 
-        // True when shaders ship AND at least one target compiles them at runtime, so the generated
-        // content manager gets the Effect-compiling branch and the common project references ShadowDusk.Core.
-        static bool AnyShaderTargetSupported(IReadOnlyList<ExportTarget> targets)
+        /// <summary>
+        /// True when an exported project for <paramref name="target"/> under <paramref name="mode"/> can
+        /// actually load shipped <c>.fx</c> shaders — either the ShadowDusk runtime path or the build-time
+        /// MGCB pipeline. The export dialog uses this to name gated platforms (those that get neither, so
+        /// their shaders won't load there). Mode-aware so MGCB mode no longer reports classic MonoGame
+        /// targets (e.g. Android) as gated.
+        /// </summary>
+        public static bool CompilesShippedShaders(ExportTarget target, ShaderCompileMode mode) =>
+            UsesShadowDuskShaders(target, mode) || UsesMgcbShaders(target, mode);
+
+        // Classic MonoGame targets that have the legacy MGCB content pipeline wired (the dotnet-mgcb
+        // tool + MonoGame.Content.Builder.Task). Only these can compile user .fx at build time when
+        // ShaderCompileMode.ContentPipeline is chosen; DX12/Vulkan use the separate native content
+        // builder (out of scope) and KNI/FNA use different tooling.
+        static bool IsMonoGameClassic(ExportTarget target) =>
+            target == ExportTarget.MonoGameDesktopGL
+            || target == ExportTarget.MonoGameWindowsDX
+            || target == ExportTarget.MonoGameAndroid;
+
+        // Per-target shader strategy. A target either compiles the shipped .fx at build time via MGCB
+        // (only when the user opts a classic MonoGame target into ContentPipeline mode) or at runtime
+        // via ShadowDusk (every other supported target). The two are mutually exclusive; a target that
+        // is neither is "gated" (ships .fx, no compiler) — e.g. MonoGame DX12/VK, Android on ShadowDusk.
+        static bool UsesMgcbShaders(ExportTarget target, ShaderCompileMode mode) =>
+            mode == ShaderCompileMode.ContentPipeline && IsMonoGameClassic(target);
+
+        static bool UsesShadowDuskShaders(ExportTarget target, ShaderCompileMode mode) =>
+            GetShaderExportInfo(target).Supported && !UsesMgcbShaders(target, mode);
+
+        // The shared content manager gets the Effect-compiling branch and the common project references
+        // ShadowDusk.Core only when at least one target actually uses the ShadowDusk runtime path.
+        static bool AnyShadowDuskShaderTarget(IReadOnlyList<ExportTarget> targets, ShaderCompileMode mode)
         {
             for (int i = 0; i < targets.Count; i++)
-                if (GetShaderExportInfo(targets[i]).Supported)
+                if (UsesShadowDuskShaders(targets[i], mode))
+                    return true;
+            return false;
+        }
+
+        static bool AnyMgcbShaderTarget(IReadOnlyList<ExportTarget> targets, ShaderCompileMode mode)
+        {
+            for (int i = 0; i < targets.Count; i++)
+                if (UsesMgcbShaders(targets[i], mode))
                     return true;
             return false;
         }
@@ -152,6 +204,50 @@ namespace XnaFiddle
             }
         }
 
+        // The classic MGCB /platform token for a content-pipeline (ContentPipeline mode) export.
+        static string GetMgcbPlatform(ExportTarget target) => target switch
+        {
+            ExportTarget.MonoGameDesktopGL => "DesktopGL",
+            ExportTarget.MonoGameWindowsDX => "Windows",
+            ExportTarget.MonoGameAndroid   => "Android",
+            _ => "DesktopGL",
+        };
+
+        // Builds a Content.mgcb that lists each user .fx for the classic MonoGame Content Pipeline
+        // (EffectImporter/EffectProcessor). MonoGame.Content.Builder.Task overrides /platform,
+        // /outputDir and /intermediateDir per project at build time from each project's
+        // $(MonoGamePlatform) — so a single shared .mgcb compiles correctly across heads, and the
+        // /platform line below is only the standalone-mgcb default. /profile is NOT overridden, so it
+        // is set to HiDef to match how the editor runs the fiddle's shaders.
+        static string GenerateContentMgcb(IReadOnlyDictionary<string, string> shaders, string mgcbPlatform)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("#----------------------------- Global Properties ----------------------------#");
+            sb.AppendLine();
+            sb.AppendLine("/outputDir:bin/$(Platform)");
+            sb.AppendLine("/intermediateDir:obj/$(Platform)");
+            sb.AppendLine($"/platform:{mgcbPlatform}");
+            sb.AppendLine("/config:");
+            sb.AppendLine("/profile:HiDef");
+            sb.AppendLine("/compress:False");
+            sb.AppendLine();
+            sb.AppendLine("#-------------------------------- References --------------------------------#");
+            sb.AppendLine();
+            sb.AppendLine("#---------------------------------- Content ---------------------------------#");
+            sb.AppendLine();
+            foreach (var kvp in shaders)
+            {
+                string fxName = kvp.Key.EndsWith(".fx", StringComparison.OrdinalIgnoreCase) ? kvp.Key : kvp.Key + ".fx";
+                sb.AppendLine($"#begin {fxName}");
+                sb.AppendLine("/importer:EffectImporter");
+                sb.AppendLine("/processor:EffectProcessor");
+                sb.AppendLine("/processorParam:DebugMode=Auto");
+                sb.AppendLine($"/build:{fxName}");
+                sb.AppendLine();
+            }
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Exports a multi-platform solution when multiple targets are specified.
         /// Delegates to the single-target <see cref="Export(string, ExportTarget, string, IReadOnlyDictionary{string, byte[]})"/>
@@ -164,20 +260,21 @@ namespace XnaFiddle
             IReadOnlyDictionary<string, byte[]> assets = null,
             LibraryRegistry libraryRegistry = null,
             string monoGameVersion = null,
-            IReadOnlyDictionary<string, string> shaders = null)
+            IReadOnlyDictionary<string, string> shaders = null,
+            ShaderCompileMode shaderCompileMode = ShaderCompileMode.ShadowDusk)
         {
             if (targets == null || targets.Count == 0)
                 throw new ArgumentException("At least one export target is required.", nameof(targets));
 
             if (targets.Count == 1)
-                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry, monoGameVersion, shaders);
+                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry, monoGameVersion, shaders, shaderCompileMode);
 
             // FNA is single-target only — it must never reach the multi-platform common-project
             // path (GenerateCommonCsproj's isMonoGame framework-reference logic assumes KNI/MonoGame).
             if (targets.Contains(ExportTarget.FnaDesktop))
                 throw new ArgumentException("FnaDesktop cannot be combined with other export targets.", nameof(targets));
 
-            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry, monoGameVersion, shaders);
+            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry, monoGameVersion, shaders, shaderCompileMode);
         }
 
         // monoGameVersion, when non-null, overrides the MonoGame framework + content-builder package
@@ -190,12 +287,16 @@ namespace XnaFiddle
             IReadOnlyDictionary<string, byte[]> assets = null,
             LibraryRegistry libraryRegistry = null,
             string monoGameVersion = null,
-            IReadOnlyDictionary<string, string> shaders = null)
+            IReadOnlyDictionary<string, string> shaders = null,
+            ShaderCompileMode shaderCompileMode = ShaderCompileMode.ShadowDusk)
         {
-            // hasShaders gates shipping the .fx; includeShaderLoader (target must be supported) gates
-            // the runtime-compile wiring (Effect branch, ShadowDusk reference, entry-point injection).
+            // hasShaders gates shipping the .fx. The two compile strategies are mutually exclusive:
+            // includeShaderLoader gates the ShadowDusk runtime-compile wiring (Effect branch, ShadowDusk
+            // reference, entry-point injection); useMgcbShaders gates the build-time MGCB pipeline
+            // (Content.mgcb + MonoGameContentReference). A gated target gets neither.
             bool hasShaders = shaders != null && shaders.Count > 0;
-            bool includeShaderLoader = hasShaders && GetShaderExportInfo(target).Supported;
+            bool includeShaderLoader = hasShaders && UsesShadowDuskShaders(target, shaderCompileMode);
+            bool useMgcbShaders = hasShaders && UsesMgcbShaders(target, shaderCompileMode);
 
             List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
             string slnx = GenerateSlnx(projectName, target);
@@ -203,7 +304,7 @@ namespace XnaFiddle
             // compiler can read it, so the content-linking csproj block fires for shaders as well.
             bool hasContent = (assets != null && assets.Count > 0) || hasShaders;
             string csproj = GenerateCsproj(projectName, target, packages, hasContent,
-                includeShaders: includeShaderLoader);
+                includeShaders: includeShaderLoader, useMgcbShaders: useMgcbShaders);
             string gameCs = GenerateGameClass(projectName, expandedSource);
 
             using var memoryStream = new MemoryStream();
@@ -277,6 +378,11 @@ namespace XnaFiddle
 
                 if (hasShaders)
                     WriteShaderSources(archive, contentDir, shaders);
+
+                // MGCB mode: emit a Content.mgcb alongside the .fx so the MonoGame content pipeline
+                // compiles each shader to .xnb at build time (the csproj adds the MonoGameContentReference).
+                if (useMgcbShaders)
+                    AddTextEntry(archive, $"{contentDir}/Content.mgcb", GenerateContentMgcb(shaders, GetMgcbPlatform(target)));
             }
 
             return memoryStream.ToArray();
@@ -289,13 +395,16 @@ namespace XnaFiddle
             IReadOnlyDictionary<string, byte[]> assets,
             LibraryRegistry libraryRegistry,
             string monoGameVersion,
-            IReadOnlyDictionary<string, string> shaders = null)
+            IReadOnlyDictionary<string, string> shaders = null,
+            ShaderCompileMode shaderCompileMode = ShaderCompileMode.ShadowDusk)
         {
             bool hasAssets = assets != null && assets.Count > 0;
-            // hasShaders ships the .fx; includeShaderLoader (any target supported) gates the shared
-            // Effect-compiling content manager and the common project's ShadowDusk.Core reference.
+            // hasShaders ships the .fx; includeShaderLoader (any target on the ShadowDusk runtime path)
+            // gates the shared Effect-compiling content manager and the common project's ShadowDusk.Core
+            // reference. With every MonoGame head opted into MGCB this is false → a fully canonical,
+            // ShadowDusk-free shared project.
             bool hasShaders = shaders != null && shaders.Count > 0;
-            bool includeShaderLoader = hasShaders && AnyShaderTargetSupported(targets);
+            bool includeShaderLoader = hasShaders && AnyShadowDuskShaderTarget(targets, shaderCompileMode);
             // Shaders ship under Content/ and must be linked/copied to output like raw assets.
             bool hasContent = hasAssets || hasShaders;
             string commonName = $"{projectName}Common";
@@ -322,13 +431,15 @@ namespace XnaFiddle
                 {
                     string suffix = GetPlatformSuffix(target);
                     string platformDir = $"{projectName}.{suffix}";
-                    // Only platforms whose runtime can compile .fx get the concrete ShadowDusk package
-                    // and the entry-point compiler injection; gated platforms (e.g. Android) build but
-                    // leave the content manager's compiler unset (issue #39).
-                    bool wireShaders = hasShaders && GetShaderExportInfo(target).Supported;
+                    // Only platforms on the ShadowDusk runtime path get the concrete ShadowDusk package
+                    // and the entry-point compiler injection; MGCB heads compile the .fx at build time
+                    // instead; gated platforms (e.g. Android on ShadowDusk) build but leave the content
+                    // manager's compiler unset (issue #39).
+                    bool wireShaders = hasShaders && UsesShadowDuskShaders(target, shaderCompileMode);
+                    bool useMgcbShaders = hasShaders && UsesMgcbShaders(target, shaderCompileMode);
                     List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
                     string csproj = GenerateCsproj(projectName, target, packages, hasContent, isMultiPlatform: true, commonProjectName: commonName,
-                        includeShaders: wireShaders);
+                        includeShaders: wireShaders, useMgcbShaders: useMgcbShaders);
 
                     AddTextEntry(archive, $"{platformDir}/{platformDir}.csproj", csproj);
 
@@ -375,6 +486,16 @@ namespace XnaFiddle
 
                 if (hasShaders)
                     WriteShaderSources(archive, "Content", shaders);
+
+                // MGCB mode: one shared Content.mgcb at the solution-root Content/ folder. Each MGCB
+                // head references it via ..\Content\Content.mgcb, and the content-builder task compiles
+                // it per head using that project's $(MonoGamePlatform) (so the /platform line here is
+                // only a default). Use the first MGCB head's platform for that default.
+                if (AnyMgcbShaderTarget(targets, shaderCompileMode))
+                {
+                    ExportTarget mgcbTarget = targets.First(t => UsesMgcbShaders(t, shaderCompileMode));
+                    AddTextEntry(archive, "Content/Content.mgcb", GenerateContentMgcb(shaders, GetMgcbPlatform(mgcbTarget)));
+                }
             }
 
             return memoryStream.ToArray();
@@ -617,7 +738,7 @@ namespace XnaFiddle
         }
 
         static string GenerateCsproj(string projectName, ExportTarget target, List<NuGetPackage> packages, bool hasAssets,
-            bool isMultiPlatform = false, string commonProjectName = null, bool includeShaders = false)
+            bool isMultiPlatform = false, string commonProjectName = null, bool includeShaders = false, bool useMgcbShaders = false)
         {
             var sb = new StringBuilder();
 
@@ -791,6 +912,15 @@ namespace XnaFiddle
 
             if (hasAssets)
             {
+                // In MGCB mode the .fx (and the Content.mgcb itself) are compiled by the content
+                // pipeline, not shipped raw — keep them out of the wholesale copy so only the built
+                // .xnb lands in the output (raw assets like .png/.wav still copy as before). On the
+                // Include forms an Exclude does this; the single-platform Update form can't carry an
+                // Exclude (it modifies existing items rather than building the list), so the default
+                // None items are dropped with explicit Remove instead.
+                string contentRoot = isMultiPlatform ? @"..\Content" : "Content";
+                string shaderExclude = useMgcbShaders ? $@" Exclude=""{contentRoot}\**\*.fx;{contentRoot}\Content.mgcb""" : "";
+
                 if (isMultiPlatform)
                 {
                     // Multi-platform: content lives at solution root, reference with relative paths.
@@ -798,7 +928,7 @@ namespace XnaFiddle
                     sb.AppendLine(@"  <ItemGroup>");
                     if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
                     {
-                        sb.AppendLine(@"    <AndroidAsset Include=""..\Content\**\*"" Link=""Assets\Content\%(RecursiveDir)%(Filename)%(Extension)"" />");
+                        sb.AppendLine($@"    <AndroidAsset Include=""..\Content\**\*""{shaderExclude} Link=""Assets\Content\%(RecursiveDir)%(Filename)%(Extension)"" />");
                     }
                     else if (target == ExportTarget.KniBlazorGL)
                     {
@@ -807,7 +937,7 @@ namespace XnaFiddle
                     }
                     else
                     {
-                        sb.AppendLine(@"    <None Include=""..\Content\**\*"" Link=""Content\%(RecursiveDir)%(Filename)%(Extension)"">");
+                        sb.AppendLine($@"    <None Include=""..\Content\**\*""{shaderExclude} Link=""Content\%(RecursiveDir)%(Filename)%(Extension)"">");
                         sb.AppendLine(@"      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>");
                         sb.AppendLine(@"    </None>");
                     }
@@ -820,16 +950,35 @@ namespace XnaFiddle
                     sb.AppendLine(@"  <ItemGroup>");
                     if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
                     {
-                        sb.AppendLine(@"    <AndroidAsset Include=""Content\**\*.*"" />");
+                        sb.AppendLine($@"    <AndroidAsset Include=""Content\**\*.*""{shaderExclude} />");
                     }
                     else
                     {
+                        // The .fx here are SDK-default None items, so Remove (not Exclude) keeps the
+                        // Update glob below from giving them CopyToOutputDirectory metadata.
+                        if (useMgcbShaders)
+                        {
+                            sb.AppendLine(@"    <None Remove=""Content\**\*.fx"" />");
+                            sb.AppendLine(@"    <None Remove=""Content\Content.mgcb"" />");
+                        }
                         sb.AppendLine(@"    <None Update=""Content\**\*"">");
                         sb.AppendLine(@"      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>");
                         sb.AppendLine(@"    </None>");
                     }
                     sb.AppendLine(@"  </ItemGroup>");
                 }
+            }
+
+            // MGCB mode: hand the user's .fx to the classic MonoGame Content Pipeline. The shared
+            // Content.mgcb sits at the solution-root Content/ in multi-platform exports (referenced
+            // via ..\Content) or in this project's Content/ for a single-platform export.
+            if (useMgcbShaders)
+            {
+                string mgcbInclude = isMultiPlatform ? @"..\Content\Content.mgcb" : @"Content\Content.mgcb";
+                sb.AppendLine();
+                sb.AppendLine(@"  <ItemGroup>");
+                sb.AppendLine($@"    <MonoGameContentReference Include=""{mgcbInclude}"" />");
+                sb.AppendLine(@"  </ItemGroup>");
             }
 
             // BlazorGL multi-platform: add a pre-build target to copy shared content into wwwroot/
@@ -1554,11 +1703,9 @@ public class RawContentManager : ContentManager
         // the 3.8.5 preview — it's mechanically identical and dotnet-mgcb ships at both versions — so the
         // manifest is emitted for all MonoGame targets. The caller pins dotnet-mgcb to mgVersion so the
         // restored tool stays in lockstep with the framework/builder packages. KNI/FNA use different
-        // tooling and are out of scope.
-        static bool NeedsMgcbToolManifest(ExportTarget target) =>
-            target == ExportTarget.MonoGameDesktopGL
-            || target == ExportTarget.MonoGameWindowsDX
-            || target == ExportTarget.MonoGameAndroid;
+        // tooling and are out of scope. This is exactly the classic-MonoGame set, so it also gates the
+        // user-.fx MGCB path (ShaderCompileMode.ContentPipeline).
+        static bool NeedsMgcbToolManifest(ExportTarget target) => IsMonoGameClassic(target);
 
         // dotnet-mgcb is pinned to the same version as the framework/content-builder packages so the
         // restored local tool stays in lockstep with MonoGame.Content.Builder.Task.

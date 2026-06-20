@@ -109,6 +109,10 @@ namespace XnaFiddle.Pages
         // when the MonoGame runtime is selected; defaults to the stable release. The preview option
         // is experimental — a third-party lib restore conflict on it is expected, not our bug.
         string _monoGameVersion = PackageVersions.MonoGameFramework;
+        // How exported .fx shaders are compiled. Runtime ShadowDusk is the default and the only option
+        // that works across every target; the MonoGame Content Pipeline (MGCB, build-time .xnb) is an
+        // opt-in honored only on classic MonoGame targets (the export dialog shows it just for MonoGame).
+        ShaderCompileMode _shaderCompileMode = ShaderCompileMode.ShadowDusk;
         string _exportProjectName = "MyFiddle";
         List<AssetInfo> _assets = new();
         string _assetUrlInput = "";
@@ -1574,14 +1578,18 @@ technique BasicColorDrawing
             return targets;
         }
 
-        // Selected platforms whose runtime can't compile shipped .fx via ShadowDusk (issue #39). The
-        // export dialog names these so the user knows the project builds but its shaders won't load
-        // there. Delegates to ProjectExporter.SupportsRuntimeShaders (the single source of truth).
+        // Selected platforms that can't compile shipped .fx in the chosen mode — neither ShadowDusk
+        // (runtime) nor MGCB (build-time) — so the project builds but its shaders won't load there
+        // (issue #39/#52). Mode-aware: in MGCB mode the classic MonoGame targets are no longer gated.
+        // Delegates to ProjectExporter.CompilesShippedShaders (the single source of truth).
         List<ExportPlatform> GatedShaderPlatforms()
         {
+            ShaderCompileMode mode = _exportRuntime == ExportRuntime.MonoGame
+                ? _shaderCompileMode
+                : ShaderCompileMode.ShadowDusk;
             var list = new List<ExportPlatform>();
             foreach (var p in _selectedPlatforms)
-                if (!ProjectExporter.SupportsRuntimeShaders(GetExportTarget(p)))
+                if (!ProjectExporter.CompilesShippedShaders(GetExportTarget(p), mode))
                     list.Add(p);
             return list;
         }
@@ -1663,8 +1671,13 @@ technique BasicColorDrawing
                         shaders[s.Name] = s.Source ?? "";
                 }
 
+                // The MGCB shader option is MonoGame-only; force the runtime default for other runtimes
+                // so a stale selection can't leak in (the exporter ignores it for non-classic targets anyway).
+                ShaderCompileMode shaderMode = _exportRuntime == ExportRuntime.MonoGame
+                    ? _shaderCompileMode
+                    : ShaderCompileMode.ShadowDusk;
                 byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null,
-                    libraryRegistry: LibraryRegistry, monoGameVersion: monoGameVersion, shaders: shaders);
+                    libraryRegistry: LibraryRegistry, monoGameVersion: monoGameVersion, shaders: shaders, shaderCompileMode: shaderMode);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }

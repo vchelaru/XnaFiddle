@@ -990,4 +990,150 @@ public class Game1 : Game
         Assert.DoesNotContain("ShadowDusk", files["MyGame/MyGame.csproj"]);
         Assert.DoesNotContain("typeof(T) == typeof(Effect)", files["MyGame/RawContentManager.cs"]);
     }
+
+    // ── MGCB shader mode (ShaderCompileMode.ContentPipeline) ──────────────────
+
+    [Theory]
+    // ContentPipeline mode compiles classic MonoGame targets via MGCB (so they're not gated)...
+    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ContentPipeline, true)]
+    [InlineData(ExportTarget.MonoGameWindowsDX, ShaderCompileMode.ContentPipeline, true)]
+    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ContentPipeline, true)]
+    // ...but DX12/VK have no classic MGCB and stay gated even in ContentPipeline mode.
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ContentPipeline, false)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ContentPipeline, false)]
+    // In ShadowDusk mode, Android is gated (no device backend) but DesktopGL is not.
+    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, false)]
+    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ShadowDusk, true)]
+    [InlineData(ExportTarget.KniDesktopGL,      ShaderCompileMode.ContentPipeline, true)] // MGCB ignored; ShadowDusk
+    public void CompilesShippedShaders_ReflectsModeAndTarget(ExportTarget target, ShaderCompileMode mode, bool expected)
+    {
+        Assert.Equal(expected, ProjectExporter.CompilesShippedShaders(target, mode));
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_MonoGameDesktopGL_ContentPipeline_BuildsXnbNotShadowDusk()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+        var files = ExtractTextFiles(zip);
+
+        // The .fx SOURCE still ships (the pipeline compiles it at build time) plus a Content.mgcb.
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.Contains("MyGame/Content/Content.mgcb", files.Keys);
+
+        string mgcb = files["MyGame/Content/Content.mgcb"];
+        Assert.Contains("/importer:EffectImporter", mgcb);
+        Assert.Contains("/processor:EffectProcessor", mgcb);
+        Assert.Contains("/build:Grayscale.fx", mgcb);
+        Assert.Contains("/platform:DesktopGL", mgcb);
+        Assert.Contains("/profile:HiDef", mgcb);
+
+        // The csproj hands the .fx to the content pipeline and ships NO ShadowDusk — a canonical
+        // MonoGame project. The .fx/.mgcb are dropped from the wholesale copy so only the built .xnb
+        // is output (single-platform uses Remove because the .fx are SDK-default None items).
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<MonoGameContentReference Include=""Content\Content.mgcb"" />", csproj);
+        Assert.Contains(@"<None Remove=""Content\**\*.fx"" />", csproj);
+        Assert.DoesNotContain("ShadowDusk", csproj);
+
+        // No runtime compiler is injected, and the content manager has no ShadowDusk Effect branch —
+        // Content.Load<Effect> falls through to the stock pipeline loader reading the built .xnb.
+        Assert.DoesNotContain("ShadowDusk", files["MyGame/Program.cs"]);
+        string rcm = files["MyGame/RawContentManager.cs"];
+        Assert.DoesNotContain("ShadowDusk", rcm);
+        Assert.DoesNotContain("typeof(T) == typeof(Effect)", rcm);
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_MonoGameWindowsDX_ContentPipeline_UsesWindowsPlatformToken()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameWindowsDX, "MyGame",
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("/platform:Windows", files["MyGame/Content/Content.mgcb"]);
+        Assert.Contains(@"<MonoGameContentReference Include=""Content\Content.mgcb"" />", files["MyGame/MyGame.csproj"]);
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_MonoGameDesktopGL_DefaultModeStaysShadowDusk()
+    {
+        // No shaderCompileMode argument: the default must remain the runtime ShadowDusk path so existing
+        // exports are unchanged. (Regression guard for the new opt-in not flipping the default.)
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("ShadowDusk.Compiler", files["MyGame/MyGame.csproj"]);
+        Assert.Contains("typeof(T) == typeof(Effect)", files["MyGame/RawContentManager.cs"]);
+        Assert.DoesNotContain("MyGame/Content/Content.mgcb", files.Keys);
+    }
+
+    [Fact]
+    public void ContentPipelineMode_NonMonoGameTarget_IgnoresMgcbAndUsesShadowDusk()
+    {
+        // ContentPipeline is honored only on classic MonoGame targets; a KNI export must ignore it and
+        // keep the ShadowDusk wiring (KNI has no MGCB tool).
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame",
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+        var files = ExtractTextFiles(zip);
+
+        Assert.DoesNotContain("MyGame/Content/Content.mgcb", files.Keys);
+        Assert.Contains("ShadowDusk.Compiler", files["MyGame/MyGame.csproj"]);
+        Assert.Contains("typeof(T) == typeof(Effect)", files["MyGame/RawContentManager.cs"]);
+    }
+
+    [Fact]
+    public void MultiPlatform_Shader_ContentPipeline_SharedMgcbAndNoShadowDuskAnywhere()
+    {
+        // Two classic MonoGame heads in ContentPipeline mode → one shared Content.mgcb, each head
+        // references it, and the common project is fully canonical (no ShadowDusk.Core, no Effect branch).
+        var targets = new List<ExportTarget>
+        {
+            ExportTarget.MonoGameDesktopGL,
+            ExportTarget.MonoGameWindowsDX,
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+        var files = ExtractTextFiles(zip);
+
+        // One shared .mgcb at the solution-root Content/, the .fx alongside it.
+        Assert.Contains("Content/Content.mgcb", files.Keys);
+        Assert.Contains("Content/Grayscale.fx", files.Keys);
+
+        // Each head references the shared .mgcb with the relative path.
+        Assert.Contains(@"<MonoGameContentReference Include=""..\Content\Content.mgcb"" />",
+            files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"]);
+        Assert.Contains(@"<MonoGameContentReference Include=""..\Content\Content.mgcb"" />",
+            files["MyGame.WindowsDX/MyGame.WindowsDX.csproj"]);
+
+        // Canonical: the shared library never references ShadowDusk and has no Effect-compiling branch.
+        string common = files["MyGameCommon/MyGameCommon.csproj"];
+        Assert.DoesNotContain("ShadowDusk", common);
+        Assert.DoesNotContain("typeof(T) == typeof(Effect)", files["MyGameCommon/RawContentManager.cs"]);
+        Assert.DoesNotContain("ShadowDusk", files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"]);
+    }
+
+    [Fact]
+    public void MultiPlatform_Shader_ContentPipeline_ClassicUsesMgcbWhileDx12Gated()
+    {
+        // A classic head (MGCB) alongside a DX12 head (no classic MGCB → gated). DX12 ships the .fx but
+        // gets neither an MGCB reference nor ShadowDusk; no head uses ShadowDusk, so the common stays clean.
+        var targets = new List<ExportTarget>
+        {
+            ExportTarget.MonoGameDesktopGL,
+            ExportTarget.MonoGameWindowsDX12,
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline,
+            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains(@"<MonoGameContentReference Include=""..\Content\Content.mgcb"" />",
+            files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"]);
+        // DX12 is gated: no content reference, no ShadowDusk.
+        string dx12 = files["MyGame.WindowsDX12/MyGame.WindowsDX12.csproj"];
+        Assert.DoesNotContain("MonoGameContentReference", dx12);
+        Assert.DoesNotContain("ShadowDusk", dx12);
+        Assert.DoesNotContain("ShadowDusk", files["MyGameCommon/MyGameCommon.csproj"]);
+    }
 }

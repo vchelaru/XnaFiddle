@@ -244,10 +244,19 @@
             @if (_shaderTabs.Count > 0)
             {
                 @* issue #39: shaders now export — the .fx source ships and the exported project
-                   recompiles it at runtime via ShadowDusk, like the in-browser editor. *@
+                   recompiles it at runtime via ShadowDusk, like the in-browser editor. For MonoGame
+                   the user can instead opt into the build-time MonoGame Content Pipeline (MGCB). *@
                 var gatedShaderPlatforms = GatedShaderPlatforms();
+                bool mgcbShaders = _exportRuntime == ExportRuntime.MonoGame && _shaderCompileMode == ShaderCompileMode.ContentPipeline;
                 <div style="color: #9cdcaa; font-size: 12px; line-height: 1.5; background: #1e2d20; border: 1px solid #2d5c34; border-radius: 3px; padding: 6px 8px;">
-                    &#10003; Your @_shaderTabs.Count <b>.fx</b> shader file(s) will be compiled at runtime via ShadowDusk in the exported project.
+                    @if (mgcbShaders)
+                    {
+                        <text>&#10003; Your @_shaderTabs.Count <b>.fx</b> shader file(s) will be compiled to <b>.xnb</b> at build time by the MonoGame Content Pipeline (MGCB) in the exported project.</text>
+                    }
+                    else
+                    {
+                        <text>&#10003; Your @_shaderTabs.Count <b>.fx</b> shader file(s) will be compiled at runtime via ShadowDusk in the exported project.</text>
+                    }
                     @if (gatedShaderPlatforms.Count > 0)
                     {
                         <span style="color: #dcdcaa;">Not yet supported on <b>@string.Join(", ", gatedShaderPlatforms)</b> &mdash; those projects still build, but shaders won't load there (issue #52).</span>
@@ -326,6 +335,27 @@
                             <option value="@PackageVersions.MonoGameFramework">@PackageVersions.MonoGameFramework (stable)</option>
                             <option value="@PackageVersions.MonoGameFrameworkPreview">@PackageVersions.MonoGameFrameworkPreview (preview - experimental)</option>
                         </select>
+                    </div>
+                }
+
+                @* Shader-compilation choice — only meaningful for MonoGame (the classic MGCB pipeline)
+                   and only when the fiddle actually has shader (.fx) tabs to compile. *@
+                @if (_exportRuntime == ExportRuntime.MonoGame && _shaderTabs.Count > 0)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="color: #aaa; margin-bottom: 2px;">Shader compilation:</span>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                            <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ShadowDusk)"
+                                   @onchange="() => _shaderCompileMode = ShaderCompileMode.ShadowDusk"
+                                   style="accent-color: #0e639c;" />
+                            ShadowDusk (runtime)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                            <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ContentPipeline)"
+                                   @onchange="() => _shaderCompileMode = ShaderCompileMode.ContentPipeline"
+                                   style="accent-color: #0e639c;" />
+                            Content Pipeline (.xnb)
+                        </label>
                     </div>
                 }
             </div>
