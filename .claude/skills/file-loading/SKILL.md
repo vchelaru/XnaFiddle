@@ -30,6 +30,16 @@ Controlled by `SupportedAssetExtensions` in `Index.razor.cs`:
 
 `InMemoryContentManager.Load<T>()` has explicit branches for `Texture2D` and `SoundEffect`. Any other type falls through to `base.Load<T>()`, which will fail (no disk content pipeline exists).
 
+## Asset thumbnail previews (decision record)
+
+The asset list (`Index.razor`, the `_assetsOpen` block) shows a **128×128 hover thumbnail** for image assets, folded into one popup with the info the native `title` used to show. `ImagePreviewUri(fileName)` in `Index.razor.cs` returns a `data:image/png;base64,…` string built from the bytes already in `InMemoryContentManager.Files`, or `null` for non-image assets. For image assets the chip renders a `.xf-asset-popup` (`<img>` + a text line) shown on hover via the panel's `<style>` block, and the filename's native `title` is set to `null` so the two don't compete; non-image assets keep the plain native `title` (no popup).
+
+**Positioning / stacking.** The popup opens **below** the chip (`top:100%`) — the asset bar sits near the top of the window, so an earlier "above" attempt was off-screen. To paint over the Monaco editor wrapper (a `position:relative`, later-in-DOM sibling inside `#editorPanel` that would otherwise occlude a downward popup), the asset-bar container carries `position:relative; z-index:30`. `#editorPanel` is `overflow:hidden` and full-height, so the short popup stays within its bounds and isn't clipped.
+
+**Decision — inline base64 data URI, not a JS `URL.createObjectURL` blob URL.** Chosen because it works for drag-dropped assets too (they have no `SourceUrl`) with zero JS interop and no object-URL lifecycle/cleanup. **Trade-off:** the base64 string lives in the DOM and is recomputed on each render of the panel — negligible for the small example PNGs, heavier for a large (up to 10 MB) user-dropped image.
+
+**Gated to `.png`** (the only image format; `.wav`/`.ttf`/`.fnt`/`.ember` get no preview). **To back out:** delete `ImagePreviewUri`, the `<style>` block, and the `previewUri`/`.xf-asset-preview` lines in the chip — nothing else depends on them. **If large drops become a problem:** switch to a blob object URL (create on `RegisterContentFile`, revoke on `RemoveAsset`/`UnregisterContentFile`) or memoize the data URI per asset, instead of recomputing inline.
+
 ## TitleContainer XHR intercept
 
 `TitleContainer.OpenStream(path)` is the standard XNA/MonoGame/KNI way to load raw files. In KNI's Blazor platform, it performs a **synchronous XHR GET** to the relative URL `path`. Since XnaFiddle's content files exist only in memory (not on a web server), a JS-side XHR monkey-patch intercepts these requests.
