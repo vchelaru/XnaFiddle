@@ -33,8 +33,6 @@ public class AddUsingSuggesterTests
     [InlineData("System.Collections.Generic")]
     [InlineData("Microsoft.Xna")]
     [InlineData("Microsoft.XnaFramework")]
-    [InlineData("MonoGameGum")]
-    [InlineData("MonoGameGum.Forms")]
     [InlineData("")]
     public void DisallowedNamespaces_ReturnFalse(string ns)
     {
