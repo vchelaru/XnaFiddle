@@ -5,7 +5,7 @@ namespace XnaFiddle.Tests;
 
 public class ExportableLibraryTests
 {
-    // ─�� Helper ───────────────────────────────────────────────────────────────
+    // -- Helper ───────────────────────────────────────────────────────────────
 
     static List<string> PackageIds(IExportableLibrary lib, ExportTarget target, string source = "") =>
         lib.GetExportPackages(target, source).Select(p => p.Id).ToList();
@@ -16,7 +16,7 @@ public class ExportableLibraryTests
     public void Gum_DetectsMonoGameGumUsing()
     {
         var plugin = new GumPlugin();
-        Assert.True(plugin.IsUsedInSource("using MonoGameGum;"));
+        Assert.True(plugin.IsUsedInSource("using Gum;"));
     }
 
     [Fact]

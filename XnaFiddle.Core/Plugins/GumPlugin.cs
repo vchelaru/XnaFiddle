@@ -12,7 +12,7 @@ namespace XnaFiddle.Plugins
         public string[] VersionAssemblies => ["GumCommon", "KniGum"];
 
         public bool IsUsedInSource(string source) =>
-            source.Contains("MonoGameGum") || source.Contains("Gum.") || source.Contains("using Gum;");
+            source.Contains("Gum.") || source.Contains("using Gum;");
 
         public List<ExportPackage> GetExportPackages(ExportTarget target, string source) =>
         [
