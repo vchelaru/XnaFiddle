@@ -30,11 +30,13 @@ struct VertexShaderOutput
 float4 MainPS(VertexShaderOutput input) : COLOR
 {
     float4 c = tex2D(SpriteTextureSampler, input.TextureCoordinates);
-    // Subtract the threshold then renormalize by the remaining headroom so a pixel
-    // that was already at full brightness stays at 1.0 after the cut. The max(...)
-    // guard keeps the divide finite as Threshold approaches 1.
-    float3 bright = saturate((c.rgb - Threshold) / max(1.0 - Threshold, 0.0001));
-    return float4(bright, 1.0) * input.Color;
+    // Gate on overall brightness (the max channel) and scale the ORIGINAL color by the
+    // same factor on every channel. Uniform scaling preserves hue, so an orange square
+    // blooms orange and cyan blooms cyan. (The old per-channel threshold crushed each
+    // color's weaker channel, collapsing every neon hue toward a pure R/G/B primary.)
+    float brightness = max(c.r, max(c.g, c.b));
+    float k = saturate((brightness - Threshold) / max(1.0 - Threshold, 0.0001));
+    return float4(c.rgb * k, 1.0) * input.Color;
 }
 
 technique BasicColorDrawing
