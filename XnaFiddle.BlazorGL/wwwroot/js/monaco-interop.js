@@ -10,9 +10,14 @@ window.monacoInterop = {
     //                   (not the active model) so the ~14 existing call sites that mean
     //                   "the C# program" keep working regardless of which tab is showing.
     //   _activeName:    name of the currently shown tab.
+    //   _viewStates:    name -> monaco view state (scroll + cursor + selections),
+    //                   saved on tab-out and restored on tab-in. Monaco's setModel()
+    //                   does NOT preserve this per-model, so without it every tab
+    //                   switch snaps the incoming tab back to the top (issue #70).
     _models: {},
     _csharpModel: null,
     _activeName: null,
+    _viewStates: {},
     CSHARP_TAB: 'Game.cs',
 
     init: function (containerId, initialCode) {
@@ -855,6 +860,9 @@ window.monacoInterop = {
         var existing = interop._models[name];
         if (existing) {
             existing.setValue(content);
+            // The tab now holds different source (example/import reuse), so any saved
+            // scroll/cursor for the old content would land in the wrong place — drop it.
+            delete interop._viewStates[name];
             return;
         }
         interop._models[name] = monaco.editor.createModel(content, language);
@@ -865,7 +873,14 @@ window.monacoInterop = {
         var interop = window.monacoInterop;
         var model = interop._models[name];
         if (model && interop._editor) {
+            // Stash the outgoing tab's scroll/cursor so returning to it restores where the
+            // user left off. setModel() alone resets the incoming tab to the top (issue #70).
+            if (interop._activeName && interop._activeName !== name) {
+                interop._viewStates[interop._activeName] = interop._editor.saveViewState();
+            }
             interop._editor.setModel(model);
+            var saved = interop._viewStates[name];
+            if (saved) interop._editor.restoreViewState(saved);
             interop._activeName = name;
         }
     },
@@ -889,6 +904,9 @@ window.monacoInterop = {
         }
         model.dispose();
         delete interop._models[name];
+        // Drop saved scroll/cursor so a later tab created with the same name (e.g. a new
+        // Shader.fx) doesn't inherit the closed tab's position.
+        delete interop._viewStates[name];
     },
 
     // Re-key a model under a new name (tab rename). The model and its language are
@@ -900,6 +918,11 @@ window.monacoInterop = {
         interop._models[newName] = model;
         delete interop._models[oldName];
         if (interop._activeName === oldName) interop._activeName = newName;
+        // Carry the saved scroll/cursor across the rename — it's the same model.
+        if (interop._viewStates[oldName]) {
+            interop._viewStates[newName] = interop._viewStates[oldName];
+            delete interop._viewStates[oldName];
+        }
     },
 
     // Dispose every shader model and reset to just the C# tab (used when loading an
@@ -913,7 +936,10 @@ window.monacoInterop = {
             if (names[i] === interop.CSHARP_TAB) continue;
             interop._models[names[i]].dispose();
             delete interop._models[names[i]];
+            delete interop._viewStates[names[i]];
         }
+        // The C# tab now shows freshly loaded source; its old scroll/cursor no longer applies.
+        delete interop._viewStates[interop.CSHARP_TAB];
     },
 
     setDiagnostics: function (markers) {
