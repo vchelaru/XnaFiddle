@@ -24,7 +24,6 @@ public class Game1 : Game
         IsFixedTimeStep = false;
         IsMouseVisible = true;
         Window.AllowUserResizing = true;
-        Window.Title = "Procedural Ocean";
     }
 
     protected override void LoadContent()
