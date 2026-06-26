@@ -29,6 +29,15 @@ namespace XnaFiddle
         [JsonPropertyName("members")]
         public string Members { get; set; }
 
+        /// <summary>
+        /// User-defined constructor body. When present, SnippetExpander emits this verbatim and
+        /// suppresses the scaffold's own GraphicsDeviceManager field + default constructor, so a
+        /// fiddle that sets up graphics in its constructor (custom back-buffer size, a differently
+        /// named GDM field, etc.) round-trips faithfully. Null = use the scaffold default. Issue #83.
+        /// </summary>
+        [JsonPropertyName("constructor")]
+        public string Constructor { get; set; }
+
         /// <summary>Code placed inside Initialize(), after base.Initialize() and preset init.</summary>
         [JsonPropertyName("initialize")]
         public string Initialize { get; set; }

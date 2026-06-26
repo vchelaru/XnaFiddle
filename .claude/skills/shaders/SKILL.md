@@ -79,8 +79,8 @@ User-facing pattern: `Content.Load<Effect>("Name")` in `LoadContent`, optionally
 | `XnaFiddle.BlazorGL/Pages/Index.razor` | Tab strip, gist shader warning (~200), export-dialog runtime-compile message (~244) |
 | `XnaFiddle.Core/ProjectExporter.cs` | Runtime shader export (issue #39): `GetShaderExportInfo`/`SupportsRuntimeShaders`, `WriteShaderSources`, the `IShaderCompiler`-seam content manager + per-platform compiler injection |
 | `XnaFiddle.BlazorGL/InMemoryContentManager.cs` | `Load<Effect>` branch: `new Effect(gd, bytes)` from registered `.mgfx` |
-| `XnaFiddle.BlazorGL/ShaderFile.cs` | Shader-tab model for share/snippet/gist payloads |
-| `XnaFiddle.BlazorGL/SnippetModel.cs` | `Shaders` field on the snippet payload |
+| `XnaFiddle.Core/ShaderFile.cs` | Shader-tab model for share/snippet/gist payloads |
+| `XnaFiddle.Core/SnippetModel.cs` | `Shaders` field on the snippet payload |
 | `XnaFiddle.BlazorGL/ExampleGallery.cs` | `Shaders` category catalog entries |
 | `XnaFiddle.BlazorGL/Examples/Shader*.{cs,fx}` | Example shaders + the `Content.Load<Effect>` usage pattern |
 | `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj` | `ShadowDusk.Wasm` ref (net8.0-browser), `SHADOWDUSK` gate |
