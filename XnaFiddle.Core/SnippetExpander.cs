@@ -9,6 +9,16 @@ namespace XnaFiddle
     /// Preset flags (IsGum, IsAposShapes, IsMonoGameExtended) inject their required
     /// boilerplate automatically; the user only provides the interesting parts.
     /// </summary>
+    /// <remarks>
+    /// The scaffold <b>owns</b> the constructor and a <c>GraphicsDeviceManager graphics;</c> field:
+    /// by default it emits a fixed constructor that creates <c>graphics</c>, selects HiDef when
+    /// supported, and sets IsMouseVisible/AllowUserResizing. A snippet that supplies
+    /// <see cref="SnippetModel.Constructor"/> overrides both — the scaffold drops its own field and
+    /// constructor and reproduces the user's verbatim — so a fiddle that does graphics setup in its
+    /// constructor (custom back-buffer size, a differently named GDM field) round-trips faithfully.
+    /// <see cref="SnippetReverter"/> is the inverse: it strips this scaffold/preset boilerplate back
+    /// out, capturing a custom constructor only when it differs from the canonical scaffold. Issue #83.
+    /// </remarks>
     public static class SnippetExpander
     {
         static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
