@@ -18,6 +18,9 @@ namespace XnaFiddle
         public List<string> ExtraUsings { get; set; } = new();
         // null = no user content detected for that section
         public string Members { get; set; }
+        // null = the class has no constructor or one identical to the scaffold default;
+        // non-null = a custom constructor body the scaffold must step aside for. Issue #83.
+        public string Constructor { get; set; }
         public string Initialize { get; set; }
         public string LoadContent { get; set; }
         public string Update { get; set; }
@@ -83,6 +86,18 @@ namespace XnaFiddle
                     return result;
                 }
 
+                // ── Constructor: keep a custom one so graphics setup round-trips ──
+                // The scaffold emits a fixed constructor plus a GraphicsDeviceManager field named
+                // `graphics`. A fiddle that does real work in its constructor (custom back-buffer
+                // size, a differently named GDM field) used to lose all of it because Revert
+                // dropped the constructor outright. Capture the body when it differs from the
+                // canonical scaffold; otherwise leave it null so scaffold-shaped snippets stay
+                // compact and re-sharing doesn't bloat. Issue #83.
+                var ctor = classDecl.Members.OfType<ConstructorDeclarationSyntax>().FirstOrDefault();
+                result.Constructor = (ctor != null && !IsScaffoldConstructor(ctor))
+                    ? ExtractConstructorBody(ctor)
+                    : null;
+
                 // ── Members: fields, properties, helper methods (not injected) ──
                 var memberLines = new List<string>();
                 foreach (var member in classDecl.Members)
@@ -92,7 +107,12 @@ namespace XnaFiddle
                         m.Identifier.Text is "Initialize" or "LoadContent" or "Update" or "Draw") continue;
 
                     string text = member.ToString().Trim();
-                    if (InjectedMembers.Contains(text)) continue;
+                    // When a custom constructor is captured the scaffold steps aside (it no longer
+                    // injects `GraphicsDeviceManager graphics;`), so a user field that happens to be
+                    // named exactly `graphics` must be kept rather than mistaken for the injected
+                    // one — otherwise it would vanish on round-trip. Issue #83.
+                    bool keepGraphicsField = result.Constructor != null && text == "GraphicsDeviceManager graphics;";
+                    if (InjectedMembers.Contains(text) && !keepGraphicsField) continue;
                     memberLines.Add(DedentNode(member));
                 }
                 result.Members = memberLines.Count > 0 ? string.Join("\n", memberLines) : null;
@@ -151,6 +171,50 @@ namespace XnaFiddle
             if (r.IsGum        && t == "GumUI.Draw();")        return true;
             return false;
         }
+
+        // ── Constructor helpers ──────────────────────────────────────────────────
+
+        // The exact statements SnippetExpander emits for the scaffold constructor (see the
+        // "Constructor" block there). A constructor that matches these verbatim carries no user
+        // intent, so it reverts to Constructor == null and the snippet stays compact. Issue #83.
+        static readonly string[] ScaffoldConstructorStatements =
+        {
+            "graphics = new GraphicsDeviceManager(this);",
+            "if (GraphicsAdapter.DefaultAdapter.IsProfileSupported(GraphicsProfile.HiDef)) graphics.GraphicsProfile = GraphicsProfile.HiDef;",
+            "IsMouseVisible = true;",
+            "Window.AllowUserResizing = true;",
+        };
+
+        static bool IsScaffoldConstructor(ConstructorDeclarationSyntax ctor)
+        {
+            var body = ctor.Body;
+            if (body == null) return false;
+            var statements = body.Statements;
+            if (statements.Count != ScaffoldConstructorStatements.Length) return false;
+            for (int i = 0; i < statements.Count; i++)
+            {
+                // Compare on whitespace-normalized text so source formatting differences (the
+                // HiDef block spans two indented lines in the scaffold) don't defeat the match.
+                if (CollapseWhitespace(statements[i].ToString()) !=
+                    CollapseWhitespace(ScaffoldConstructorStatements[i]))
+                    return false;
+            }
+            return true;
+        }
+
+        static string ExtractConstructorBody(ConstructorDeclarationSyntax ctor)
+        {
+            var body = ctor.Body;
+            if (body == null) return null;
+
+            var kept = new List<string>();
+            foreach (var stmt in body.Statements)
+                kept.Add(DedentNode(stmt));
+            return kept.Count > 0 ? string.Join("\n", kept) : null;
+        }
+
+        static string CollapseWhitespace(string s) =>
+            string.Join(" ", s.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
 
         // ── Helpers ──────────────────────────────────────────────────────────────
 

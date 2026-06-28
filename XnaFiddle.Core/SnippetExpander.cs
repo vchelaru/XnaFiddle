@@ -9,6 +9,16 @@ namespace XnaFiddle
     /// Preset flags (IsGum, IsAposShapes, IsMonoGameExtended) inject their required
     /// boilerplate automatically; the user only provides the interesting parts.
     /// </summary>
+    /// <remarks>
+    /// The scaffold <b>owns</b> the constructor and a <c>GraphicsDeviceManager graphics;</c> field:
+    /// by default it emits a fixed constructor that creates <c>graphics</c>, selects HiDef when
+    /// supported, and sets IsMouseVisible/AllowUserResizing. A snippet that supplies
+    /// <see cref="SnippetModel.Constructor"/> overrides both — the scaffold drops its own field and
+    /// constructor and reproduces the user's verbatim — so a fiddle that does graphics setup in its
+    /// constructor (custom back-buffer size, a differently named GDM field) round-trips faithfully.
+    /// <see cref="SnippetReverter"/> is the inverse: it strips this scaffold/preset boilerplate back
+    /// out, capturing a custom constructor only when it differs from the canonical scaffold. Issue #83.
+    /// </remarks>
     public static class SnippetExpander
     {
         static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
@@ -89,9 +99,16 @@ namespace XnaFiddle
                 sb.AppendLine($"using {u};");
             sb.AppendLine();
 
+            // When the snippet carries a custom constructor the user owns graphics setup (and may
+            // name the GDM field differently), so the scaffold steps aside: it emits neither its
+            // own `GraphicsDeviceManager graphics;` field nor the default constructor body, and the
+            // user's constructor is reproduced verbatim instead. Issue #83.
+            bool useScaffoldConstructor = string.IsNullOrWhiteSpace(model.Constructor);
+
             sb.AppendLine("public class FiddleGame : Game");
             sb.AppendLine("{");
-            sb.AppendLine("    GraphicsDeviceManager graphics;");
+            if (useScaffoldConstructor)
+                sb.AppendLine("    GraphicsDeviceManager graphics;");
             foreach (var m in members)
                 sb.AppendLine($"    {m}");
             if (!string.IsNullOrWhiteSpace(model.Members))
@@ -101,11 +118,18 @@ namespace XnaFiddle
             // Constructor
             sb.AppendLine("    public FiddleGame()");
             sb.AppendLine("    {");
-            sb.AppendLine("        graphics = new GraphicsDeviceManager(this);");
-            sb.AppendLine("        if (GraphicsAdapter.DefaultAdapter.IsProfileSupported(GraphicsProfile.HiDef))");
-            sb.AppendLine("            graphics.GraphicsProfile = GraphicsProfile.HiDef;");
-            sb.AppendLine("        IsMouseVisible = true;");
-            sb.AppendLine("        Window.AllowUserResizing = true;");
+            if (useScaffoldConstructor)
+            {
+                sb.AppendLine("        graphics = new GraphicsDeviceManager(this);");
+                sb.AppendLine("        if (GraphicsAdapter.DefaultAdapter.IsProfileSupported(GraphicsProfile.HiDef))");
+                sb.AppendLine("            graphics.GraphicsProfile = GraphicsProfile.HiDef;");
+                sb.AppendLine("        IsMouseVisible = true;");
+                sb.AppendLine("        Window.AllowUserResizing = true;");
+            }
+            else
+            {
+                AppendIndented(sb, model.Constructor, 8);
+            }
             sb.AppendLine("    }");
             sb.AppendLine();
 

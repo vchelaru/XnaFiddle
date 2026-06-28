@@ -1326,6 +1326,9 @@ technique BasicColorDrawing
                 IsMonoGameExtended = _revertResult.IsMonoGameExtended,
                 Usings             = _revertResult.ExtraUsings.Count > 0 ? _revertResult.ExtraUsings : null,
                 Members     = _snipMembers     ? _revertResult.Members     : null,
+                // Always carried (no UI toggle): null unless a custom constructor was detected, so
+                // scaffold-shaped fiddles stay compact while real graphics setup round-trips. Issue #83.
+                Constructor = _revertResult.Constructor,
                 Initialize  = _snipInitialize  ? _revertResult.Initialize  : null,
                 LoadContent = _snipLoadContent ? _revertResult.LoadContent : null,
                 Update      = _snipUpdate      ? _revertResult.Update      : null,
@@ -1365,6 +1368,9 @@ technique BasicColorDrawing
                     IsMonoGameExtended = _revertResult.IsMonoGameExtended,
                     Usings             = _revertResult.ExtraUsings.Count > 0 ? _revertResult.ExtraUsings : null,
                     Members     = _snipMembers     ? _revertResult.Members     : null,
+                    // Always carried (no UI toggle): null unless a custom constructor was detected, so
+                    // scaffold-shaped fiddles stay compact while real graphics setup round-trips. Issue #83.
+                    Constructor = _revertResult.Constructor,
                     Initialize  = _snipInitialize  ? _revertResult.Initialize  : null,
                     LoadContent = _snipLoadContent ? _revertResult.LoadContent : null,
                     Update      = _snipUpdate      ? _revertResult.Update      : null,
