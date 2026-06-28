@@ -40,15 +40,30 @@ find Submodules/KniSB -type d \( -name obj -o -name bin \) -prune -exec rm -rf {
 This removes only generated artifacts; the submodule pointer and tracked source are untouched
 (it also cleans the dirty `M Submodules/KniSB` working-tree state those artifacts cause).
 
-## 5. Open the PR as soon as the work is finished
+## 5. Set up manual testing — prioritize testing and speed
+
+If the change needs manual testing in the running app (most UI/behavior changes do), get the
+user testing as fast as possible:
+
+1. **Open the solution first**, before writing anything: `Start-Process "XnaFiddle.sln"` (PowerShell).
+   Launch it up front so Visual Studio loads in the background while you write the steps — don't
+   make the user wait on your prose before the IDE is even opening.
+2. **Then write concise, numbered manual steps** — what to run, what to click, and what correct
+   behavior looks like (and the failure mode the fix addresses, so the user knows what they're
+   confirming).
+
+Skip this step only when the change is genuinely untestable by hand (pure refactor, build-only,
+or covered entirely by unit tests) — say so briefly instead.
+
+## 6. Open the PR as soon as the work is finished
 
 Don't wait for manual-test sign-off — CI runs in parallel with the user's testing. Commit →
 `git push -u origin <branch>` → `gh pr create`. Put `Closes #<n>` in the PR body so the merge
 auto-closes the issue. This is the standing workflow; open the PR without per-task approval.
 
-## 6. Bundle incidental skill-file improvements
+## 7. Bundle incidental skill-file improvements
 
 Skill tweaks made while working the issue go in the **same** PR, unless something obvious says
 otherwise. These small increments are how the skills — including this one — grow.
 
-## 7. Report the PR URL back to the user.
+## 8. Report the PR URL back to the user.
