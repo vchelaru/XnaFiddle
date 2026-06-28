@@ -6,15 +6,16 @@ description: How file/asset loading works in XnaFiddle — embedded example asse
 
 XnaFiddle has no disk or traditional content pipeline. All assets live in memory and are loaded through `InMemoryContentManager`, a custom `ContentManager` subclass that serves files from a static `Dictionary<string, byte[]>`.
 
-## Three entry paths, one destination
+## Four entry paths, one destination
 
 | Source | Mechanism | Ends up in | SourceUrl set? |
 |---|---|---|---|
 | **Example assets** | Embedded resources in the assembly, loaded by `ExampleGallery.LoadAssets()` | `RegisterContentFile()` | Yes — points to `wwwroot/examples/{ExampleName}/{file}` |
 | **URL-fetched assets** | `FetchAndAddAssetUrl(url)` via `&assets=` share param or URL input | `RegisterContentFile()` | Yes — the fetched URL |
 | **User drag-and-drop** | JS `fileDropInterop` -> `OnFileDropped` JSInvokable | `RegisterContentFile()` | No — cannot be re-fetched |
+| **Gist import** | `LoadFromGistId`: each gist file whose ext is in `SupportedAssetExtensions` is base64-decoded by `DecodeGistAssetAsync` (fetches `raw_url` when `truncated`) and registered via `RegisterGistAsset` | `RegisterContentFile()` | No (issue #82) |
 
-All three paths converge on `RegisterContentFile(fileName, bytes)` in `Index.razor.cs`, which does two things:
+All four paths converge on `RegisterContentFile(fileName, bytes)` in `Index.razor.cs`, which does two things:
 1. `InMemoryContentManager.AddFile(fileName, bytes)` — stores data under the original filename AND the extension-stripped name (so `Content.Load<Texture2D>("KniIcon")` works without knowing the extension)
 2. `contentFileCache.register(fileName, base64)` via JS interop — registers the file in the JS-side XHR cache so `TitleContainer.OpenStream()` can resolve it (see below)
 
