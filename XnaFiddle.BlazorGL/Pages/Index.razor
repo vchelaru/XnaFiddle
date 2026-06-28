@@ -236,6 +236,24 @@
                         They'll re-open automatically when the gist is imported.
                     </div>
                 }
+                @if (_assets.Count > 0)
+                {
+                    <div style="color: #dcdcaa; font-size: 12px; line-height: 1.5; background: #2d2a1e; border: 1px solid #5c5320; border-radius: 3px; padding: 6px 8px;">
+                        &#9888; This fiddle uses @_assets.Count asset file(s). Add each as a separate file in the gist
+                        (keep the same filename) whose contents are the asset's <b>base64</b> bytes &mdash; click a button below
+                        to copy that. They'll be registered automatically when the gist is imported.
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                            @foreach (var a in _assets)
+                            {
+                                <button @onclick="() => CopyAssetBase64(a.FileName)"
+                                        style="padding: 2px 8px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555;
+                                               cursor: pointer; font-size: 12px; font-family: Consolas, monospace;">
+                                    <i class="codicon codicon-copy"></i> @a.FileName
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
                 @if (!_gistCodeCopied)
                 {
                     <div style="color: #888; font-size: 12px; line-height: 1.6;">

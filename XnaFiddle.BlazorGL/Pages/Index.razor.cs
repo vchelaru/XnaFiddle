@@ -1465,6 +1465,25 @@ technique BasicColorDrawing
             StateHasChanged();
         }
 
+        // Copies one asset's bytes to the clipboard as base64 text. A gist can only carry binary
+        // assets as base64 (it's a text store), and hand-encoding a PNG isn't practical for users,
+        // so this is the export counterpart of the base64-decode on import (issue #82).
+        private async Task CopyAssetBase64(string fileName)
+        {
+            if (!InMemoryContentManager.Files.TryGetValue(fileName, out byte[] bytes) || bytes == null)
+            {
+                _statusMessage = $"Asset not found: {fileName}";
+                _statusColor = ColorError;
+                StateHasChanged();
+                return;
+            }
+
+            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Convert.ToBase64String(bytes));
+            _statusMessage = $"Copied base64 for {fileName} — paste it into a gist file named \"{fileName}\".";
+            _statusColor = ColorSuccess;
+            StateHasChanged();
+        }
+
         private async Task OnGistInputKeyDown(KeyboardEventArgs e)
         {
             if (e.Key == "Enter")
@@ -1531,15 +1550,20 @@ technique BasicColorDrawing
                 string code = null;
                 string txtFallback = null;
                 var shaderFiles = new List<ShaderFile>();
+                // Gists can bundle image/sound/font assets alongside the code (issue #82). Collect
+                // any file whose extension is a supported asset and register it after the loop, so
+                // bundled assets become reference-able exactly like dropped or example assets.
+                var assetFiles = new List<JsonProperty>();
                 foreach (var file in files.EnumerateObject())
                 {
-                    string content = file.Value.GetProperty("content").GetString();
                     if (file.Name.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
-                        shaderFiles.Add(new ShaderFile { Name = file.Name, Source = content });
+                        shaderFiles.Add(new ShaderFile { Name = file.Name, Source = file.Value.GetProperty("content").GetString() });
                     else if (code == null && file.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-                        code = content;
+                        code = file.Value.GetProperty("content").GetString();
                     else if (txtFallback == null && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-                        txtFallback = content;
+                        txtFallback = file.Value.GetProperty("content").GetString();
+                    else if (SupportedAssetExtensions.Contains(System.IO.Path.GetExtension(file.Name)))
+                        assetFiles.Add(file);
                 }
                 code ??= txtFallback;
 
@@ -1549,6 +1573,22 @@ technique BasicColorDrawing
                     _statusColor = ColorError;
                     StateHasChanged();
                     return false;
+                }
+
+                // Register bundled assets before the run so Content.Load / TitleContainer.OpenStream
+                // resolve them. Decode failures are non-fatal: skip the file and report it (issue #82).
+                int assetCount = 0;
+                var skippedAssets = new List<string>();
+                foreach (var file in assetFiles)
+                {
+                    byte[] bytes = await DecodeGistAssetAsync(file);
+                    if (bytes == null)
+                    {
+                        skippedAssets.Add(file.Name);
+                        continue;
+                    }
+                    RegisterGistAsset(file.Name, bytes);
+                    assetCount++;
                 }
 
                 if (_monacoReady)
@@ -1562,7 +1602,11 @@ technique BasicColorDrawing
                 await JsRuntime.InvokeVoidAsync("eval",
                     $"history.replaceState(null,'','?gist={Uri.EscapeDataString(gistId)}')");
 
-                _statusMessage = "Gist loaded.";
+                _statusMessage = assetCount > 0
+                    ? $"Gist loaded ({assetCount} asset{(assetCount == 1 ? "" : "s")})."
+                    : "Gist loaded.";
+                if (skippedAssets.Count > 0)
+                    _statusMessage += $" Skipped {skippedAssets.Count} unreadable asset file(s): {string.Join(", ", skippedAssets)}.";
                 _statusColor = ColorSuccess;
                 _selectedExample = "";
                 StateHasChanged();
@@ -1574,6 +1618,48 @@ technique BasicColorDrawing
                 StateHasChanged();
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Decodes a gist file's bytes for a bundled asset. Gist files store binary assets as
+        /// base64 text (a .png entry's content is the base64 of the PNG bytes — confirmed: it
+        /// begins with the "iVBORw0KGgo" PNG magic). GitHub truncates inline content for large
+        /// files and sets "truncated":true; in that case fetch raw_url, which serves the same
+        /// base64 text. Returns null on a base64 decode failure so the caller can skip it.
+        /// </summary>
+        private async Task<byte[]> DecodeGistAssetAsync(JsonProperty file)
+        {
+            string b64;
+            if (file.Value.TryGetProperty("truncated", out var truncated) && truncated.GetBoolean()
+                && file.Value.TryGetProperty("raw_url", out var rawUrl))
+                b64 = await Http.GetStringAsync(rawUrl.GetString());
+            else
+                b64 = file.Value.GetProperty("content").GetString();
+
+            try
+            {
+                // Convert.FromBase64String ignores embedded whitespace/newlines, so wrapped gist
+                // content decodes fine without pre-stripping.
+                return Convert.FromBase64String(b64);
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+        }
+
+        // Registers a gist-bundled asset like a dropped file: into the content store + JS XHR cache,
+        // and into the UI asset list (parsing .fnt page references so missing-texture warnings work).
+        private void RegisterGistAsset(string fileName, byte[] data)
+        {
+            RegisterContentFile(fileName, data);
+
+            string[] fntTextures = null;
+            if (fileName.EndsWith(".fnt", StringComparison.OrdinalIgnoreCase))
+                fntTextures = ParseFntTextures(data);
+
+            _assets.RemoveAll(a => string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
+            _assets.Add(new AssetInfo { FileName = fileName, Size = data.Length, FntTextures = fntTextures });
         }
 
         ExportTarget GetExportTarget(ExportPlatform platform) => (_exportRuntime, platform) switch
