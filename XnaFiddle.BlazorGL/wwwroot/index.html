@@ -117,49 +117,28 @@
                 }
             }
 
-            // On touch, defer the .NET tick to the next macrotask so queued pointer
-            // events (toolbar taps) can run first. Sync invokeMethod blocks the only WASM thread.
-            if (window._touchDevice) {
-                setTimeout(runDotNetTick, 0);
-                return;
-            }
-            runDotNetTick();
-        } // end tickJS
-
-        function runDotNetTick() {
             var tickStart = performance.now();
             window.theInstance.invokeMethod('TickDotNet');
             var tickMs = performance.now() - tickStart;
 
             if (tickMs > WATCHDOG_FRAME_MS) {
-                // Frame took too long — game is likely stuck in a busy-loop.
-                // Notify .NET to stop the game, then continue the rAF loop so the
-                // UI remains responsive (future ticks will see _game == null and return fast).
                 window.theInstance.invokeMethod('OnGameTimedOut', tickMs);
             }
 
-            scheduleNextTick();
-        }
-
-        function scheduleNextTick() {
             if (window._hoverThrottle && !window._hoverActive) {
                 setTimeout(tickJS, 500); // 2fps when mouse is not over canvas
             } else {
                 window.requestAnimationFrame(tickJS);
             }
-        }
+        } // end tickJS
 
         // Touch toolbar: capture-phase touchend + invokeMethodAsync bypasses Blazor @onclick
         // when the game loop starves the dispatcher (issue #90). Buttons use data-touch-action.
         function wireTouchToolbar() {
             if (!window._touchDevice) return;
-            var lastTouchAction = 0;
             document.addEventListener('touchend', function (e) {
                 var btn = e.target.closest('[data-touch-action]');
                 if (!btn || !window.theInstance) return;
-                var now = Date.now();
-                if (now - lastTouchAction < 400) return;
-                lastTouchAction = now;
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 window.theInstance.invokeMethodAsync(btn.getAttribute('data-touch-action'));

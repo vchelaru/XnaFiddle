@@ -88,6 +88,8 @@ namespace XnaFiddle.Pages
         int _compileTotal;
         DateTime _compileStartTime;
         bool _hasCompiledOnce;
+        string _compiledFingerprint;
+        Type _cachedGameType;
         string _selectedExample = "";
         bool _exampleBrowserOpen;
         string _selectedCategory = "";
@@ -1083,177 +1085,86 @@ technique BasicColorDrawing
             StateHasChanged();
         }
 
+        private async Task<string> BuildCompileFingerprintAsync(string csharpSource)
+        {
+            List<ShaderFile> shaders = await CollectShaderFilesAsync();
+            return CompileFingerprint.Compute(csharpSource, shaders);
+        }
+
         private async Task DoCompileAndRun()
         {
             try
             {
                 string sourceCode = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
-                await JsRuntime.InvokeVoidAsync("compileTimerInterop.start");
-                CompilationService.CompilationResult result = await Compiler.CompileAsync(sourceCode, (current, total) =>
+                string fingerprint = await BuildCompileFingerprintAsync(sourceCode);
+                bool cacheHit = fingerprint == _compiledFingerprint && _cachedGameType != null;
+                Type gameType;
+
+                if (!cacheHit)
                 {
-                    _compileProgress = current;
-                    _compileTotal = total;
-                    StateHasChanged();
-                }, _shaderTabs.Count > 0, _compileCts.Token);
-                await JsRuntime.InvokeVoidAsync("compileTimerInterop.stop");
-                double compileSeconds = (DateTime.Now - _compileStartTime).TotalSeconds;
-                _hasCompiledOnce = true;
-                string failedNote = result.FailedAssemblies.Count > 0
-                    ? $"\n[missing refs: {string.Join(", ", result.FailedAssemblies)}]"
-                    : "";
-                string versionNote = string.IsNullOrEmpty(result.VersionInfo) ? "" : $"\n{result.VersionInfo}";
-                _diagnosticsOutput = $"Compiled in {compileSeconds:0.0}s" + failedNote + versionNote +
-                    (string.IsNullOrEmpty(result.Log) ? "" : "\n" + result.Log);
-                _diagnosticsColor = result.Success ? ColorMuted : ColorError;
-
-                // Send diagnostics to Monaco as inline markers
-                if (_monacoReady)
-                {
-                    if (result.Diagnostics.Count > 0)
-                        await JsRuntime.InvokeVoidAsync("monacoInterop.setDiagnostics", result.Diagnostics);
-                    else
-                        await JsRuntime.InvokeVoidAsync("monacoInterop.clearDiagnostics");
-                }
-
-                if (result.Success && result.ILBytes != null)
-                {
-                    _statusMessage = "Loading game...";
-                    _statusColor = ColorSuccess;
-                    StateHasChanged();
-
-                    // Load the compiled assembly directly in-memory
-                    Assembly loadedAssembly = Assembly.Load(result.ILBytes);
-                    Type gameType = FindGameType(loadedAssembly);
-
-                    if (gameType != null)
+                    await JsRuntime.InvokeVoidAsync("compileTimerInterop.start");
+                    CompilationService.CompilationResult result = await Compiler.CompileAsync(sourceCode, (current, total) =>
                     {
-                        // Compile any registered HLSL .fx shaders to .mgfx in-browser BEFORE the
-                        // game runs, so user code can Content.Load<Effect>("Name") the result. This
-                        // runs while the old game may still be ticking (the await is intentionally
-                        // OUTSIDE the synchronous swap window below). The ~17 MB DXC wasm is fetched
-                        // lazily on the first shader compile only — non-shader runs never touch it.
-                        // See issue #26.
-                        string shaderError = await CompileRegisteredShadersAsync();
-                        if (shaderError != null)
-                        {
-                            SetError("Shader compilation failed.", shaderError);
-                            _isCompiling = false;
-                            StateHasChanged();
-                            return;
-                        }
+                        _compileProgress = current;
+                        _compileTotal = total;
+                        StateHasChanged();
+                    }, _shaderTabs.Count > 0, _compileCts.Token);
+                    await JsRuntime.InvokeVoidAsync("compileTimerInterop.stop");
+                    double compileSeconds = (DateTime.Now - _compileStartTime).TotalSeconds;
+                    _hasCompiledOnce = true;
+                    string failedNote = result.FailedAssemblies.Count > 0
+                        ? $"\n[missing refs: {string.Join(", ", result.FailedAssemblies)}]"
+                        : "";
+                    string versionNote = string.IsNullOrEmpty(result.VersionInfo) ? "" : $"\n{result.VersionInfo}";
+                    _diagnosticsOutput = $"Compiled in {compileSeconds:0.0}s" + failedNote + versionNote +
+                        (string.IsNullOrEmpty(result.Log) ? "" : "\n" + result.Log);
+                    _diagnosticsColor = result.Success ? ColorMuted : ColorError;
 
-                        // Drop the old game without calling Dispose(). Dispose() invalidates
-                        // the GraphicsDevice textures which breaks Gum on the next run.
-                        // GC will reclaim the old game eventually; this is acceptable in a fiddle context.
-                        _game = null;
-
-                        // NOTE: Everything between here and _game = newGame is synchronous —
-                        // no awaits, so TickDotNet() cannot be called in this window (WASM is single-threaded).
-                        LibraryRegistry.RunAllCleanups();
-
-                        // Prevent a per-run WebGL context leak. KNI's BlazorGL adapter validates
-                        // HiDef support by creating a 1x1 OffscreenCanvas + WebGL2 context on every
-                        // game init (ConcreteGraphicsAdapter.Platform_IsProfileSupported) and never
-                        // frees it, so each run leaks one context until the browser's ~16-context
-                        // cap force-loses contexts and the next game crashes (CONTEXT_LOST_WEBGL /
-                        // "Shader Compilation Failed."). UseReferenceDevice makes that probe return
-                        // true without creating the OffscreenCanvas — its ONLY effect on BlazorGL.
-                        // The real device still gets a genuine WebGL2 context when it runs.
-                        // Idempotent static; setting it each run is harmless.
-                        GraphicsAdapter.UseReferenceDevice = true;
-
-                        Game newGame = (Game)Activator.CreateInstance(gameType);
-                        newGame.Content = new InMemoryContentManager(newGame.Services);
-
-                        // The game's GraphicsProfile (set in its constructor, which has now run)
-                        // decides the canvas's WebGL context type. If a previous game this session
-                        // bound the shared canvas to the other type, KNI's getContext would return
-                        // null and crash — so swap in a fresh, unbound canvas instead. See issue #25.
-                        GraphicsProfile desiredProfile = GetGameProfile(newGame);
-                        if (_canvasProfile.HasValue && _canvasProfile.Value != desiredProfile)
-                        {
-                            // The canvas permanently locks its WebGL context type on first
-                            // getContext, so a Reach<->HiDef switch needs a brand-new <canvas>.
-                            // Swap one in place (no page reload, no loss of dropped files) and
-                            // rebuild the game against it, then fall through to the normal Run path.
-                            // The game just created is bound to nothing yet; drop it and rebuild
-                            // after the swap so its BlazorGameWindow resolves the fresh element.
-                            newGame = null;
-                            // Clears KNI's BlazorGameWindow._instances AND the Document element-id
-                            // cache (see GameWindowPlugin) so the new canvas is re-resolved instead
-                            // of serving the stale wrapper pointing at the detached old element.
-                            LibraryRegistry.RunAllCleanups();
-                            // Bump @key so Blazor discards the old canvas and renders a fresh one.
-                            // The await lets that render flush before we wire/bind the new element.
-                            _canvasGen++;
-                            StateHasChanged();
-                            await Task.Delay(1);
-                            // Re-apply per-canvas wiring (sizing, focus, Alt handling) to the new
-                            // element, and clear the bound-context-type hint: the fresh canvas is
-                            // unbound, so clearCanvas must not touch it until a game binds it.
-                            await JsRuntime.InvokeVoidAsync("setupCanvas");
-                            await JsRuntime.InvokeVoidAsync("eval", "window._canvasContextType=null");
-                            // Rebuild against the fresh, unbound canvas. Run() below now calls
-                            // getContext(desiredType) on a virgin element, which succeeds; afterward
-                            // _canvasProfile updates to desiredProfile so there is no re-loop.
-                            // These awaits are safe: _game stays null until the end, so TickDotNet
-                            // early-returns (its `if (_game == null) return;`).
-                            newGame = (Game)Activator.CreateInstance(gameType);
-                            newGame.Content = new InMemoryContentManager(newGame.Services);
-                        }
-
-                        try
-                        {
-                            // Force a DOM render flush so the "Loading game..." status appears
-                            // before the potentially-blocking Run() call.
-                            await Task.Delay(1);
-                            await JsRuntime.InvokeVoidAsync("clearCanvas");
-                            newGame.Run();
-                        }
-                        catch (Exception runEx)
-                        {
-                            try { newGame.Dispose(); } catch { }
-                            LibraryRegistry.RunAllCleanups();
-
-                            // Issue #12: when the browser can't create a WebGL context, KNI throws a
-                            // bare NullReferenceException deep in device creation ("Object reference
-                            // not set to an instance of an object."), which tells the user nothing.
-                            // Translate just that case into an actionable message (still appending the
-                            // technical detail for bug reports). Other crashes fall through to the
-                            // full-stack path below.
-                            if (GraphicsErrorClassifier.IsGraphicsDeviceCreationFailure(runEx))
-                            {
-                                SetError("Graphics device unavailable.",
-                                    GraphicsErrorClassifier.DeviceCreationFailureMessage
-                                        + "\n\nTechnical details:\n" + runEx);
-                                _isCompiling = false;
-                                StateHasChanged();
-                                return;
-                            }
-                            throw new Exception("Game crashed during initialization: " + runEx.Message, runEx);
-                        }
-                        _game = newGame;
-                        // Re-read after Run so the tracked profile reflects any change made in
-                        // Initialize()/LoadContent(), not just the constructor.
-                        _canvasProfile = GetGameProfile(newGame);
-                        // Tell clearCanvas which context type the canvas is now bound to, so it
-                        // clears through the right context instead of binding a fresh one (#25).
-                        await JsRuntime.InvokeVoidAsync("eval",
-                            $"window._canvasContextType='{(_canvasProfile == GraphicsProfile.HiDef ? "webgl2" : "webgl")}'");
-                        _statusMessage = "Running.";
-                        _statusColor = ColorSuccess;
+                    if (_monacoReady)
+                    {
+                        if (result.Diagnostics.Count > 0)
+                            await JsRuntime.InvokeVoidAsync("monacoInterop.setDiagnostics", result.Diagnostics);
+                        else
+                            await JsRuntime.InvokeVoidAsync("monacoInterop.clearDiagnostics");
                     }
-                    else
+
+                    if (!result.Success || result.ILBytes == null)
+                    {
+                        _statusMessage = "Compilation failed.";
+                        _statusColor = ColorError;
+                        return;
+                    }
+
+                    Assembly loadedAssembly = Assembly.Load(result.ILBytes);
+                    gameType = FindGameType(loadedAssembly);
+                    if (gameType == null)
                     {
                         _statusMessage = "No class extending Game found.";
                         _statusColor = ColorError;
+                        return;
                     }
+
+                    _compiledFingerprint = fingerprint;
+                    _cachedGameType = gameType;
                 }
                 else
                 {
-                    _statusMessage = "Compilation failed.";
-                    _statusColor = ColorError;
+                    _hasCompiledOnce = true;
+                    gameType = _cachedGameType;
+                    _compileProgress = 1;
+                    _compileTotal = 1;
+                    _diagnosticsOutput = "Restarted without recompile (source unchanged).";
+                    _diagnosticsColor = ColorMuted;
+                    if (_monacoReady)
+                        await JsRuntime.InvokeVoidAsync("monacoInterop.clearDiagnostics");
                 }
+
+                _statusMessage = "Loading game...";
+                _statusColor = ColorSuccess;
+                StateHasChanged();
+
+                if (!await LaunchGameFromTypeAsync(gameType))
+                    return;
             }
             catch (OperationCanceledException)
             {
@@ -1269,6 +1180,88 @@ technique BasicColorDrawing
 
             _isCompiling = false;
             StateHasChanged();
+        }
+
+        // Shared game-swap path after compile (or cache hit). Returns false when shader compile
+        // or game init failed and the caller should stop without overwriting _isCompiling early.
+        private async Task<bool> LaunchGameFromTypeAsync(Type gameType)
+        {
+            string shaderError = await CompileRegisteredShadersAsync();
+            if (shaderError != null)
+            {
+                SetError("Shader compilation failed.", shaderError);
+                return false;
+            }
+
+            // Drop the old game without calling Dispose(). Dispose() invalidates
+            // the GraphicsDevice textures which breaks Gum on the next run.
+            // GC will reclaim the old game eventually; this is acceptable in a fiddle context.
+            _game = null;
+
+            // NOTE: Everything between here and _game = newGame is synchronous —
+            // no awaits, so TickDotNet() cannot be called in this window (WASM is single-threaded).
+            LibraryRegistry.RunAllCleanups();
+
+            // Prevent a per-run WebGL context leak. KNI's BlazorGL adapter validates
+            // HiDef support by creating a 1x1 OffscreenCanvas + WebGL2 context on every
+            // game init (ConcreteGraphicsAdapter.Platform_IsProfileSupported) and never
+            // frees it, so each run leaks one context until the browser's ~16-context
+            // cap force-loses contexts and the next game crashes (CONTEXT_LOST_WEBGL /
+            // "Shader Compilation Failed."). UseReferenceDevice makes that probe return
+            // true without creating the OffscreenCanvas — its ONLY effect on BlazorGL.
+            // The real device still gets a genuine WebGL2 context when it runs.
+            // Idempotent static; setting it each run is harmless.
+            GraphicsAdapter.UseReferenceDevice = true;
+
+            Game newGame = (Game)Activator.CreateInstance(gameType);
+            newGame.Content = new InMemoryContentManager(newGame.Services);
+
+            // The game's GraphicsProfile (set in its constructor, which has now run)
+            // decides the canvas's WebGL context type. If a previous game this session
+            // bound the shared canvas to the other type, KNI's getContext would return
+            // null and crash — so swap in a fresh, unbound canvas instead. See issue #25.
+            GraphicsProfile desiredProfile = GetGameProfile(newGame);
+            if (_canvasProfile.HasValue && _canvasProfile.Value != desiredProfile)
+            {
+                newGame = null;
+                LibraryRegistry.RunAllCleanups();
+                _canvasGen++;
+                StateHasChanged();
+                await Task.Delay(1);
+                await JsRuntime.InvokeVoidAsync("setupCanvas");
+                await JsRuntime.InvokeVoidAsync("eval", "window._canvasContextType=null");
+                newGame = (Game)Activator.CreateInstance(gameType);
+                newGame.Content = new InMemoryContentManager(newGame.Services);
+            }
+
+            try
+            {
+                await Task.Delay(1);
+                await JsRuntime.InvokeVoidAsync("clearCanvas");
+                newGame.Run();
+            }
+            catch (Exception runEx)
+            {
+                try { newGame.Dispose(); } catch { }
+                LibraryRegistry.RunAllCleanups();
+
+                if (GraphicsErrorClassifier.IsGraphicsDeviceCreationFailure(runEx))
+                {
+                    SetError("Graphics device unavailable.",
+                        GraphicsErrorClassifier.DeviceCreationFailureMessage
+                            + "\n\nTechnical details:\n" + runEx);
+                    return false;
+                }
+                throw new Exception("Game crashed during initialization: " + runEx.Message, runEx);
+            }
+
+            _game = newGame;
+            _canvasProfile = GetGameProfile(newGame);
+            await JsRuntime.InvokeVoidAsync("eval",
+                $"window._canvasContextType='{(_canvasProfile == GraphicsProfile.HiDef ? "webgl2" : "webgl")}'");
+            _statusMessage = "Running.";
+            _statusColor = ColorSuccess;
+            return true;
         }
 
         private async Task ShareAsCode()

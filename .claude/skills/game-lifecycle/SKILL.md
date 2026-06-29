@@ -74,7 +74,9 @@ Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit n
 
 ## Touch UI starvation (issue #90)
 
-Blazor WASM is single-threaded. `index.html` `tickJS` calls `TickDotNet` synchronously on every rAF frame; uncapped FPS after Run can starve Blazor `@onclick` on touch devices (toolbar buttons stop responding). **Fix:** full editor on touch stays uncapped; toolbar taps use capture-phase `touchend` → `invokeMethodAsync` (`data-touch-action` on Run/Stop/Examples/Stop-compile), and `TickDotNet` is deferred via `setTimeout(0)` on touch. `TickDotNet` already throttles `_game.Tick()` to ~4fps while `_isCompiling`.
+Blazor WASM is single-threaded. `index.html` `tickJS` calls `TickDotNet` synchronously on every rAF frame; uncapped FPS after Run can starve Blazor `@onclick` on touch devices (toolbar buttons stop responding). **Fix:** capture-phase `touchend` → `invokeMethodAsync` on toolbar buttons (`data-touch-action`). Desktop uses normal `@onclick`.
+
+**Restart memory (mobile):** WASM cannot unload assemblies. Each unchanged Restart used to `Assembly.Load` again until mobile OOM'd (~3rd run). **Fix:** `CompileFingerprint` (C# + shader tabs) caches the loaded `Type`; unchanged restarts skip Roslyn + `Assembly.Load` and only tear down + `Activator.CreateInstance` the cached type. Desktop tolerated redundant loads; mobile did not.
 
 ## Why the leak "suddenly appeared"
 
