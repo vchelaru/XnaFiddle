@@ -72,6 +72,10 @@ Reusing the same `MetadataReference` instances also lets Roslyn reuse decoded sy
 
 Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit now dominates** (the cache turned the reference step from the bottleneck into a rounding error). The user-facing "Compiled in Xs" message in `DoCompileAndRun` reflects the total.
 
+## Touch UI starvation (issue #90)
+
+Blazor WASM is single-threaded. `index.html` `tickJS` calls `TickDotNet` synchronously on every rAF frame; uncapped FPS after Run starves Blazor `@onclick` on touch devices (toolbar buttons stop responding). **Fix:** full editor on touch caps to 20fps via `_tickInterval` (mirrors embed mobile); desktop full editor stays uncapped. `TickDotNet` already throttles `_game.Tick()` to ~4fps while `_isCompiling`.
+
 ## Why the leak "suddenly appeared"
 
 It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced only after the metadata-reference cache made compiles fast (~0.7s vs several seconds): fast iteration means a user naturally does 10+ Runs in one page session before refreshing, which is what reaches the context cap. It is **not** a GC-churn regression (see dead end #1).
@@ -92,6 +96,7 @@ It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced o
 | File | Role |
 |---|---|
 | `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `DoCompileAndRun`, `CompileAndRun`, `TickDotNet`, swap window, `UseReferenceDevice` fix, `_canvasProfile`/`PromptProfileSwitch` |
+| `XnaFiddle.BlazorGL/wwwroot/index.html` | `tickJS` rAF loop, `_tickInterval` FPS cap (touch full-editor 20fps — issue #90) |
 | `XnaFiddle.BlazorGL/CompilationService.cs` | Roslyn compile, `_referenceCache`, `GetMetadataReferencesAsync`, `LogTiming` |
 | `XnaFiddle.Core/LibraryRegistry.cs` | `RunAllCleanups` — per-run plugin static-state reset |
 | `XnaFiddle.Core/Plugins/GameWindowPlugin.cs` | Clears KNI's static `BlazorGameWindow._instances` by reflection |

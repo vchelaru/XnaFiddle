@@ -86,7 +86,8 @@
         window._hoverActive   = true;
 
         // FPS cap. _tickInterval is the minimum ms between ticks (0 = uncapped).
-        // Embed mode defaults: 30fps desktop, 20fps mobile. Override with ?fps=N.
+        // Embed mode defaults: 30fps desktop, 20fps mobile. Full editor: uncapped desktop,
+        // 20fps on touch (Blazor @onclick needs main-thread time — see issue #90). ?fps=N overrides.
         window._tickInterval = 0;
         window._lastTickTime = 0;
 
@@ -471,7 +472,8 @@
             var params = new URLSearchParams(window.location.search);
             var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
-            // FPS cap — embed mode defaults: 30fps desktop, 20fps mobile. ?fps=N overrides.
+            // FPS cap — embed: 30fps desktop / 20fps mobile; full editor: uncapped desktop,
+            // 20fps on touch so rAF doesn't starve Blazor UI (issue #90). ?fps=N overrides.
             var fpsParam = parseInt(params.get('fps'), 10);
             var isEmbed  = params.get('embed') === 'true';
             var targetFps = 0;
@@ -479,11 +481,13 @@
                 targetFps = fpsParam;
             } else if (isEmbed) {
                 targetFps = isTouchDevice ? 20 : 30;
+            } else if (isTouchDevice) {
+                targetFps = 20;
             }
             window._tickInterval = targetFps > 0 ? (1000 / targetFps) : 0;
 
             // ?hover=true — throttle to 2fps when mouse is not over the canvas.
-            // Ignored on touch devices (no hover concept; always runs at full speed).
+            // Ignored on touch devices (no hover concept; touch FPS capped separately — issue #90).
             if (params.get('hover') === 'true' && !isTouchDevice) {
                 window._hoverThrottle = true;
                 window._hoverActive   = false; // start throttled until first hover
