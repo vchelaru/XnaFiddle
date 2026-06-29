@@ -816,14 +816,14 @@ public class Game1 : Game
     [InlineData(ExportTarget.MonoGameWindowsDX)]
     [InlineData(ExportTarget.KniBlazorGL)]
     [InlineData(ExportTarget.FnaDesktop)]
+    [InlineData(ExportTarget.KniAndroid)]
+    [InlineData(ExportTarget.MonoGameAndroid)]
     public void SupportsRuntimeShaders_TrueForWiredTargets(ExportTarget target)
     {
         Assert.True(ProjectExporter.SupportsRuntimeShaders(target));
     }
 
     [Theory]
-    [InlineData(ExportTarget.KniAndroid)]
-    [InlineData(ExportTarget.MonoGameAndroid)]
     [InlineData(ExportTarget.MonoGameWindowsDX12)]
     [InlineData(ExportTarget.MonoGameDesktopVK)]
     public void SupportsRuntimeShaders_FalseForGatedTargets(ExportTarget target)
@@ -917,7 +917,7 @@ public class Game1 : Game
     [Fact]
     public void MultiPlatform_Shader_CoreInCommon_ConcreteCompilerPerPlatform()
     {
-        // A mixed export: two supported GL/DX/Web targets plus a gated one (Android).
+        // A mixed export: two supported GL/Web targets plus Android (now wired like desktop).
         var targets = new List<ExportTarget>
         {
             ExportTarget.KniDesktopGL,
@@ -941,8 +941,10 @@ public class Game1 : Game
         Assert.Contains("ShadowDusk.Wasm", blazor);
         Assert.Contains("<TargetFramework>net8.0-browser</TargetFramework>", blazor);
 
-        // The gated platform builds but wires no compiler.
-        Assert.DoesNotContain("ShadowDusk", files["MyGame.Android/MyGame.Android.csproj"]);
+        // Android gets the desktop native compiler package and entry-point injection (issue #88).
+        Assert.Contains("ShadowDusk.Compiler", files["MyGame.Android/MyGame.Android.csproj"]);
+        Assert.Contains("new EffectCompiler()", files["MyGame.Android/Activity1.cs"]);
+        Assert.Contains("PlatformTarget.OpenGL", files["MyGame.Android/Activity1.cs"]);
 
         // The shared content manager (in common) has the Effect branch; .fx ships at solution root.
         Assert.Contains("typeof(T) == typeof(Effect)", files["MyGameCommon/RawContentManager.cs"]);
@@ -980,15 +982,21 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void SinglePlatform_GatedTarget_Shader_ShipsFxButWiresNoCompiler()
+    public void SinglePlatform_Android_Shader_ShipsFxAndWiresOpenGLCompiler()
     {
-        // Android is gated: the .fx still ships (harmless), but no compiler is referenced or injected.
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniAndroid, "MyGame", shaders: OneShader());
         var files = ExtractTextFiles(zip);
 
         Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
-        Assert.DoesNotContain("ShadowDusk", files["MyGame/MyGame.csproj"]);
-        Assert.DoesNotContain("typeof(T) == typeof(Effect)", files["MyGame/RawContentManager.cs"]);
+        Assert.Contains($@"<PackageReference Include=""ShadowDusk.Compiler"" Version=""{PackageVersions.ShadowDusk}"" />",
+            files["MyGame/MyGame.csproj"]);
+
+        string activity = files["MyGame/Activity1.cs"];
+        Assert.Contains("using ShadowDusk.Compiler;", activity);
+        Assert.Contains("new EffectCompiler()", activity);
+        Assert.Contains("PlatformTarget.OpenGL", activity);
+
+        Assert.Contains("ShaderCompiler.Compile(", files["MyGame/RawContentManager.cs"]);
     }
 
     // ── MGCB shader mode (ShaderCompileMode.ContentPipeline) ──────────────────
@@ -1001,8 +1009,9 @@ public class Game1 : Game
     // ...but DX12/VK have no classic MGCB and stay gated even in ContentPipeline mode.
     [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ContentPipeline, false)]
     [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ContentPipeline, false)]
-    // In ShadowDusk mode, Android is gated (no device backend) but DesktopGL is not.
-    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, false)]
+    // In ShadowDusk mode, Android is wired like DesktopGL (issue #88).
+    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, true)]
+    [InlineData(ExportTarget.KniAndroid,        ShaderCompileMode.ShadowDusk, true)]
     [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ShadowDusk, true)]
     [InlineData(ExportTarget.KniDesktopGL,      ShaderCompileMode.ContentPipeline, true)] // MGCB ignored; ShadowDusk
     public void CompilesShippedShaders_ReflectsModeAndTarget(ExportTarget target, ShaderCompileMode mode, bool expected)

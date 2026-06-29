@@ -93,7 +93,7 @@ namespace XnaFiddle
         // exactly like the in-browser editor — no XNB, no MGCB. The shared/common project compiles
         // against ShadowDusk.Core's IShaderCompiler interface; each per-platform project supplies the
         // concrete compiler and the backend. Targets absent from GetShaderExportInfo are *gated*: the
-        // .fx still ships but no compiler is wired — Android/iOS (no ShadowDusk device backend) and
+        // .fx still ships but no compiler is wired — iOS (no ShadowDusk device backend yet) and
         // MonoGame DX12/Vulkan are tracked in issue #52.
         struct ShaderExportInfo
         {
@@ -117,6 +117,10 @@ namespace XnaFiddle
             // (MojoShader-readable) via PlatformTarget.Fna instead of an .mgfx container — FNA's
             // Effect(gd, bytes) ctor reads that raw .fxb directly (issue #54).
             ExportTarget.FnaDesktop        => DesktopShaderInfo("Fna"),
+            // Android: ShadowDusk.Compiler ships per-ABI native backends (0.11.0+) for on-device
+            // runtime compile — same EffectCompiler + OpenGL path as DesktopGL (issue #88).
+            ExportTarget.KniAndroid        => DesktopShaderInfo("OpenGL"),
+            ExportTarget.MonoGameAndroid   => DesktopShaderInfo("OpenGL"),
             // Browser: ShadowDusk.Wasm (net8.0-browser, [JSImport] WASM modules). GL only.
             ExportTarget.KniBlazorGL => new ShaderExportInfo
             {
@@ -127,7 +131,7 @@ namespace XnaFiddle
                 PlatformTarget = "OpenGL",
                 IsBrowser = true,
             },
-            _ => default,   // gated: Android, MonoGame DX12/VK (issue #52)
+            _ => default,   // gated: iOS, MonoGame DX12/VK (issue #52)
         };
 
         static ShaderExportInfo DesktopShaderInfo(string platformTarget) => new ShaderExportInfo
@@ -168,7 +172,7 @@ namespace XnaFiddle
         // Per-target shader strategy. A target either compiles the shipped .fx at build time via MGCB
         // (only when the user opts a classic MonoGame target into ContentPipeline mode) or at runtime
         // via ShadowDusk (every other supported target). The two are mutually exclusive; a target that
-        // is neither is "gated" (ships .fx, no compiler) — e.g. MonoGame DX12/VK, Android on ShadowDusk.
+        // is neither is "gated" (ships .fx, no compiler) — e.g. MonoGame DX12/VK, iOS on ShadowDusk.
         static bool UsesMgcbShaders(ExportTarget target, ShaderCompileMode mode) =>
             mode == ShaderCompileMode.ContentPipeline && IsMonoGameClassic(target);
 
@@ -322,7 +326,7 @@ namespace XnaFiddle
                 // Each platform has its own entry-point and hosting structure.
                 if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
                 {
-                    AddTextEntry(archive, $"{projectName}/Activity1.cs", GenerateAndroidActivity(projectName));
+                    AddTextEntry(archive, $"{projectName}/Activity1.cs", GenerateAndroidActivity(projectName, target, includeShaderLoader));
                     AddTextEntry(archive, $"{projectName}/AndroidManifest.xml", GenerateAndroidManifest(projectName));
                     AddAndroidResources(archive, $"{projectName}", projectName);
                 }
@@ -433,7 +437,7 @@ namespace XnaFiddle
                     string platformDir = $"{projectName}.{suffix}";
                     // Only platforms on the ShadowDusk runtime path get the concrete ShadowDusk package
                     // and the entry-point compiler injection; MGCB heads compile the .fx at build time
-                    // instead; gated platforms (e.g. Android on ShadowDusk) build but leave the content
+                    // instead; gated platforms (e.g. iOS on ShadowDusk) build but leave the content
                     // manager's compiler unset (issue #39).
                     bool wireShaders = hasShaders && UsesShadowDuskShaders(target, shaderCompileMode);
                     bool useMgcbShaders = hasShaders && UsesMgcbShaders(target, shaderCompileMode);
@@ -452,7 +456,7 @@ namespace XnaFiddle
                     // Platform-specific entry points
                     if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
                     {
-                        AddTextEntry(archive, $"{platformDir}/Activity1.cs", GenerateAndroidActivity(projectName));
+                        AddTextEntry(archive, $"{platformDir}/Activity1.cs", GenerateAndroidActivity(projectName, target, wireShaders));
                         AddTextEntry(archive, $"{platformDir}/AndroidManifest.xml", GenerateAndroidManifest(projectName));
                         AddAndroidResources(archive, platformDir, projectName);
                     }
@@ -1151,15 +1155,32 @@ namespace Microsoft.Xna.Framework.Graphics
 ";
         }
 
-        static string GenerateAndroidActivity(string projectName)
+        static string GenerateAndroidActivity(string projectName, ExportTarget target, bool includeShaders)
         {
+            ShaderExportInfo info = includeShaders ? GetShaderExportInfo(target) : default;
+            // Browser shaders are wired in Index.razor (it must await InitializeAsync), not here.
+            bool wireShaders = info.Supported && !info.IsBrowser;
+
+            string shaderUsings = wireShaders
+                ? $"using {info.CompilerNamespace};\nusing ShadowDusk.Core;\n"
+                : "";
+
+            // Inject the concrete ShadowDusk compiler + backend so Content.Load<Effect> can compile the
+            // shipped .fx at runtime on-device (issue #88).
+            string contentSetup = wireShaders
+                ? $@"        var content = new RawContentManager(game.Services, ""Content"");
+        content.ShaderCompiler = new {info.CompilerType}();
+        content.ShaderTarget = PlatformTarget.{info.PlatformTarget};
+        game.Content = content;"
+                : @"        game.Content = new RawContentManager(game.Services, ""Content"");";
+
             return $@"using System;
 using Android.App;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
 using Microsoft.Xna.Framework;
-
+{shaderUsings}
 namespace {projectName};
 
 [Activity(
@@ -1176,7 +1197,7 @@ public class Activity1 : AndroidGameActivity
     {{
         base.OnCreate(bundle);
         var game = new Game1();
-        game.Content = new RawContentManager(game.Services, ""Content"");
+{contentSetup}
         SetContentView((View)game.Services.GetService(typeof(View)));
         game.Run();
     }}

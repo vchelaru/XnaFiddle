@@ -1075,7 +1075,7 @@ technique BasicColorDrawing
                     _compileProgress = current;
                     _compileTotal = total;
                     StateHasChanged();
-                }, _compileCts.Token);
+                }, _shaderTabs.Count > 0, _compileCts.Token);
                 await JsRuntime.InvokeVoidAsync("compileTimerInterop.stop");
                 double compileSeconds = (DateTime.Now - _compileStartTime).TotalSeconds;
                 _hasCompiledOnce = true;
