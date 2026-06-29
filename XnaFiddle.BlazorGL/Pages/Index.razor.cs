@@ -56,6 +56,7 @@ namespace XnaFiddle.Pages
         bool _isCompiling;
         CancellationTokenSource _compileCts;
         bool _pendingCompile;
+        Task _compileTask;
         int _compileThrottleFrame;
         bool _monacoReady;
         bool _staleAssets;
@@ -360,6 +361,12 @@ technique BasicColorDrawing
         public void TriggerOpenExampleBrowser()
         {
             OpenExampleBrowser();
+        }
+
+        [JSInvokable]
+        public void TriggerStopCompilation()
+        {
+            StopCompilation();
         }
 
         private string GetAssetUrlsFragment()
@@ -1009,7 +1016,8 @@ technique BasicColorDrawing
             if (_pendingCompile)
             {
                 _pendingCompile = false;
-                _ = DoCompileAndRun();
+                if (_compileTask == null || _compileTask.IsCompleted)
+                    _compileTask = DoCompileAndRun();
             }
 
             // No interlocked read needed: Blazor WASM is single-threaded. The only
@@ -1044,7 +1052,6 @@ technique BasicColorDrawing
             {
                 _game = null;
                 LibraryRegistry.RunAllCleanups();
-                _ = JsRuntime.InvokeVoidAsync("clearCanvas");
             }
 
             _isCompiling = true;
@@ -1200,6 +1207,7 @@ technique BasicColorDrawing
                             // Force a DOM render flush so the "Loading game..." status appears
                             // before the potentially-blocking Run() call.
                             await Task.Delay(1);
+                            await JsRuntime.InvokeVoidAsync("clearCanvas");
                             newGame.Run();
                         }
                         catch (Exception runEx)

@@ -30,7 +30,7 @@
     <div style="padding: 6px 12px; background: #2d2d2d; display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
         @if (_isCompiling)
         {
-            <button @onclick="StopCompilation"
+            <button data-touch-action="TriggerStopCompilation" @onclick="StopCompilation"
                     style="padding: 4px 14px; background: #e04040; color: #fff; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="codicon codicon-debug-stop"></i>
                 Stop

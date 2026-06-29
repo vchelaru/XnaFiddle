@@ -86,8 +86,8 @@
         window._hoverActive   = true;
 
         // FPS cap. _tickInterval is the minimum ms between ticks (0 = uncapped).
-        // Embed mode defaults: 30fps desktop, 20fps mobile. Full editor: uncapped desktop,
-        // 10fps on touch (Blazor @onclick needs main-thread time — see issue #90). ?fps=N overrides.
+        // Embed mode defaults: 30fps desktop, 20fps mobile. Full editor on touch stays uncapped;
+        // toolbar taps use capture-phase touchend instead (issue #90). ?fps=N overrides.
         window._tickInterval = 0;
         window._lastTickTime = 0;
 
@@ -153,9 +153,13 @@
         // when the game loop starves the dispatcher (issue #90). Buttons use data-touch-action.
         function wireTouchToolbar() {
             if (!window._touchDevice) return;
+            var lastTouchAction = 0;
             document.addEventListener('touchend', function (e) {
                 var btn = e.target.closest('[data-touch-action]');
                 if (!btn || !window.theInstance) return;
+                var now = Date.now();
+                if (now - lastTouchAction < 400) return;
+                lastTouchAction = now;
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 window.theInstance.invokeMethodAsync(btn.getAttribute('data-touch-action'));
@@ -500,8 +504,8 @@
             var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
             window._touchDevice = isTouchDevice;
 
-            // FPS cap — embed: 30fps desktop / 20fps mobile; full editor: uncapped desktop,
-            // 10fps on touch so rAF doesn't starve Blazor UI (issue #90). ?fps=N overrides.
+            // FPS cap — embed: 30fps desktop / 20fps mobile. Full editor stays uncapped on touch
+            // (toolbar uses touchend bypass — issue #90). ?fps=N overrides.
             var fpsParam = parseInt(params.get('fps'), 10);
             var isEmbed  = params.get('embed') === 'true';
             var targetFps = 0;
@@ -509,8 +513,6 @@
                 targetFps = fpsParam;
             } else if (isEmbed) {
                 targetFps = isTouchDevice ? 20 : 30;
-            } else if (isTouchDevice) {
-                targetFps = 10;
             }
             window._tickInterval = targetFps > 0 ? (1000 / targetFps) : 0;
 
