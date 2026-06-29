@@ -62,7 +62,7 @@
          same release cadence as Gum.KNI, so it tracks GumVersion. Depends on Apos.Shapes.KNI. -->
     <GumShapesVersion>2026.6.14.1-preview.1</GumShapesVersion>
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
-    <KernSmithVersion>0.12.3</KernSmithVersion>
+    <KernSmithVersion>0.15.2</KernSmithVersion>
     <MlemVersion>8.1.0</MlemVersion>
     <!-- ShadowDusk HLSL .fx compiler. Drives BOTH the in-browser editor (ShadowDusk.Wasm, used by
          XnaFiddle.BlazorGL) AND exported projects, which now compile their shipped .fx at runtime
@@ -72,7 +72,7 @@
          property feeds the editor's PackageReference AND the exporter's PackageVersions.ShadowDusk.
          0.5.0+ is required: it adds InitializeAsync() + a synchronous Compile(), which the exported
          project needs to compile lazily inside the synchronous Content.Load<Effect> call site. -->
-    <ShadowDuskVersion>0.9.0</ShadowDuskVersion>
+    <ShadowDuskVersion>0.11.0</ShadowDuskVersion>
   </PropertyGroup>
 
 </Project>

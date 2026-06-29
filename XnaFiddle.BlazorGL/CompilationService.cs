@@ -84,7 +84,7 @@ namespace XnaFiddle
         /// sees the same BCL/KNI/plugin surface the compile will see.
         /// </summary>
         public async Task<(List<MetadataReference> References, List<string> FailedAssemblies, string VersionInfo)>
-            GetMetadataReferencesAsync(Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
+            GetMetadataReferencesAsync(Action<int, int> onProgress = null, bool includeShadowDusk = false, CancellationToken cancellationToken = default)
         {
             ForceLoadAssemblies();
 
@@ -102,6 +102,8 @@ namespace XnaFiddle
                     ?? GetAssemblyVersion(assemblyNames[0]);
                 versionParts.Add($"{plugins[i].Name} {version}");
             }
+            if (includeShadowDusk)
+                versionParts.Add($"ShadowDusk {PackageVersions.ShadowDusk}");
             string versionInfo = string.Join("  ·  ", versionParts);
 
             HashSet<string> assembliesRequired = new(StringComparer.OrdinalIgnoreCase);
@@ -270,7 +272,7 @@ namespace XnaFiddle
             }
         }
 
-        public async Task<CompilationResult> CompileAsync(string sourceCode, Action<int, int> onProgress = null, CancellationToken cancellationToken = default)
+        public async Task<CompilationResult> CompileAsync(string sourceCode, Action<int, int> onProgress = null, bool includeShadowDusk = false, CancellationToken cancellationToken = default)
         {
             string log = "";
 
@@ -283,7 +285,7 @@ namespace XnaFiddle
             SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode, parseOptions);
 
             (List<MetadataReference> metadataReferences, List<string> failedAssemblies, string versionInfo) =
-                await GetMetadataReferencesAsync(onProgress, cancellationToken);
+                await GetMetadataReferencesAsync(onProgress, includeShadowDusk, cancellationToken);
 
             // Compile
             CSharpCompilationOptions compilationOptions = new(
