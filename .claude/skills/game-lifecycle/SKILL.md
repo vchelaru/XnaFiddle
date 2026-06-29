@@ -74,7 +74,7 @@ Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit n
 
 ## Touch UI starvation (issue #90)
 
-Blazor WASM is single-threaded. `index.html` `tickJS` calls `TickDotNet` synchronously on every rAF frame; uncapped FPS after Run starves Blazor `@onclick` on touch devices (toolbar buttons stop responding). **Fix:** full editor on touch caps to 20fps via `_tickInterval` (mirrors embed mobile); desktop full editor stays uncapped. `TickDotNet` already throttles `_game.Tick()` to ~4fps while `_isCompiling`.
+Blazor WASM is single-threaded. `index.html` `tickJS` calls `TickDotNet` synchronously on every rAF frame; uncapped FPS after Run starves Blazor `@onclick` on touch devices (toolbar buttons stop responding). **Fix:** full editor on touch caps to 10fps via `_tickInterval`, defers `TickDotNet` with `setTimeout(0)`, and routes toolbar taps through capture-phase `touchend` → `invokeMethodAsync` (`data-touch-action` on Run/Stop/Examples); desktop full editor stays uncapped. `TickDotNet` already throttles `_game.Tick()` to ~4fps while `_isCompiling`.
 
 ## Why the leak "suddenly appeared"
 

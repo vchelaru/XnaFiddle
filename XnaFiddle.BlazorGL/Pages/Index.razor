@@ -38,21 +38,21 @@
         }
         else
         {
-            <button @onclick="CompileAndRun"
+            <button data-touch-action="TriggerCompileAndRun" @onclick="CompileAndRun"
                     style="padding: 4px 14px; background: #0e639c; color: white; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="codicon codicon-play"></i>
                 @(_game != null ? "Restart" : "Run")
             </button>
             @if (_game != null)
             {
-                <button @onclick="StopGame"
+                <button data-touch-action="TriggerStopGame" @onclick="StopGame"
                         style="padding: 4px 14px; background: #e04040; color: #fff; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                     <i class="codicon codicon-debug-stop"></i>
                     Stop
                 </button>
             }
         }
-        <button @onclick="OpenExampleBrowser"
+        <button data-touch-action="TriggerOpenExampleBrowser" @onclick="OpenExampleBrowser"
                 style="padding: 4px 8px; background: @(_exampleBrowserOpen ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
                        border: 1px solid #555; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;
                        user-select: none; -webkit-user-select: none;">
@@ -789,7 +789,7 @@
                 Pick an example with the Examples button, or write your own XNA-style C# code,<br/>
                 then click the Run button to compile and run.
                 <div style="margin-top: 16px; pointer-events: auto;">
-                    <button @onclick="CompileAndRun"
+                    <button data-touch-action="TriggerCompileAndRun" @onclick="CompileAndRun"
                             style="padding: 6px 18px; background: #0e639c; color: white; border: none; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px;">
                         <i class="codicon codicon-play"></i>
                         Run

@@ -87,7 +87,7 @@
 
         // FPS cap. _tickInterval is the minimum ms between ticks (0 = uncapped).
         // Embed mode defaults: 30fps desktop, 20fps mobile. Full editor: uncapped desktop,
-        // 20fps on touch (Blazor @onclick needs main-thread time — see issue #90). ?fps=N overrides.
+        // 10fps on touch (Blazor @onclick needs main-thread time — see issue #90). ?fps=N overrides.
         window._tickInterval = 0;
         window._lastTickTime = 0;
 
@@ -117,6 +117,16 @@
                 }
             }
 
+            // On touch, defer the .NET tick to the next macrotask so queued pointer
+            // events (toolbar taps) can run first. Sync invokeMethod blocks the only WASM thread.
+            if (window._touchDevice) {
+                setTimeout(runDotNetTick, 0);
+                return;
+            }
+            runDotNetTick();
+        } // end tickJS
+
+        function runDotNetTick() {
             var tickStart = performance.now();
             window.theInstance.invokeMethod('TickDotNet');
             var tickMs = performance.now() - tickStart;
@@ -128,12 +138,29 @@
                 window.theInstance.invokeMethod('OnGameTimedOut', tickMs);
             }
 
+            scheduleNextTick();
+        }
+
+        function scheduleNextTick() {
             if (window._hoverThrottle && !window._hoverActive) {
                 setTimeout(tickJS, 500); // 2fps when mouse is not over canvas
             } else {
                 window.requestAnimationFrame(tickJS);
             }
-        } // end tickJS
+        }
+
+        // Touch toolbar: capture-phase touchend + invokeMethodAsync bypasses Blazor @onclick
+        // when the game loop starves the dispatcher (issue #90). Buttons use data-touch-action.
+        function wireTouchToolbar() {
+            if (!window._touchDevice) return;
+            document.addEventListener('touchend', function (e) {
+                var btn = e.target.closest('[data-touch-action]');
+                if (!btn || !window.theInstance) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                window.theInstance.invokeMethodAsync(btn.getAttribute('data-touch-action'));
+            }, { capture: true, passive: false });
+        }
 
         // Splitter + layout logic (supports left/right and top/bottom modes)
         (function () {
@@ -471,9 +498,10 @@
 
             var params = new URLSearchParams(window.location.search);
             var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            window._touchDevice = isTouchDevice;
 
             // FPS cap — embed: 30fps desktop / 20fps mobile; full editor: uncapped desktop,
-            // 20fps on touch so rAF doesn't starve Blazor UI (issue #90). ?fps=N overrides.
+            // 10fps on touch so rAF doesn't starve Blazor UI (issue #90). ?fps=N overrides.
             var fpsParam = parseInt(params.get('fps'), 10);
             var isEmbed  = params.get('embed') === 'true';
             var targetFps = 0;
@@ -482,9 +510,11 @@
             } else if (isEmbed) {
                 targetFps = isTouchDevice ? 20 : 30;
             } else if (isTouchDevice) {
-                targetFps = 20;
+                targetFps = 10;
             }
             window._tickInterval = targetFps > 0 ? (1000 / targetFps) : 0;
+
+            wireTouchToolbar();
 
             // ?hover=true — throttle to 2fps when mouse is not over the canvas.
             // Ignored on touch devices (no hover concept; touch FPS capped separately — issue #90).

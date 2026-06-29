@@ -350,6 +350,18 @@ technique BasicColorDrawing
                 CompileAndRun();
         }
 
+        [JSInvokable]
+        public void TriggerStopGame()
+        {
+            StopGame();
+        }
+
+        [JSInvokable]
+        public void TriggerOpenExampleBrowser()
+        {
+            OpenExampleBrowser();
+        }
+
         private string GetAssetUrlsFragment()
         {
             var urls = new List<string>();
