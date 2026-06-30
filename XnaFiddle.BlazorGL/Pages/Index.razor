@@ -610,7 +610,7 @@
 
     @if (!string.IsNullOrEmpty(_diagnosticsOutput))
     {
-        <div id="diagnosticsSplitter" style="height: 4px; background: #007acc; cursor: ns-resize; flex-shrink: 0;"></div>
+        <div id="diagnosticsSplitter" style="background: #007acc; cursor: ns-resize; flex-shrink: 0; touch-action: none;"></div>
         <pre id="diagnosticsPanel" style="margin: 0; padding: 8px 12px; background: #1a1a1a; color: @_diagnosticsColor;
                     font-size: 12px; font-family: Consolas, monospace; overflow: auto;
                     height: 100px; flex-shrink: 0; white-space: pre-wrap; word-wrap: break-word;">@_diagnosticsOutput</pre>
@@ -696,7 +696,8 @@
     z-index: 10;
     display: flex;
     align-items: center;
-    justify-content: center;">
+    justify-content: center;
+    touch-action: none;">
     <button @onclick="ToggleLayout"
             title="@(_layoutVertical ? "Switch to left/right layout" : "Switch to top/bottom layout")"
             style="position: absolute; width: 20px; height: 20px; padding: 0;
@@ -705,7 +706,7 @@
                    display: flex; align-items: center; justify-content: center;
                    opacity: 0.6; transition: opacity 0.15s; z-index: 11;"
             onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"
-            onmousedown="event.stopPropagation()">
+            onpointerdown="event.stopPropagation()">
         <i class="codicon @(_layoutVertical ? "codicon-split-horizontal" : "codicon-split-vertical")" style="font-size: 11px;"></i>
     </button>
 </div>

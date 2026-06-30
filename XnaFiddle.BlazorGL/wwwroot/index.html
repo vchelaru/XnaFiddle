@@ -9,6 +9,12 @@
     <link href="css/app.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.35/dist/codicon.css" />
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <style>
+        /* Diagnostics splitter height lives here (not inline on the element) so the
+           coarse-pointer rule can fatten it for finger dragging on mobile (issue #91). */
+        #diagnosticsSplitter { height: 4px; }
+        @media (pointer: coarse) { #diagnosticsSplitter { height: 12px; } }
+    </style>
 </head>
 
 <body>
@@ -162,7 +168,10 @@
         (function () {
             var splitRatio = 0.45;
             var dragging = false;
-            var splitterSize = 5;
+            // Fatten the splitter on touch devices so a finger has something to grab
+            // (issue #91). A coarse pointer means finger/stylus input, not a mouse.
+            var coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+            var splitterSize = coarsePointer ? 14 : 5;
             var isVertical = false;
             var collapsed = false;
 
@@ -228,14 +237,22 @@
                 var spl = document.getElementById('splitter');
                 if (!spl) return;
 
-                spl.addEventListener('mousedown', function (e) {
+                // Pointer events unify mouse/touch/pen, so the splitter drags with a
+                // finger on mobile, not just a mouse (issue #91). touch-action:none stops
+                // the browser from claiming the gesture as a scroll/pan, which would
+                // otherwise swallow the pointermove stream. setPointerCapture keeps the
+                // drag tracking even when the pointer slides off the thin splitter.
+                spl.style.touchAction = 'none';
+
+                spl.addEventListener('pointerdown', function (e) {
                     e.preventDefault();
                     dragging = true;
+                    spl.setPointerCapture(e.pointerId);
                     document.body.style.cursor = isVertical ? 'ns-resize' : 'ew-resize';
                     document.body.style.userSelect = 'none';
                 });
 
-                document.addEventListener('mousemove', function (e) {
+                spl.addEventListener('pointermove', function (e) {
                     if (!dragging) return;
                     if (isVertical) {
                         var h = window.innerHeight;
@@ -249,12 +266,17 @@
                     applyLayout();
                 });
 
-                document.addEventListener('mouseup', function () {
+                function endDrag(e) {
                     if (!dragging) return;
                     dragging = false;
+                    if (spl.hasPointerCapture && spl.hasPointerCapture(e.pointerId)) {
+                        spl.releasePointerCapture(e.pointerId);
+                    }
                     document.body.style.cursor = '';
                     document.body.style.userSelect = '';
-                });
+                }
+                spl.addEventListener('pointerup', endDrag);
+                spl.addEventListener('pointercancel', endDrag);
 
                 window.addEventListener('resize', applyLayout);
                 applyLayout();
@@ -285,20 +307,29 @@
             var dragging = false;
             var startY = 0;
             var startH = 0;
+            var captured = null;
 
-            document.addEventListener('mousedown', function (e) {
+            // Pointer events (not mouse-only) so the diagnostics panel resizes by touch
+            // on mobile too (issue #91). Delegated on document because the splitter is
+            // rendered conditionally; capture redirects the stream to the element while
+            // the events still bubble to these document-level listeners.
+            document.addEventListener('pointerdown', function (e) {
                 if (e.target && e.target.id === 'diagnosticsSplitter') {
                     e.preventDefault();
                     dragging = true;
                     startY = e.clientY;
                     var panel = document.getElementById('diagnosticsPanel');
                     startH = panel ? panel.offsetHeight : 100;
+                    if (e.target.setPointerCapture) {
+                        e.target.setPointerCapture(e.pointerId);
+                        captured = e.target;
+                    }
                     document.body.style.cursor = 'ns-resize';
                     document.body.style.userSelect = 'none';
                 }
             });
 
-            document.addEventListener('mousemove', function (e) {
+            document.addEventListener('pointermove', function (e) {
                 if (!dragging) return;
                 var panel = document.getElementById('diagnosticsPanel');
                 if (!panel) return;
@@ -306,12 +337,18 @@
                 panel.style.height = Math.max(40, startH + delta) + 'px';
             });
 
-            document.addEventListener('mouseup', function () {
+            function endDrag(e) {
                 if (!dragging) return;
                 dragging = false;
+                if (captured && captured.releasePointerCapture) {
+                    try { captured.releasePointerCapture(e.pointerId); } catch (_) {}
+                }
+                captured = null;
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
-            });
+            }
+            document.addEventListener('pointerup', endDrag);
+            document.addEventListener('pointercancel', endDrag);
         })();
 
         // In-memory content file cache — allows TitleContainer.OpenStream (which
