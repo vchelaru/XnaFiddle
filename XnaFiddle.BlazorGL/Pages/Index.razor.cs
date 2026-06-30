@@ -1102,6 +1102,25 @@ technique BasicColorDrawing
             catch { /* JS not ready / interop down — diagnostics are best-effort */ }
         }
 
+        // How many closures are currently subscribed to KNI's singleton Window.Current.OnTouchStart.
+        // Proves the issue #90 leak/fix: it climbed 1,2,3… per Restart (each dead game's
+        // BlazorGameWindow ctor adds one, never removed) and aborted the app on touch; with
+        // GameWindowPlugin.CleanUp now nulling those delegates it must stay 1 on every Run. Resolved
+        // by name because nkast.Wasm.Dom is browser-only. Returns -1 on any reflection failure.
+        private static int GetWindowTouchSubscriberCount()
+        {
+            try
+            {
+                Type t = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(a => a.GetType("nkast.Wasm.Dom.Window"))
+                    .FirstOrDefault(x => x != null);
+                object win = t?.GetProperty("Current", BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
+                var del = t?.GetField("OnTouchStart", BindingFlags.Instance | BindingFlags.Public)?.GetValue(win) as Delegate;
+                return del?.GetInvocationList().Length ?? 0;
+            }
+            catch { return -1; }
+        }
+
         private async Task<string> BuildCompileFingerprintAsync(string csharpSource)
         {
             List<ShaderFile> shaders = await CollectShaderFilesAsync();
@@ -1286,7 +1305,7 @@ technique BasicColorDrawing
 
             _game = newGame;
             _runSucceeded++;
-            Trace($"launch: SUCCESS, runSucceeded={_runSucceeded}");
+            Trace($"launch: SUCCESS, runSucceeded={_runSucceeded} touchSubs={GetWindowTouchSubscriberCount()}");
             _canvasProfile = GetGameProfile(newGame);
             await JsRuntime.InvokeVoidAsync("eval",
                 $"window._canvasContextType='{(_canvasProfile == GraphicsProfile.HiDef ? "webgl2" : "webgl")}'");

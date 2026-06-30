@@ -31,7 +31,7 @@
          below — independent of Blazor's renderer, because the mobile failure mode kills the
          Blazor circuit and a Blazor-rendered panel would die with it. Starts hidden; revealed
          the moment anything is logged (any JS error, or C# phase tracing once a Run begins). -->
-    <div id="runTracePanel" style="position:fixed; left:0; right:0; bottom:0; max-height:70vh; overflow:auto; z-index:99999; background:rgba(0,0,0,0.85); color:#0f0; font:8px/1.15 monospace; white-space:pre-wrap; padding:6px; display:none;"></div>
+    <div id="runTracePanel" style="position:fixed; left:0; right:0; bottom:0; max-height:70vh; overflow:auto; z-index:99999; background:rgba(0,0,0,0.85); color:#0f0; font:6px/1.1 monospace; white-space:pre-wrap; padding:6px; display:none;"></div>
 
     <!-- Defined before Blazor boots so the error/rejection hooks are live as early as possible. -->
     <script>
