@@ -1261,7 +1261,9 @@ technique BasicColorDrawing
             try
             {
                 await Task.Delay(1);
+                Trace("launch: delay done");
                 await JsRuntime.InvokeVoidAsync("clearCanvas");
+                Trace("launch: canvas cleared");
                 Trace("launch: pre-Run");
                 newGame.Run();
                 Trace("launch: post-Run OK");

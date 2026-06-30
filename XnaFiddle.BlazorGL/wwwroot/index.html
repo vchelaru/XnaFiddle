@@ -31,13 +31,16 @@
          below — independent of Blazor's renderer, because the mobile failure mode kills the
          Blazor circuit and a Blazor-rendered panel would die with it. Starts hidden; revealed
          the moment anything is logged (any JS error, or C# phase tracing once a Run begins). -->
-    <div id="runTracePanel" style="position:fixed; left:0; right:0; bottom:0; max-height:40vh; overflow:auto; z-index:99999; background:rgba(0,0,0,0.85); color:#0f0; font:11px/1.3 monospace; white-space:pre-wrap; padding:6px; display:none;"></div>
+    <div id="runTracePanel" style="position:fixed; left:0; right:0; bottom:0; max-height:70vh; overflow:auto; z-index:99999; background:rgba(0,0,0,0.85); color:#0f0; font:8px/1.15 monospace; white-space:pre-wrap; padding:6px; display:none;"></div>
 
     <!-- Defined before Blazor boots so the error/rejection hooks are live as early as possible. -->
     <script>
         window.runTrace = {
             lines: [],
             log: function (msg) {
+                // Collapse the repeated page origin out of stack frames so wasm-function URLs
+                // stay short enough to screenshot (issue #90).
+                msg = ('' + msg).split(window.location.origin + '/').join('').split(window.location.origin).join('');
                 var heap = '';
                 try { if (performance && performance.memory) heap = ' [' + (performance.memory.usedJSHeapSize / 1048576).toFixed(1) + 'MB]'; } catch (e) { }
                 var t = (performance.now() / 1000).toFixed(2);
@@ -50,12 +53,30 @@
             },
             clear: function () { this.lines = []; var p = document.getElementById('runTracePanel'); if (p) p.textContent = ''; }
         };
+        // Emscripten/mono aborts throw a plain object, an ExitStatus, or a number rather than an
+        // Error, so e.message stringifies to "[object Object]" and hides the real abort reason
+        // (the key to telling OOM from a native GL fault — issue #90). Dig the content out.
+        function describeErr(x) {
+            try {
+                if (x == null) return String(x);
+                if (typeof x === 'string' || typeof x === 'number') return String(x);
+                if (x instanceof Error) return (x.name || 'Error') + ': ' + (x.message || '') + (x.stack ? '\n' + x.stack : '');
+                var parts = [];
+                if (x.message) parts.push('message=' + x.message);
+                if (x.reason != null) parts.push('reason=' + x.reason);
+                if (x.status != null) parts.push('status=' + x.status);
+                try { var j = JSON.stringify(x); if (j && j !== '{}') parts.push('json=' + j); } catch (e) { }
+                try { var k = Object.keys(x).join(','); if (k) parts.push('keys=[' + k + ']'); } catch (e) { }
+                if (x.stack) parts.push('\n' + x.stack);
+                if (parts.length === 0) parts.push(Object.prototype.toString.call(x));
+                return parts.join(' ');
+            } catch (e) { return '<describeErr failed: ' + e + '>'; }
+        }
         window.addEventListener('error', function (e) {
-            window.runTrace.log('JS ERROR: ' + (e.message || '') + (e.error && e.error.stack ? ' | ' + e.error.stack : ''));
+            window.runTrace.log('JS ERROR: ' + describeErr(e.error != null ? e.error : e.message));
         });
         window.addEventListener('unhandledrejection', function (e) {
-            var r = e.reason;
-            window.runTrace.log('UNHANDLED REJECTION: ' + (r && r.stack ? r.stack : (r && r.message ? r.message : r)));
+            window.runTrace.log('UNHANDLED REJECTION: ' + describeErr(e.reason));
         });
     </script>
 
