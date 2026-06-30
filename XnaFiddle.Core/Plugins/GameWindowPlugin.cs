@@ -60,6 +60,37 @@ namespace XnaFiddle.Plugins
             {
                 // Intentionally swallowed — same rationale as the _instances clear above.
             }
+
+            try
+            {
+                // Each game's BlazorGameWindow ctor subscribes new closures to Window.Current's input-event
+                // delegates (OnTouchStart/Move/End/Cancel, OnKeyDown/Up, OnMouse*, OnResize, etc.).
+                // Window.Current is a page-lifetime singleton and old games are dropped without Dispose(),
+                // so those closures accumulate one set per Run and are never removed. On touch devices a
+                // single tap fans the event out to stale closures from dead games (reaching into a torn-down
+                // TouchPanel.Current strategy), tripping a Mono runtime assertion (class-accessors.c) -> abort()
+                // -> dead app on the 2nd-3rd restart. Desktop uses mouse paths with far more headroom and
+                // tolerates it. Nulling these fields here (CleanUp runs before the next game's ctor
+                // re-subscribes) makes each Run start from a single subscriber. Resolved by name because
+                // nkast.Wasm.Dom is browser-only. See issue #90.
+                Type windowDomType = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(a => a.GetType("nkast.Wasm.Dom.Window"))
+                    .FirstOrDefault(t => t != null);
+                var currentProp = windowDomType?.GetProperty("Current",
+                    BindingFlags.Static | BindingFlags.Public);
+                object window = currentProp?.GetValue(null);
+                if (window != null)
+                {
+                    foreach (var f in windowDomType.GetFields(BindingFlags.Instance | BindingFlags.Public))
+                        if (typeof(Delegate).IsAssignableFrom(f.FieldType))
+                            f.SetValue(window, null);
+                }
+            }
+            catch
+            {
+                // Intentionally swallowed — same rationale as the clears above. Under net8.0 (tests)
+                // nkast.Wasm.Dom is absent so windowDomType is null and this block no-ops.
+            }
         }
     }
 }

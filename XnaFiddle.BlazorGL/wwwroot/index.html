@@ -86,7 +86,8 @@
         window._hoverActive   = true;
 
         // FPS cap. _tickInterval is the minimum ms between ticks (0 = uncapped).
-        // Embed mode defaults: 30fps desktop, 20fps mobile. Override with ?fps=N.
+        // Embed mode defaults: 30fps desktop, 20fps mobile. Full editor on touch stays uncapped;
+        // toolbar taps use capture-phase touchend instead (issue #90). ?fps=N overrides.
         window._tickInterval = 0;
         window._lastTickTime = 0;
 
@@ -121,9 +122,6 @@
             var tickMs = performance.now() - tickStart;
 
             if (tickMs > WATCHDOG_FRAME_MS) {
-                // Frame took too long — game is likely stuck in a busy-loop.
-                // Notify .NET to stop the game, then continue the rAF loop so the
-                // UI remains responsive (future ticks will see _game == null and return fast).
                 window.theInstance.invokeMethod('OnGameTimedOut', tickMs);
             }
 
@@ -133,6 +131,32 @@
                 window.requestAnimationFrame(tickJS);
             }
         } // end tickJS
+
+        // Touch toolbar: capture-phase touchend + invokeMethodAsync bypasses Blazor @onclick
+        // when the game loop starves the dispatcher (issue #90). Buttons use data-touch-action.
+        function wireTouchToolbar() {
+            if (!window._touchDevice) return;
+            // A toolbar tap must be fully invisible to KNI's window-level touch listeners. We
+            // trigger the action on touchend, but we ALSO stop touchstart/move/cancel from reaching
+            // KNI. Otherwise KNI's TouchPanel records the press (touchstart) yet never the release
+            // (we swallow touchend), leaving a dangling nativeTouchId that collides on the next tap:
+            // "nativeTouchId already registered" — fatal under Debug.Assert in a Debug build, a
+            // stuck phantom touch under Release. Touch events keep their initial target across the
+            // sequence, so closest('[data-touch-action]') matches for every phase of the tap.
+            // Issue #90.
+            ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (type) {
+                document.addEventListener(type, function (e) {
+                    var btn = e.target.closest && e.target.closest('[data-touch-action]');
+                    if (!btn) return;
+                    e.stopImmediatePropagation();
+                    if (type === 'touchend') {
+                        e.preventDefault();
+                        if (window.theInstance)
+                            window.theInstance.invokeMethodAsync(btn.getAttribute('data-touch-action'));
+                    }
+                }, { capture: true, passive: false });
+            });
+        }
 
         // Splitter + layout logic (supports left/right and top/bottom modes)
         (function () {
@@ -470,8 +494,10 @@
 
             var params = new URLSearchParams(window.location.search);
             var isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            window._touchDevice = isTouchDevice;
 
-            // FPS cap — embed mode defaults: 30fps desktop, 20fps mobile. ?fps=N overrides.
+            // FPS cap — embed: 30fps desktop / 20fps mobile. Full editor stays uncapped on touch
+            // (toolbar uses touchend bypass — issue #90). ?fps=N overrides.
             var fpsParam = parseInt(params.get('fps'), 10);
             var isEmbed  = params.get('embed') === 'true';
             var targetFps = 0;
@@ -482,8 +508,10 @@
             }
             window._tickInterval = targetFps > 0 ? (1000 / targetFps) : 0;
 
+            wireTouchToolbar();
+
             // ?hover=true — throttle to 2fps when mouse is not over the canvas.
-            // Ignored on touch devices (no hover concept; always runs at full speed).
+            // Ignored on touch devices (no hover concept; touch FPS capped separately — issue #90).
             if (params.get('hover') === 'true' && !isTouchDevice) {
                 window._hoverThrottle = true;
                 window._hoverActive   = false; // start throttled until first hover

@@ -1,5 +1,5 @@
 ---
-description: The compile-to-run pipeline and WebGL/GraphicsDevice resource lifecycle in XnaFiddle — how a Run rebuilds the game, the per-run WebGL context leak and its UseReferenceDevice fix, Roslyn metadata-reference caching, and documented dead-ends. Load when working on DoCompileAndRun, game restart/lifecycle, GraphicsDevice/WebGL/canvas issues, render targets / mipmapped RenderTarget2D / explicit-LOD (SampleLevel) sampling / multi-texture effects, "Shader Compilation Failed"/CONTEXT_LOST_WEBGL/"Too many active WebGL contexts"/"texParameter: no texture bound" crashes, compile performance, or CompilationService.
+description: The compile-to-run pipeline and WebGL/GraphicsDevice resource lifecycle in XnaFiddle — how a Run rebuilds the game, the per-run WebGL context leak and its UseReferenceDevice fix, Roslyn metadata-reference caching, and documented dead-ends. Load when working on DoCompileAndRun, game restart/lifecycle, GraphicsDevice/WebGL/canvas issues, mobile restart crashes / touch UI starvation (issue #90 — Window.Current event leak, touch-toolbar bypass), diagnosing console-less mobile WASM crashes (Mono aborts, Debug.Assert vs native assertions), render targets / mipmapped RenderTarget2D / explicit-LOD (SampleLevel) sampling / multi-texture effects, "Shader Compilation Failed"/CONTEXT_LOST_WEBGL/"Too many active WebGL contexts"/"texParameter: no texture bound" crashes, compile performance, or CompilationService.
 ---
 
 # Game Lifecycle
@@ -72,6 +72,32 @@ Reusing the same `MetadataReference` instances also lets Roslyn reuse decoded sy
 
 Warm result: reference resolution ~85ms (all cached), `Emit` ~600ms — **emit now dominates** (the cache turned the reference step from the bottleneck into a rounding error). The user-facing "Compiled in Xs" message in `DoCompileAndRun` reflects the total.
 
+## Touch UI starvation (issue #90)
+
+Blazor WASM is single-threaded. `index.html` `tickJS` calls `TickDotNet` synchronously on every rAF frame; uncapped FPS after Run can starve Blazor `@onclick` on touch devices (toolbar buttons stop responding). **Fix:** capture-phase `touchend` → `invokeMethodAsync` on toolbar buttons (`data-touch-action`). Desktop uses normal `@onclick`.
+
+**Restart memory (mobile):** WASM cannot unload assemblies. Each unchanged Restart used to `Assembly.Load` again until mobile OOM'd (~3rd run). **Fix:** `CompileFingerprint` (C# + shader tabs) caches the loaded `Type`; unchanged restarts skip Roslyn + `Assembly.Load` and only tear down + `Activator.CreateInstance` the cached type. Desktop tolerated redundant loads; mobile did not.
+
+### The mobile restart CRASH — two distinct bugs (both fixed)
+
+The starvation/memory fixes above did **not** stop the crash. It was finally root-caused to two unrelated bugs; FPS throttling and the WebGL-context-leak hypothesis were both wrong (see dead ends).
+
+**Bug 1 — `Window.Current` input-event subscription leak (the primary fix).** `nkast.Wasm.Dom.Window.Current` is a page-lifetime singleton; its input events are plain **public multicast-delegate fields** (`Wasm.Dom/Dom/Window.cs` — `OnResize/OnFocus/OnBlur`, `OnMouse*`, `OnKey*`, `OnTouchStart/Move/End/Cancel`, `OnGamepad*`). Every game's `BlazorGameWindow` ctor does `_window.OnTouchStart += closure` (etc.) with `_window = Window.Current` (`BlazorGameWindow.cs`). Old games are dropped without `Dispose()` (intentional — see "Each Run rebuilds"), so these closures **accumulate one set per Run** and are never removed. A single touch fires the whole multicast delegate (`Window.cs` `JsWindowOnTouchStart` → `handler(...)`); stale closures from dead games reach into a torn-down `TouchPanel.Current` strategy and trip a **native Mono runtime assertion** (`mono/metadata/class-accessors.c:92`) → `abort()` → `exit(1)` → dead app. Mobile-only (touch path; desktop mouse tolerates 50+ restarts); scales with restart count (died ~2nd-3rd restart). **Fix:** `GameWindowPlugin.CleanUp()` now nulls every public delegate field on `Window.Current` by reflection (in addition to its existing `_instances` / `Document._elementsCache` clears). `CleanUp` runs before the next game's ctor re-subscribes → a single subscriber per Run.
+
+**Bug 2 — touch-toolbar bypass swallowed `touchend`, desyncing KNI's TouchPanel (DEBUG-only).** The original #90 bypass intercepted only capture-phase `touchend` on `[data-touch-action]` buttons and called `stopImmediatePropagation()`. But `touchstart` still reached KNI's window listener → `AddPressedEvent(id)` registered the press; the swallowed `touchend` meant `AddReleasedEvent(id)` never fired → a dangling `nativeTouchId`. The next tap reusing that id hit `TouchPanelStrategy.AddPressedEvent`'s `Debug.Assert("nativeTouchId already registered")` (`ConcreteTouchPanel.cs` / `TouchPanelStrategy.Legacy*.cs`). **`Debug.Assert` is `[Conditional("DEBUG")]` → stripped in Release**, so this crash is **dev-server only** (`dotnet run`); a published build would leave a harmless phantom stuck touch instead. **Fix:** `wireTouchToolbar` now stops `touchstart`/`touchmove`/`touchend`/`touchcancel` for `[data-touch-action]` targets (only `touchend` triggers the action) → toolbar taps are fully invisible to KNI, press/release stay balanced. (Touch events keep their initial target across the whole sequence, so `closest('[data-touch-action]')` matches every phase.)
+
+## Diagnosing mobile WASM crashes (no console)
+
+The playbook that cracked #90 — mobile has no usable console:
+
+- **`Console.WriteLine` is invisible.** Build a **pure-JS** on-screen ring-buffer panel that writes to the DOM directly (not via Blazor) so it survives a dead Blazor circuit (the failure mode kills the circuit).
+- **Mono/Emscripten aborts throw a plain object / `ExitStatus` / number**, not an `Error` — `e.message` stringifies to `[object Object]`. Unwrap `name`/`message`/`status`/`stack` for the real reason.
+- The real abort reason usually prints via `console.error` **before** the `ExitStatus` throw → tee `console.warn`/`console.error` into the panel; `window.onerror`/`unhandledrejection` alone miss it.
+- **WebGL context loss is observable without a debugger** via **capture-phase** `webglcontextlost`/`webglcontextrestored`/`webglcontextcreationerror` listeners on `window` (these events don't bubble; `webglcontextcreationerror.statusMessage` carries "Too many active WebGL contexts").
+- **Distinguish crash classes:** a **native Mono assertion** (`class-accessors.c`, `loader.c`, …) fires in Release too — a real runtime-invariant violation. A managed **`Debug.Assert` is DEBUG-only** (stripped in Release) — check the build config before treating a dev-server crash as production-affecting.
+- **Stale-cache verification needs a *deterministic* build marker** (fixed value bumped per edit), not a random one — random only proves the RNG ran, not which build is served. No service worker here; staleness is plain HTTP browser cache. (The in-app ForceRefresh "Refresh" button also throws over plain HTTP — `caches`/CacheStorage requires a secure context.)
+- **`chrome://inspect` gotcha:** do **not** run a standalone `adb` server alongside Chrome's bundled ADB — they fight over the device and `inspect` hangs / device shows "Offline (pending authentication)". Chrome's ADB uses its own RSA key, so authorizing standalone adb doesn't authorize Chrome's.
+
 ## Why the leak "suddenly appeared"
 
 It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced only after the metadata-reference cache made compiles fast (~0.7s vs several seconds): fast iteration means a user naturally does 10+ Runs in one page session before refreshing, which is what reaches the context cap. It is **not** a GC-churn regression (see dead end #1).
@@ -86,15 +112,19 @@ It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced o
 1. **`GC.Collect()` / `GC.WaitForPendingFinalizers()` to reclaim leaked GL resources.** Useless: the leaked WebGL contexts are JS-side objects pinned in the `nkJSObject` registry, not .NET objects — GC can't touch them. (KNI's `GraphicsResource` finalizer does delete GL handles, but that was never the leak.)
 2. **Recreating `theCanvas` *every run* to fix the leak.** Pointless: `theCanvas` was never the leak (the OffscreenCanvas probe is — use `UseReferenceDevice`). Recreating it per run only adds the swap's failure modes. (Recreating it *on a profile switch* is correct — see that section — but only because two specific things are handled: clear `Document._elementsCache` so the stale `Canvas` wrapper isn't reused (else black screen), and recreate via Blazor `@key` rather than raw JS removal (else Blazor DOM-diff desync). Doing a raw JS swap without those two is the dead end.)
 3. **`WEBGL_lose_context.loseContext()` on the old context.** In Chrome this can reset the whole GPU process; a context created in the same synchronous turn comes up already-lost -> `CONTEXT_LOST_WEBGL` on the new device's first GL call.
+4. **FPS throttling to fix the #90 restart crash.** The 10/20fps full-editor cap tried during #90 did **not** fix the crash and was unrelated to frame rate — removed. The toolbar-unresponsive symptom is fixed by the `touchend` bypass, not a frame cap. (Embed-mode 20fps mobile / 30fps desktop is a separate, intentional, pre-existing cap — keep it.)
+5. **Assuming every mobile restart crash is the WebGL context leak.** It was the leading #90 hypothesis but was **disproven** — no `webglcontext*` events fired. The actual #90 crash was the `Window.Current` subscription leak. The context-exhaustion crash is real but is a *different* bug, already covered by the `UseReferenceDevice` fix above.
 
 ## Key files
 
 | File | Role |
 |---|---|
 | `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `DoCompileAndRun`, `CompileAndRun`, `TickDotNet`, swap window, `UseReferenceDevice` fix, `_canvasProfile`/`PromptProfileSwitch` |
+| `XnaFiddle.BlazorGL/wwwroot/index.html` | `tickJS` rAF loop, `_tickInterval` FPS cap (embed only: 20fps mobile / 30fps desktop), `wireTouchToolbar` — generalized touch bypass swallowing all 4 touch phases (issue #90) |
 | `XnaFiddle.BlazorGL/CompilationService.cs` | Roslyn compile, `_referenceCache`, `GetMetadataReferencesAsync`, `LogTiming` |
 | `XnaFiddle.Core/LibraryRegistry.cs` | `RunAllCleanups` — per-run plugin static-state reset |
-| `XnaFiddle.Core/Plugins/GameWindowPlugin.cs` | Clears KNI's static `BlazorGameWindow._instances` by reflection |
+| `XnaFiddle.Core/Plugins/GameWindowPlugin.cs` | Reflectively clears KNI's `BlazorGameWindow._instances`, `Document._elementsCache`, **and** every public delegate field on `Window.Current` (issue #90) |
+| `Submodules/KniSB/Submodules/WasmSB/Wasm.Dom/Dom/Window.cs` | `Window.Current` singleton; public multicast input-event delegate fields; `JsWindowOnTouchStart` fans a touch to all subscribers |
 | `Submodules/KniSB/Platforms/Graphics/.BlazorGL/ConcreteGraphicsAdapter.cs` | `Platform_IsProfileSupported` — the leaking HiDef probe + the `UseReferenceDevice` short-circuit |
 | `Submodules/KniSB/.../Wasm.Canvas/Canvas/OffscreenCanvas.cs` | Probe's WebGL2 context creation (no-attribs path leaks) |
-| `Submodules/KniSB/Platforms/Game/.Blazor/BlazorGameWindow.cs` | Resolves `theCanvas`; static `_instances` dictionary |
+| `Submodules/KniSB/Platforms/Game/.Blazor/BlazorGameWindow.cs` | Resolves `theCanvas`; static `_instances` dictionary; ctor subscribes per-game closures to `Window.Current` events, never unsubscribed (no Dispose) |
