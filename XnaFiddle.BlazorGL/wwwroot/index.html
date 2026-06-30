@@ -78,6 +78,40 @@
         window.addEventListener('unhandledrejection', function (e) {
             window.runTrace.log('UNHANDLED REJECTION: ' + describeErr(e.reason));
         });
+
+        // WebGL context-loss events (issue #90 — confirming the context-exhaustion theory without
+        // a debugger). These are real DOM events (unlike the "Too many active WebGL contexts"
+        // browser warning, which is console-only). They don't bubble, so capture phase on window is
+        // required to catch them regardless of which canvas they target — including canvases swapped
+        // in later via _canvasGen. webglcontextcreationerror.statusMessage typically carries the
+        // "Too many active WebGL contexts…" string, which is the confirming signal.
+        ['webglcontextlost', 'webglcontextrestored', 'webglcontextcreationerror'].forEach(function (ev) {
+            window.addEventListener(ev, function (e) {
+                var sm = '';
+                try { if (e && e.statusMessage) sm = ': ' + e.statusMessage; } catch (x) { }
+                window.runTrace.log('GL EVENT ' + ev + sm);
+            }, true);
+        });
+
+        // Tee console.warn/error into runTrace. Emscripten prints its abort reason via err() ->
+        // console.error BEFORE throwing ExitStatus, so it never reaches the window.onerror hook —
+        // wrapping these is the only way to capture it on-screen. console.log is deliberately NOT
+        // wrapped (runTrace.log calls it — wrapping would recurse).
+        ['warn', 'error'].forEach(function (level) {
+            var orig = console[level] ? console[level].bind(console) : function () { };
+            console[level] = function () {
+                try {
+                    var msg = Array.prototype.slice.call(arguments).map(function (a) {
+                        if (a == null) return String(a);
+                        if (typeof a === 'string') return a;
+                        if (a instanceof Error) return (a.message || '') + (a.stack ? '\n' + a.stack : '');
+                        try { var j = JSON.stringify(a); return (j && j !== '{}') ? j : String(a); } catch (e) { return String(a); }
+                    }).join(' ');
+                    window.runTrace.log('CONSOLE.' + level.toUpperCase() + ': ' + msg);
+                } catch (e) { }
+                return orig.apply(console, arguments);
+            };
+        });
     </script>
 
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
