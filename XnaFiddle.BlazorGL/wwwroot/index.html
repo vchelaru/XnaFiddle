@@ -27,6 +27,38 @@
         <a class="dismiss">x</a>
     </div>
 
+    <!-- On-screen run-trace panel (issue #90). Pure DOM, updated directly by runTrace.log
+         below — independent of Blazor's renderer, because the mobile failure mode kills the
+         Blazor circuit and a Blazor-rendered panel would die with it. Starts hidden; revealed
+         the moment anything is logged (any JS error, or C# phase tracing once a Run begins). -->
+    <div id="runTracePanel" style="position:fixed; left:0; right:0; bottom:0; max-height:40vh; overflow:auto; z-index:99999; background:rgba(0,0,0,0.85); color:#0f0; font:11px/1.3 monospace; white-space:pre-wrap; padding:6px; display:none;"></div>
+
+    <!-- Defined before Blazor boots so the error/rejection hooks are live as early as possible. -->
+    <script>
+        window.runTrace = {
+            lines: [],
+            log: function (msg) {
+                var heap = '';
+                try { if (performance && performance.memory) heap = ' [' + (performance.memory.usedJSHeapSize / 1048576).toFixed(1) + 'MB]'; } catch (e) { }
+                var t = (performance.now() / 1000).toFixed(2);
+                var line = t + 's' + heap + ' ' + msg;
+                this.lines.push(line);
+                if (this.lines.length > 80) this.lines.shift();
+                try { console.log('[runTrace] ' + line); } catch (e) { }
+                var p = document.getElementById('runTracePanel');
+                if (p) { p.textContent = this.lines.join('\n'); p.scrollTop = p.scrollHeight; p.style.display = 'block'; }
+            },
+            clear: function () { this.lines = []; var p = document.getElementById('runTracePanel'); if (p) p.textContent = ''; }
+        };
+        window.addEventListener('error', function (e) {
+            window.runTrace.log('JS ERROR: ' + (e.message || '') + (e.error && e.error.stack ? ' | ' + e.error.stack : ''));
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+            var r = e.reason;
+            window.runTrace.log('UNHANDLED REJECTION: ' + (r && r.stack ? r.stack : (r && r.message ? r.message : r)));
+        });
+    </script>
+
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script type="module">
         import { BrotliDecode } from './js/decode.min.js';
