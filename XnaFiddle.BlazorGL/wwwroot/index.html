@@ -27,93 +27,6 @@
         <a class="dismiss">x</a>
     </div>
 
-    <!-- On-screen run-trace panel (issue #90). Pure DOM, updated directly by runTrace.log
-         below — independent of Blazor's renderer, because the mobile failure mode kills the
-         Blazor circuit and a Blazor-rendered panel would die with it. Starts hidden; revealed
-         the moment anything is logged (any JS error, or C# phase tracing once a Run begins). -->
-    <div id="runTracePanel" style="position:fixed; left:0; right:0; bottom:0; max-height:70vh; overflow:auto; z-index:99999; background:rgba(0,0,0,0.85); color:#0f0; font:6px/1.1 monospace; white-space:pre-wrap; padding:6px; display:none;"></div>
-
-    <!-- Defined before Blazor boots so the error/rejection hooks are live as early as possible. -->
-    <script>
-        window.runTrace = {
-            lines: [],
-            log: function (msg) {
-                // Collapse the repeated page origin out of stack frames so wasm-function URLs
-                // stay short enough to screenshot (issue #90).
-                msg = ('' + msg).split(window.location.origin + '/').join('').split(window.location.origin).join('');
-                var heap = '';
-                try { if (performance && performance.memory) heap = ' [' + (performance.memory.usedJSHeapSize / 1048576).toFixed(1) + 'MB]'; } catch (e) { }
-                var t = (performance.now() / 1000).toFixed(2);
-                var line = t + 's' + heap + ' ' + msg;
-                this.lines.push(line);
-                if (this.lines.length > 80) this.lines.shift();
-                try { console.log('[runTrace] ' + line); } catch (e) { }
-                var p = document.getElementById('runTracePanel');
-                if (p) { p.textContent = this.lines.join('\n'); p.scrollTop = p.scrollHeight; p.style.display = 'block'; }
-            },
-            clear: function () { this.lines = []; var p = document.getElementById('runTracePanel'); if (p) p.textContent = ''; }
-        };
-        // Emscripten/mono aborts throw a plain object, an ExitStatus, or a number rather than an
-        // Error, so e.message stringifies to "[object Object]" and hides the real abort reason
-        // (the key to telling OOM from a native GL fault — issue #90). Dig the content out.
-        function describeErr(x) {
-            try {
-                if (x == null) return String(x);
-                if (typeof x === 'string' || typeof x === 'number') return String(x);
-                if (x instanceof Error) return (x.name || 'Error') + ': ' + (x.message || '') + (x.stack ? '\n' + x.stack : '');
-                var parts = [];
-                if (x.message) parts.push('message=' + x.message);
-                if (x.reason != null) parts.push('reason=' + x.reason);
-                if (x.status != null) parts.push('status=' + x.status);
-                try { var j = JSON.stringify(x); if (j && j !== '{}') parts.push('json=' + j); } catch (e) { }
-                try { var k = Object.keys(x).join(','); if (k) parts.push('keys=[' + k + ']'); } catch (e) { }
-                if (x.stack) parts.push('\n' + x.stack);
-                if (parts.length === 0) parts.push(Object.prototype.toString.call(x));
-                return parts.join(' ');
-            } catch (e) { return '<describeErr failed: ' + e + '>'; }
-        }
-        window.addEventListener('error', function (e) {
-            window.runTrace.log('JS ERROR: ' + describeErr(e.error != null ? e.error : e.message));
-        });
-        window.addEventListener('unhandledrejection', function (e) {
-            window.runTrace.log('UNHANDLED REJECTION: ' + describeErr(e.reason));
-        });
-
-        // WebGL context-loss events (issue #90 — confirming the context-exhaustion theory without
-        // a debugger). These are real DOM events (unlike the "Too many active WebGL contexts"
-        // browser warning, which is console-only). They don't bubble, so capture phase on window is
-        // required to catch them regardless of which canvas they target — including canvases swapped
-        // in later via _canvasGen. webglcontextcreationerror.statusMessage typically carries the
-        // "Too many active WebGL contexts…" string, which is the confirming signal.
-        ['webglcontextlost', 'webglcontextrestored', 'webglcontextcreationerror'].forEach(function (ev) {
-            window.addEventListener(ev, function (e) {
-                var sm = '';
-                try { if (e && e.statusMessage) sm = ': ' + e.statusMessage; } catch (x) { }
-                window.runTrace.log('GL EVENT ' + ev + sm);
-            }, true);
-        });
-
-        // Tee console.warn/error into runTrace. Emscripten prints its abort reason via err() ->
-        // console.error BEFORE throwing ExitStatus, so it never reaches the window.onerror hook —
-        // wrapping these is the only way to capture it on-screen. console.log is deliberately NOT
-        // wrapped (runTrace.log calls it — wrapping would recurse).
-        ['warn', 'error'].forEach(function (level) {
-            var orig = console[level] ? console[level].bind(console) : function () { };
-            console[level] = function () {
-                try {
-                    var msg = Array.prototype.slice.call(arguments).map(function (a) {
-                        if (a == null) return String(a);
-                        if (typeof a === 'string') return a;
-                        if (a instanceof Error) return (a.message || '') + (a.stack ? '\n' + a.stack : '');
-                        try { var j = JSON.stringify(a); return (j && j !== '{}') ? j : String(a); } catch (e) { return String(a); }
-                    }).join(' ');
-                    window.runTrace.log('CONSOLE.' + level.toUpperCase() + ': ' + msg);
-                } catch (e) { }
-                return orig.apply(console, arguments);
-            };
-        });
-    </script>
-
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script type="module">
         import { BrotliDecode } from './js/decode.min.js';
@@ -223,13 +136,26 @@
         // when the game loop starves the dispatcher (issue #90). Buttons use data-touch-action.
         function wireTouchToolbar() {
             if (!window._touchDevice) return;
-            document.addEventListener('touchend', function (e) {
-                var btn = e.target.closest('[data-touch-action]');
-                if (!btn || !window.theInstance) return;
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                window.theInstance.invokeMethodAsync(btn.getAttribute('data-touch-action'));
-            }, { capture: true, passive: false });
+            // A toolbar tap must be fully invisible to KNI's window-level touch listeners. We
+            // trigger the action on touchend, but we ALSO stop touchstart/move/cancel from reaching
+            // KNI. Otherwise KNI's TouchPanel records the press (touchstart) yet never the release
+            // (we swallow touchend), leaving a dangling nativeTouchId that collides on the next tap:
+            // "nativeTouchId already registered" — fatal under Debug.Assert in a Debug build, a
+            // stuck phantom touch under Release. Touch events keep their initial target across the
+            // sequence, so closest('[data-touch-action]') matches for every phase of the tap.
+            // Issue #90.
+            ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (type) {
+                document.addEventListener(type, function (e) {
+                    var btn = e.target.closest && e.target.closest('[data-touch-action]');
+                    if (!btn) return;
+                    e.stopImmediatePropagation();
+                    if (type === 'touchend') {
+                        e.preventDefault();
+                        if (window.theInstance)
+                            window.theInstance.invokeMethodAsync(btn.getAttribute('data-touch-action'));
+                    }
+                }, { capture: true, passive: false });
+            });
         }
 
         // Splitter + layout logic (supports left/right and top/bottom modes)

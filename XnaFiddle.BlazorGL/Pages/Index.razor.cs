@@ -90,11 +90,6 @@ namespace XnaFiddle.Pages
         bool _hasCompiledOnce;
         string _compiledFingerprint;
         Type _cachedGameType;
-
-        // Run-trace diagnostics counters (issue #90). _runAttempt increments on every Run/Restart
-        // request; _runSucceeded increments only when a game is fully swapped in. Surfaced via Trace.
-        int _runAttempt;
-        int _runSucceeded;
         string _selectedExample = "";
         bool _exampleBrowserOpen;
         string _selectedCategory = "";
@@ -1055,9 +1050,6 @@ technique BasicColorDrawing
             if (_isCompiling)
                 return;
 
-            _runAttempt++;
-            Trace($"CompileAndRun attempt#{_runAttempt} (priorGame={(_game != null)})");
-
             if (_game != null)
             {
                 _game = null;
@@ -1083,7 +1075,6 @@ technique BasicColorDrawing
 
         private void StopGame()
         {
-            Trace("StopGame");
             if (_game == null)
                 return;
             _game = null;
@@ -1092,33 +1083,6 @@ technique BasicColorDrawing
             _statusMessage = "Stopped.";
             _statusColor = ColorPending;
             StateHasChanged();
-        }
-
-        // Synchronous JS log to the runTrace ring buffer (see index.html). Synchronous on purpose:
-        // must not add an await to the await-free game-swap window, and must flush before any crash.
-        private void Trace(string msg)
-        {
-            try { ((IJSInProcessRuntime)JsRuntime).InvokeVoid("runTrace.log", msg); }
-            catch { /* JS not ready / interop down — diagnostics are best-effort */ }
-        }
-
-        // How many closures are currently subscribed to KNI's singleton Window.Current.OnTouchStart.
-        // Proves the issue #90 leak/fix: it climbed 1,2,3… per Restart (each dead game's
-        // BlazorGameWindow ctor adds one, never removed) and aborted the app on touch; with
-        // GameWindowPlugin.CleanUp now nulling those delegates it must stay 1 on every Run. Resolved
-        // by name because nkast.Wasm.Dom is browser-only. Returns -1 on any reflection failure.
-        private static int GetWindowTouchSubscriberCount()
-        {
-            try
-            {
-                Type t = AppDomain.CurrentDomain.GetAssemblies()
-                    .Select(a => a.GetType("nkast.Wasm.Dom.Window"))
-                    .FirstOrDefault(x => x != null);
-                object win = t?.GetProperty("Current", BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
-                var del = t?.GetField("OnTouchStart", BindingFlags.Instance | BindingFlags.Public)?.GetValue(win) as Delegate;
-                return del?.GetInvocationList().Length ?? 0;
-            }
-            catch { return -1; }
         }
 
         private async Task<string> BuildCompileFingerprintAsync(string csharpSource)
@@ -1134,20 +1098,17 @@ technique BasicColorDrawing
                 string sourceCode = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
                 string fingerprint = await BuildCompileFingerprintAsync(sourceCode);
                 bool cacheHit = fingerprint == _compiledFingerprint && _cachedGameType != null;
-                Trace($"DoCompileAndRun cacheHit={cacheHit}");
                 Type gameType;
 
                 if (!cacheHit)
                 {
                     await JsRuntime.InvokeVoidAsync("compileTimerInterop.start");
-                    Trace("compile: start");
                     CompilationService.CompilationResult result = await Compiler.CompileAsync(sourceCode, (current, total) =>
                     {
                         _compileProgress = current;
                         _compileTotal = total;
                         StateHasChanged();
                     }, _shaderTabs.Count > 0, _compileCts.Token);
-                    Trace($"compile: done success={result.Success}");
                     await JsRuntime.InvokeVoidAsync("compileTimerInterop.stop");
                     double compileSeconds = (DateTime.Now - _compileStartTime).TotalSeconds;
                     _hasCompiledOnce = true;
@@ -1225,9 +1186,7 @@ technique BasicColorDrawing
         // or game init failed and the caller should stop without overwriting _isCompiling early.
         private async Task<bool> LaunchGameFromTypeAsync(Type gameType)
         {
-            Trace("launch: enter");
             string shaderError = await CompileRegisteredShadersAsync();
-            Trace($"launch: shaders done (err={shaderError != null})");
             if (shaderError != null)
             {
                 SetError("Shader compilation failed.", shaderError);
@@ -1256,7 +1215,6 @@ technique BasicColorDrawing
 
             Game newGame = (Game)Activator.CreateInstance(gameType);
             newGame.Content = new InMemoryContentManager(newGame.Services);
-            Trace($"launch: instance created, profile={GetGameProfile(newGame)}");
 
             // The game's GraphicsProfile (set in its constructor, which has now run)
             // decides the canvas's WebGL context type. If a previous game this session
@@ -1265,7 +1223,6 @@ technique BasicColorDrawing
             GraphicsProfile desiredProfile = GetGameProfile(newGame);
             if (_canvasProfile.HasValue && _canvasProfile.Value != desiredProfile)
             {
-                Trace("launch: PROFILE SWAP (canvas recreate)");
                 newGame = null;
                 LibraryRegistry.RunAllCleanups();
                 _canvasGen++;
@@ -1280,16 +1237,11 @@ technique BasicColorDrawing
             try
             {
                 await Task.Delay(1);
-                Trace("launch: delay done");
                 await JsRuntime.InvokeVoidAsync("clearCanvas");
-                Trace("launch: canvas cleared");
-                Trace("launch: pre-Run");
                 newGame.Run();
-                Trace("launch: post-Run OK");
             }
             catch (Exception runEx)
             {
-                Trace($"launch: Run THREW: {runEx.GetType().Name}: {runEx.Message}");
                 try { newGame.Dispose(); } catch { }
                 LibraryRegistry.RunAllCleanups();
 
@@ -1304,8 +1256,6 @@ technique BasicColorDrawing
             }
 
             _game = newGame;
-            _runSucceeded++;
-            Trace($"launch: SUCCESS, runSucceeded={_runSucceeded} touchSubs={GetWindowTouchSubscriberCount()}");
             _canvasProfile = GetGameProfile(newGame);
             await JsRuntime.InvokeVoidAsync("eval",
                 $"window._canvasContextType='{(_canvasProfile == GraphicsProfile.HiDef ? "webgl2" : "webgl")}'");
