@@ -46,3 +46,30 @@ html, body {
     0%   { transform: translateX(-150%); }
     100% { transform: translateX(400%); }
 }
+
+/* Mobile toolbar (issue #92). The desktop toolbar is a single non-wrapping flex row
+   with ~28-32px touch targets; on a phone the buttons clip off the right edge (the
+   fullscreen/collapse control, pushed there by margin-left:auto, became unreachable)
+   and the targets sit below the 44px guideline. Below 768px — the same breakpoint
+   Index.razor.cs uses to switch to a vertical (stacked) split, so the toolbar spans
+   the full viewport width here — let the row wrap so nothing clips, and grow every
+   button toward 44x44. The toolbar buttons use inline styles, but those set padding,
+   not min-width/min-height/flex-wrap, so these rules apply without an !important. */
+@media (max-width: 767px) {
+    .xf-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .xf-toolbar button,
+    .xf-toolbar > a {
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+    }
+
+    /* Controls whose flow is desktop-only (e.g. Export's local zip build). display is
+       set inline, so override needs !important. */
+    .xf-hide-mobile {
+        display: none !important;
+    }
+}

@@ -27,7 +27,7 @@
     flex-direction: column;
     overflow: hidden;">
 
-    <div style="padding: 6px 12px; background: #2d2d2d; display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+    <div class="xf-toolbar" style="padding: 6px 12px; background: #2d2d2d; display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
         @if (_isCompiling)
         {
             <button data-touch-action="TriggerStopCompilation" @onclick="StopCompilation"
@@ -78,7 +78,10 @@
                        border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
             <i class="codicon codicon-github"></i>
         </button>
-        <button @onclick="() => _exportOpen = !_exportOpen" title="Export Project"
+        @* Export ships a zip the user builds locally — useless on a phone, so hide it on
+           mobile (issue #92). The 768px breakpoint lives in app.css, matching the
+           layout-mode switch in Index.razor.cs. *@
+        <button class="xf-hide-mobile" @onclick="() => _exportOpen = !_exportOpen" title="Export Project"
                 style="padding: 4px 8px; background: @(_exportOpen ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
                        border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
             <i class="codicon codicon-package"></i>
