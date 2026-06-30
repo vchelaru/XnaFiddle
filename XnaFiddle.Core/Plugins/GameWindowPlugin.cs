@@ -11,6 +11,22 @@ namespace XnaFiddle.Plugins
         public string[] RequiredAssemblies => [];
         public string[] VersionAssemblies => [];
 
+        // The nkast.Wasm.Dom.Window event-delegate fields that BlazorGameWindow's ctor re-subscribes
+        // on EVERY game (BlazorGameWindow.cs: OnTouch*, OnKeyDown/Up, OnFocus/OnBlur). CleanUp() nulls
+        // exactly these between runs to stop per-run subscription accumulation (issue #90).
+        //
+        // It must NEVER include mouse/gamepad/resize: those are subscribed ONCE — ConcreteMouse
+        // .PlatformSetWindowHandle and ConcreteGamePad wire them, gated on Mouse.WindowHandle, which
+        // BlazorGameWindow sets only on the FIRST game. Nulling OnMouseMove/Down/Up/Wheel or
+        // OnGamepad* orphans input permanently after the first restart (mouse/Gum/cursor-trail go
+        // dead) — that was issue #95. Exposed (and pinned by GameWindowPluginTests) so this contract
+        // can't silently regress.
+        public static readonly string[] ClearedWindowEventFields =
+        {
+            "OnTouchStart", "OnTouchMove", "OnTouchEnd", "OnTouchCancel",
+            "OnKeyDown", "OnKeyUp", "OnFocus", "OnBlur",
+        };
+
         public void CleanUp()
         {
             try
@@ -63,16 +79,18 @@ namespace XnaFiddle.Plugins
 
             try
             {
-                // Each game's BlazorGameWindow ctor subscribes new closures to Window.Current's input-event
-                // delegates (OnTouchStart/Move/End/Cancel, OnKeyDown/Up, OnMouse*, OnResize, etc.).
-                // Window.Current is a page-lifetime singleton and old games are dropped without Dispose(),
-                // so those closures accumulate one set per Run and are never removed. On touch devices a
-                // single tap fans the event out to stale closures from dead games (reaching into a torn-down
-                // TouchPanel.Current strategy), tripping a Mono runtime assertion (class-accessors.c) -> abort()
-                // -> dead app on the 2nd-3rd restart. Desktop uses mouse paths with far more headroom and
-                // tolerates it. Nulling these fields here (CleanUp runs before the next game's ctor
-                // re-subscribes) makes each Run start from a single subscriber. Resolved by name because
-                // nkast.Wasm.Dom is browser-only. See issue #90.
+                // Null only the Window.Current event delegates that BlazorGameWindow's ctor
+                // re-subscribes every game (ClearedWindowEventFields). These leak otherwise:
+                // Window.Current is a page-lifetime singleton, old games are dropped without
+                // Dispose(), so each Run's closures pile up; a single touch then fans out to stale
+                // closures from dead games and trips a Mono runtime assertion (class-accessors.c) ->
+                // abort() on the 2nd-3rd restart (issue #90). CleanUp runs before the next game's
+                // ctor re-adds them, so each Run starts from a single subscriber.
+                //
+                // We must NOT blanket-clear every delegate field: mouse/gamepad are subscribed once
+                // and never re-subscribed, so clearing them kills input after the first restart
+                // (issue #95). See ClearedWindowEventFields. Resolved by name (nkast.Wasm.Dom is
+                // browser-only).
                 Type windowDomType = AppDomain.CurrentDomain.GetAssemblies()
                     .Select(a => a.GetType("nkast.Wasm.Dom.Window"))
                     .FirstOrDefault(t => t != null);
@@ -81,9 +99,9 @@ namespace XnaFiddle.Plugins
                 object window = currentProp?.GetValue(null);
                 if (window != null)
                 {
-                    foreach (var f in windowDomType.GetFields(BindingFlags.Instance | BindingFlags.Public))
-                        if (typeof(Delegate).IsAssignableFrom(f.FieldType))
-                            f.SetValue(window, null);
+                    foreach (string name in ClearedWindowEventFields)
+                        windowDomType.GetField(name, BindingFlags.Instance | BindingFlags.Public)
+                            ?.SetValue(window, null);
                 }
             }
             catch
