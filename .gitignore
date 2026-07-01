@@ -1,6 +1,7 @@
 ## .NET
 bin/
 obj/
+artifacts/
 *.user
 *.suo
 *.cache

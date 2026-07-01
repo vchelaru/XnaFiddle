@@ -39,6 +39,7 @@
         else
         {
             <button @onclick="CompileAndRun"
+                    data-testid="run-button"
                     style="padding: 4px 14px; background: #0e639c; color: white; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="codicon codicon-play"></i>
                 @(_game != null ? "Restart" : "Run")
