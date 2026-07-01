@@ -14,6 +14,20 @@
            coarse-pointer rule can fatten it for finger dragging on mobile (issue #91). */
         #diagnosticsSplitter { height: 4px; }
         @media (pointer: coarse) { #diagnosticsSplitter { height: 12px; } }
+
+        @media (pointer: coarse) {
+            /* Decouple the finger hit-target from the thin visible bar: a transparent
+               ::before overhangs ~17px onto BOTH neighbours (editor + canvas), giving a
+               ~44px grab zone (Apple/Material min touch target) without fattening the
+               visible line. Pointer events on the overhang still target #splitter, so the
+               existing capture / _uiDragging drag logic is unchanged. inset:-17px extends
+               every side, which is what we want in either orientation. Issue #102. */
+            #splitter::before {
+                content: '';
+                position: absolute;
+                inset: -17px;
+            }
+        }
     </style>
 </head>
 
@@ -220,10 +234,12 @@
             var SPLITTER_COLOR = '#007acc'; // canonical accent (no active marker)
             var splitRatio = 0.45;
             var dragging = false;
-            // Fatten the splitter on touch devices so a finger has something to grab
-            // (issue #91). A coarse pointer means finger/stylus input, not a mouse.
+            // On touch the finger hit-target is widened separately from the visible bar
+            // (transparent #splitter::before overhang, ~44px — see the CSS), so the visible
+            // line stays thin. A coarse pointer means finger/stylus input, not a mouse.
+            // Issue #102 (was 14px flat before). #91.
             var coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-            var splitterSize = coarsePointer ? 14 : 5;
+            var splitterSize = coarsePointer ? 10 : 5;
             var isVertical = false;
             var collapsed = false;
 
