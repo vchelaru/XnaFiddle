@@ -27,4 +27,10 @@
     <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- UrlCodec: build #code= / #snippet= deep-link payloads deterministically in tests, so the
+         cold-boot round-trip tests (issue #112) don't have to scrape a URL out of the running app. -->
+    <ProjectReference Include="..\XnaFiddle.Core\XnaFiddle.Core.csproj" />
+  </ItemGroup>
+
 </Project>

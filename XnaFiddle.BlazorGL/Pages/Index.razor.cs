@@ -14,6 +14,8 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework.Input.Touch;
 
 namespace XnaFiddle.Pages
 {
@@ -353,6 +355,42 @@ technique BasicColorDrawing
         {
             if (!_isCompiling)
                 CompileAndRun();
+        }
+
+        // Test-only debug hook (issue #112): exposes the current input state and whether a game is
+        // live so an e2e test can make a DETERMINISTIC assertion that the input subsystem is wired
+        // after a run / example switch, instead of a flaky pixel read of the canvas. This is the
+        // one app-code hook the e2e-testing skill's boundary allows — input/game state the DOM
+        // can't express. Reading input is wrapped in try/catch and gated on a running game so a
+        // pre-run probe (no window/device yet) returns zeros rather than throwing.
+        [JSInvokable]
+        public InputDebugState GetInputDebugState()
+        {
+            var state = new InputDebugState { GameRunning = _game != null };
+            if (_game == null)
+                return state;
+            try
+            {
+                MouseState mouse = Mouse.GetState();
+                state.MouseX = mouse.X;
+                state.MouseY = mouse.Y;
+                state.TouchCount = TouchPanel.GetState().Count;
+            }
+            catch
+            {
+                // Input not queryable yet (device/window still coming up) — leave the zeroed
+                // defaults; GameRunning already conveys the game is alive.
+            }
+            return state;
+        }
+
+        // Serialized to JS for GetInputDebugState. Public so JSInterop can marshal it.
+        public sealed class InputDebugState
+        {
+            public bool GameRunning { get; set; }
+            public int MouseX { get; set; }
+            public int MouseY { get; set; }
+            public int TouchCount { get; set; }
         }
 
         private string GetAssetUrlsFragment()

@@ -13,9 +13,9 @@ Test project: `XnaFiddle.E2E.Tests` (NUnit + `Microsoft.Playwright.NUnit`). `Nul
 3. `StaticSiteHost.StartAsync(webRoot)` serves it in-process via Kestrel on an OS-assigned port (`http://127.0.0.1:0`). Uses `UseBlazorFrameworkFiles` so `_framework` Webcil assemblies get `application/wasm` (a plain static server serves octet-stream, which the browser refuses). `MapFallbackToFile("index.html")` for deep links.
 4. Playwright drives headless Chromium against `host.BaseUrl`.
 
-`OneTimeSetUp`/`OneTimeTearDown` in `SmokeTest.cs` own host + browser + page lifetime; individual tests just navigate and assert.
+`E2ETestBase` (base fixture) owns the expensive shared pieces in `OneTimeSetUp`: the Kestrel host, Playwright, the browser, and **one** `IBrowserContext`. Each `[Test]` gets a **fresh `IPage`** (`[SetUp]`/`[TearDown]`) so a still-running game, a set `window._canvasContextType`, or leftover DOM can't leak across tests. The context is shared (not per-test) so the ~15-20 MB WASM payload stays in the HTTP cache between pages instead of re-downloading each test. `SmokeTest` and `CoreBehaviorsTest` both extend it; put shared helpers (`BootAsync`, `ClickRunAsync`, `WaitForWebGlContextAsync`, `SetEditorValueAsync`, etc.) on the base.
 
-**Locally:** if `artifacts/e2e-publish/wwwroot/index.html` already exists, skip publish — just `dotnet test`. CI (`.github/workflows/e2e.yml`) does publish → build test proj → `playwright.ps1 install chromium` → `dotnet test --no-build`.
+**Locally:** if `artifacts/e2e-publish/wwwroot/index.html` already exists, skip publish — just `dotnet test`. **But if you changed app code** (a new `data-testid`, a hook), re-publish first or the served app is stale and tests fail on the missing hook. CI (`.github/workflows/e2e.yml`) does publish → build test proj → `playwright.ps1 install chromium` → `dotnet test --no-build`. Full suite (14 tests, no shader test) runs ~1.5 min locally with warm caches.
 
 ## Windows-only publish (CI gotcha)
 
@@ -54,9 +54,21 @@ await WaitForWebGlContextAsync();      // passes only when THIS run re-sets it
 
 Deterministic, no app-code change. The restart loop in `RepeatedRestart_UnchangedSource_StaysAliveAndKeepsWebGl` is the reference example.
 
+## Deep-link (`#code=` / `#snippet=`) reload gotcha
+
+A browser treats a navigation that differs **only by `#fragment`** as *in-page* — it does NOT reload the document, so Blazor's `OnAfterRender(firstRender)` never re-runs and the deep-link payload is silently ignored (editor keeps the old code, no compile fires). A brand-new page's *first* `GotoAsync` is a real cross-document load, so cold-boot deep-link tests are fine. But when the page is **already on the served app** (e.g. you booted, opened Share, grabbed the URL), navigating to that `#code=`/`#snippet=` URL needs a forced cross-document load: go to `about:blank` first (`BootFreshAsync` on the base). Symptom if you forget: the round-trip times out at `WaitForWebGlContextAsync` while the editor shows the *original* (not the shared) code and diagnostics are empty.
+
+To build a deep-link payload deterministically in a test, reference `XnaFiddle.Core` (net8.0) and call `UrlCodec.Encode(code)` — same codec the app uses, so it round-trips. The E2E project already has this `ProjectReference`.
+
+## Test hooks available (issue #112)
+
+`data-testid` hooks on the UI (add more the same way — they're inert): `run-button` (Run/Restart, label toggles), `stop-button` (StopGame, only while a game runs), `examples-button`, `example-card` (+ `data-example-name="<name>"` for precise selection), `share-button`, `share-snippet-toggle`, `share-url-input` (the readonly URL box, present in both Code and Snippet modes), `assets-button`, `diagnostics` (the diagnostics `<pre>`, only rendered once non-empty), `game-canvas` (the `<canvas>`, both modes). Diagnostics text to sync on: `"Compiled in"` (fresh compile), `"Restarted without recompile"` (cache hit), and the status span text `"Compilation failed."` / `"Stopped."`.
+
+One debug hook exists: **`GetInputDebugState`** (JSInvokable on `Index`, reachable via `window.theInstance.invokeMethodAsync('GetInputDebugState')`). Returns `{ gameRunning, mouseX, mouseY, touchCount }` (camelCase — Blazor JSInterop's default). Used by the A→B→A sample-switch test for a deterministic aliveness assertion instead of a pixel read.
+
 ## When to add an app-code hook
 
-Rule of thumb: use the existing observable signals above; add a new app debug hook **only** for input/game-state assertions the DOM can't express. Example: issue #95's planned `GetInputDebugState` (exposing `Mouse.GetState()` position / touch count via JS interop) for a deterministic input assertion instead of a flaky pixel-read. Don't add hooks for anything already observable.
+Rule of thumb: use the existing observable signals above; add a new app debug hook **only** for input/game-state assertions the DOM can't express. `GetInputDebugState` (above) is the one such hook — don't add more for anything already observable via a `data-testid` or `_canvasContextType`.
 
 ## Choosing N for restart/stress loops
 
