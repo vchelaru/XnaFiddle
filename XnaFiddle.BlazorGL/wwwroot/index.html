@@ -129,10 +129,20 @@
                 // Subtract remainder to avoid drift accumulating over time
                 window._lastTickTime = now - (elapsed % window._tickInterval);
             }
-            // Sync canvas drawing buffer to its container each frame
+            // Sync canvas drawing buffer to its container each frame — but NOT while a splitter is
+            // being dragged (issue #105). Assigning canvas.width/height REALLOCATES the WebGL drawing
+            // buffer, and on Windows Chrome (ANGLE -> D3D11) a fresh buffer is filled with magenta as
+            // its uninitialized pattern. Normally invisible because the game's Draw repaints it that
+            // same frame — but a splitter drag changes the holder size every frame while the game step
+            // may be skipped (touch, _uiDragging) or lag the resize, so the raw magenta buffer shows
+            // through for the whole drag. Instead we let the last-good buffer stretch via CSS
+            // (#theCanvas is width/height:100% of the holder) during the drag — slightly soft — and
+            // reallocate once on drag-end: the first tick after _uiDragging clears sees the size
+            // mismatch below and snaps the buffer crisp. This also removes the per-frame realloc +
+            // OnCanvasResized churn during a drag. Both splitter handlers set _uiDragging.
             var canvas = document.getElementById('theCanvas');
             var holder = document.getElementById('canvasHolder');
-            if (canvas && holder) {
+            if (canvas && holder && !window._uiDragging) {
                 var w = holder.clientWidth;
                 var h = holder.clientHeight;
                 if (canvas.width !== w || canvas.height !== h) {
