@@ -211,6 +211,13 @@
 
         // Splitter + layout logic (supports left/right and top/bottom modes)
         (function () {
+            // STALE-CACHE BUILD MARKER (deterministic — bumped by hand every build we hand off for
+            // testing, especially on mobile where there's no easy hard-reload and index.html/DLLs
+            // cache over plain HTTP). This lives in index.html on purpose: it's the cache-prone JS,
+            // so if the served page is stale the splitter shows the PREVIOUS color. applyLayout
+            // paints it onto #splitter. Canonical (no-marker) accent is #007acc — reset to that
+            // before merging. See the issue-workflow skill ("Build marker"). Issue #94.
+            var SPLITTER_COLOR = '#e8830c'; // orange
             var splitRatio = 0.45;
             var dragging = false;
             // Fatten the splitter on touch devices so a finger has something to grab
@@ -244,6 +251,7 @@
                 // (a prior collapse may have set display:none).
                 panel.style.display = 'flex';
                 spl.style.display = 'flex';
+                spl.style.background = SPLITTER_COLOR; // stale-cache build marker (issue #94)
 
                 if (isVertical) {
                     var h = window.innerHeight;
