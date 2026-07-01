@@ -14,6 +14,34 @@
            coarse-pointer rule can fatten it for finger dragging on mobile (issue #91). */
         #diagnosticsSplitter { height: 4px; }
         @media (pointer: coarse) { #diagnosticsSplitter { height: 12px; } }
+
+        /* Main splitter grip handle — hidden by default; only a coarse (finger) pointer
+           gets the visible "grab here" affordance. applyLayout sizes/orients it. Issue #102. */
+        #splitterGrip { display: none; }
+
+        @media (pointer: coarse) {
+            /* Decouple the finger hit-target from the thin visible bar: a transparent
+               ::before overhangs ~17px onto BOTH neighbours (editor + canvas), giving a
+               ~44px grab zone (Apple/Material min touch target) without fattening the
+               visible line. Pointer events on the overhang still target #splitter, so the
+               existing capture / _uiDragging drag logic is unchanged. inset:-17px extends
+               every side, which is what we want in either orientation. Issue #102. */
+            #splitter::before {
+                content: '';
+                position: absolute;
+                inset: -17px;
+            }
+            /* The grip is a lighter pill centred on the bar; the toggle button sits in its
+               middle so grip ticks flank it and it clearly reads as a draggable handle. */
+            #splitterGrip {
+                display: block;
+                position: absolute;
+                background: rgba(255, 255, 255, 0.85);
+                border-radius: 6px;
+                z-index: 11;
+                pointer-events: none; /* let touches fall through to #splitter */
+            }
+        }
     </style>
 </head>
 
@@ -217,13 +245,17 @@
             // so if the served page is stale the splitter shows the PREVIOUS color. applyLayout
             // paints it onto #splitter. Canonical (no-marker) accent is #007acc — reset to that
             // before merging. See the issue-workflow skill ("Build marker"). Issue #94.
-            var SPLITTER_COLOR = '#007acc'; // canonical accent (no active marker)
+            var SPLITTER_COLOR = '#e8830c'; // BUILD MARKER: orange (issue #102 mobile test) — reset to #007acc before merge
             var splitRatio = 0.45;
             var dragging = false;
-            // Fatten the splitter on touch devices so a finger has something to grab
-            // (issue #91). A coarse pointer means finger/stylus input, not a mouse.
+            // On touch the finger hit-target is widened separately from the visible bar
+            // (transparent #splitter::before overhang, ~44px — see the CSS), so the visible
+            // line stays thin. A coarse pointer means finger/stylus input, not a mouse.
+            // A visible grip handle (#splitterGrip) supplies the "grab here" affordance so
+            // the thin bar still reads as draggable. Issue #102 (was 14px flat before). #91.
             var coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-            var splitterSize = coarsePointer ? 14 : 5;
+            var splitterSize = coarsePointer ? 10 : 5;
+            var GRIP_LONG = 56, GRIP_SHORT = 6; // grip pill: long axis along the bar
             var isVertical = false;
             var collapsed = false;
 
@@ -252,6 +284,23 @@
                 panel.style.display = 'flex';
                 spl.style.display = 'flex';
                 spl.style.background = SPLITTER_COLOR; // stale-cache build marker (issue #94)
+
+                // Grip pill runs ALONG the bar (issue #102): tall+thin in left/right mode,
+                // wide+short in top/bottom mode. Centred; the toggle button sits over its
+                // middle. Only meaningful on coarse pointers (CSS hides it otherwise).
+                var grip = document.getElementById('splitterGrip');
+                if (grip) {
+                    if (isVertical) {
+                        grip.style.width = GRIP_LONG + 'px';
+                        grip.style.height = GRIP_SHORT + 'px';
+                    } else {
+                        grip.style.width = GRIP_SHORT + 'px';
+                        grip.style.height = GRIP_LONG + 'px';
+                    }
+                    grip.style.left = '50%';
+                    grip.style.top = '50%';
+                    grip.style.transform = 'translate(-50%, -50%)';
+                }
 
                 if (isVertical) {
                     var h = window.innerHeight;

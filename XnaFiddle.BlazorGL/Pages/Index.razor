@@ -706,13 +706,16 @@
     align-items: center;
     justify-content: center;
     touch-action: none;">
+    @* Visible grip handle — a "grab here" affordance so the thin bar still reads as draggable
+       on touch. Sized/oriented by applyLayout and only shown on coarse pointers (issue #102). *@
+    <div id="splitterGrip"></div>
     <button @onclick="ToggleLayout"
             title="@(_layoutVertical ? "Switch to left/right layout" : "Switch to top/bottom layout")"
             style="position: absolute; width: 20px; height: 20px; padding: 0;
                    background: #007acc; color: white; border: none; cursor: pointer;
                    border-radius: 50%; font-size: 11px;
                    display: flex; align-items: center; justify-content: center;
-                   opacity: 0.6; transition: opacity 0.15s; z-index: 11;"
+                   opacity: 0.6; transition: opacity 0.15s; z-index: 12;"
             onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"
             onpointerdown="event.stopPropagation()">
         <i class="codicon @(_layoutVertical ? "codicon-split-horizontal" : "codicon-split-vertical")" style="font-size: 11px;"></i>
