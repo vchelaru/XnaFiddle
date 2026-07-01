@@ -30,7 +30,7 @@
     <div class="xf-toolbar" style="padding: 6px 12px; background: #2d2d2d; display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
         @if (_isCompiling)
         {
-            <button data-touch-action="TriggerStopCompilation" @onclick="StopCompilation"
+            <button @onclick="StopCompilation"
                     style="padding: 4px 14px; background: #e04040; color: #fff; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="codicon codicon-debug-stop"></i>
                 Stop
@@ -38,21 +38,21 @@
         }
         else
         {
-            <button data-touch-action="TriggerCompileAndRun" @onclick="CompileAndRun"
+            <button @onclick="CompileAndRun"
                     style="padding: 4px 14px; background: #0e639c; color: white; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="codicon codicon-play"></i>
                 @(_game != null ? "Restart" : "Run")
             </button>
             @if (_game != null)
             {
-                <button data-touch-action="TriggerStopGame" @onclick="StopGame"
+                <button @onclick="StopGame"
                         style="padding: 4px 14px; background: #e04040; color: #fff; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                     <i class="codicon codicon-debug-stop"></i>
                     Stop
                 </button>
             }
         }
-        <button data-touch-action="TriggerOpenExampleBrowser" @onclick="OpenExampleBrowser"
+        <button @onclick="OpenExampleBrowser"
                 style="padding: 4px 8px; background: @(_exampleBrowserOpen ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
                        border: 1px solid #555; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;
                        user-select: none; -webkit-user-select: none;">
@@ -803,7 +803,7 @@
                 Pick an example with the Examples button, or write your own XNA-style C# code,<br/>
                 then click the Run button to compile and run.
                 <div style="margin-top: 16px; pointer-events: auto;">
-                    <button data-touch-action="TriggerCompileAndRun" @onclick="CompileAndRun"
+                    <button @onclick="CompileAndRun"
                             style="padding: 6px 18px; background: #0e639c; color: white; border: none; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px;">
                         <i class="codicon codicon-play"></i>
                         Run

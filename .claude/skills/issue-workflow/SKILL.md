@@ -55,9 +55,10 @@ user testing as fast as possible:
    --urls "http://0.0.0.0:60441"`, then open `http://<machine-LAN-ip>:60441` on the phone (same
    Wi-Fi). Use plain **HTTP** (avoids the dev-cert-trust problem); it's fine unless the specific
    test needs a secure context (clipboard / CacheStorage). Find the LAN IP with `Get-NetIPAddress
-   -AddressFamily IPv4` (the Wi-Fi one, not the `172.x` WSL vEthernet). If the phone can't connect,
-   it's almost always Windows Firewall blocking inbound 60441 — offer to add a private-profile
-   inbound rule.
+   -AddressFamily IPv4` (the Wi-Fi one, not the `172.x` WSL vEthernet). The user has a **permanent
+   Windows Firewall rule** for inbound 60441, so the phone connects without any setup — do **not**
+   mention firewall, connection troubleshooting, or Incognito in the handoff; that's all handled on
+   their end. Just give them the URL and the marker color (below).
 2. **Then write concise, numbered manual steps** — what to run, what to click, and what correct
    behavior looks like (and the failure mode the fix addresses, so the user knows what they're
    confirming).
@@ -83,7 +84,7 @@ mobile testing**, bump a **deterministic** visual marker and tell the user the v
   below, advance to the *next* palette entry after it, and — as part of the same commit that bumps
   `SPLITTER_COLOR` — update that line to the color you just picked. This is the source of truth:
 
-      LAST MARKER: green #2f9e44
+      LAST MARKER: purple #7048e8
 
   Why a committed pointer line and not a git-history search: the shipped `SPLITTER_COLOR` is
   bump-then-reset (magenta on the branch, back to `#007acc` before merge), so its **net diff is
@@ -92,9 +93,9 @@ mobile testing**, bump a **deterministic** visual marker and tell the user the v
   pointer line has a **persistent net change** (magenta → green), so it survives *any* merge
   strategy and is readable at a glance with no `git log` archaeology. Keep the two in lockstep: the
   same commit bumps `SPLITTER_COLOR` *and* this line.
-- Tell the user to load in a **fresh Incognito tab** (guarantees a clean fetch) and check the
-  splitter is the color you named **before** re-running the test. Wrong color = stale cache, not a
-  failed fix.
+- **The color is the only thing to tell the user in the handoff.** State the name **and** hex; that
+  is enough for them to confirm the served build is fresh (wrong color = stale cache, not a failed
+  fix). They manage their own clean-fetch flow — don't instruct them on Incognito or reloading.
 - **Before the PR merges, reset `SPLITTER_COLOR` to the canonical accent `#007acc`** so `main`
   doesn't ship a random marker color.
 

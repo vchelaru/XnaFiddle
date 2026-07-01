@@ -116,6 +116,10 @@
         // on touch) and while a splitter is being dragged (smooth resize on touch). Issue #94.
         window._tickSuspended = false;
         window._uiDragging = false;
+        // Set true for the duration of a touch on a non-canvas UI element (see wireTouchInputIsolation).
+        // A transient game-step pause frees the single WASM thread to service the tap's @onclick on
+        // touch, mirroring _tickSuspended/_uiDragging but scoped to one touch. Issue #107.
+        window._uiTouchActive = false;
 
         function tickJS(timestamp) {
             // FPS cap: skip this tick if not enough time has elapsed since the last one.
@@ -158,7 +162,7 @@
             // the uncapped loop. The game freezes for the brief interaction, then resumes. Touch
             // only: on desktop the loop doesn't starve @onclick/pointer input, so we don't want to
             // freeze the game behind the modal or during a drag there. Issue #94.
-            if (window._touchDevice && (window._tickSuspended || window._uiDragging)) {
+            if (window._touchDevice && (window._tickSuspended || window._uiDragging || window._uiTouchActive)) {
                 window.requestAnimationFrame(tickJS);
                 return;
             }
@@ -183,51 +187,35 @@
         // touch during a running game. Issue #94.
         window.setTickSuspended = function (v) { window._tickSuspended = !!v; };
 
-        // Touch toolbar: capture-phase touchend + invokeMethodAsync bypasses Blazor @onclick
-        // when the game loop starves the dispatcher (issue #90). Buttons use data-touch-action.
-        function wireTouchToolbar() {
+        // Touch input isolation (issue #107). Once any game has run, KNI installs window-level touch
+        // listeners that call event.preventDefault() UNCONDITIONALLY (Wasm.Dom Window.<ver>.js) and
+        // never removes them — permanent for the page. On Chrome window touchend is NOT passive, so
+        // its preventDefault kills the synthesized click for EVERY DOM element → every Blazor @onclick
+        // dies on touch after the first Run. The old code fought this with an ALLOWLIST (per-element
+        // data-touch-action + a #exampleModalOverlay isolator), so every new UI element was
+        // broken-by-default. We invert it: isolate the WHOLE page and carve out ONLY the game's input
+        // surface, the canvas. Everything non-canvas gets its touch stripped before KNI sees it, so
+        // its click survives and @onclick works with no per-element wiring.
+        function wireTouchInputIsolation() {
             if (!window._touchDevice) return;
-            // A toolbar tap must be fully invisible to KNI's window-level touch listeners. We
-            // trigger the action on touchend, but we ALSO stop touchstart/move/cancel from reaching
-            // KNI. Otherwise KNI's TouchPanel records the press (touchstart) yet never the release
-            // (we swallow touchend), leaving a dangling nativeTouchId that collides on the next tap:
-            // "nativeTouchId already registered" — fatal under Debug.Assert in a Debug build, a
-            // stuck phantom touch under Release. Touch events keep their initial target across the
-            // sequence, so closest('[data-touch-action]') matches for every phase of the tap.
-            // Issue #90.
+            // Document-level BUBBLE phase: document sits below window in the bubble path, so
+            // stopPropagation here strips the touch before KNI's window listeners ever fire — DOM
+            // ordering guarantees we win. Identity check (=== theCanvas), NOT canvasHolder.contains:
+            // overlay buttons (welcome Run, collapse handle) live inside #canvasHolder but must stay
+            // tappable; the canvas has no children, so identity is exactly "is this the game surface".
             ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (type) {
                 document.addEventListener(type, function (e) {
-                    var btn = e.target.closest && e.target.closest('[data-touch-action]');
-                    if (!btn) return;
-                    e.stopImmediatePropagation();
-                    if (type === 'touchend') {
-                        e.preventDefault();
-                        if (window.theInstance)
-                            window.theInstance.invokeMethodAsync(btn.getAttribute('data-touch-action'));
-                    }
-                }, { capture: true, passive: false });
-            });
-        }
-
-        // Examples modal touch isolation (issue #94).
-        // Once any game has run, KNI installs window-level touch listeners that call
-        // event.preventDefault() UNCONDITIONALLY in JS, before dispatching to .NET (Wasm.Dom
-        // Window.<ver>.js) — and they're never removed, so this is permanent for the page. On
-        // Chrome, window touchstart/touchmove are passive so that preventDefault is ignored (the
-        // modal's list scrolling still works), but touchend is NOT passive, so its preventDefault
-        // IS honored and suppresses the compatibility click — so the Examples modal's plain
-        // @onclick (× / card / category / backdrop) never fires on touch. These document-level
-        // BUBBLE listeners fire before KNI's window-level ones (document sits below window in the
-        // bubble path), so stopping propagation for a touch that started inside the modal keeps
-        // KNI from ever seeing it: the click is synthesized normally and @onclick works. We stop
-        // all four phases so KNI sees neither the press nor the release and its TouchPanel stays
-        // balanced (a lone swallowed release would dangle a nativeTouchId — issue #90 bug 2). We
-        // never call preventDefault, so list scrolling is unaffected.
-        function wireExampleModalTouchIsolation() {
-            ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (type) {
-                document.addEventListener(type, function (e) {
-                    if (e.target && e.target.closest && e.target.closest('#exampleModalOverlay')) {
-                        e.stopPropagation();
+                    // Canvas touches are the game's input — let them reach KNI untouched so in-game
+                    // TouchPanel keeps working.
+                    if (e.target === document.getElementById('theCanvas')) return;
+                    // Stop all four phases so KNI sees neither press nor release and its TouchPanel
+                    // stays balanced (a lone swallowed release dangles a nativeTouchId — #90 bug 2).
+                    // Never preventDefault — that would kill page/list scrolling.
+                    e.stopPropagation();
+                    if (type === 'touchstart') {
+                        window._uiTouchActive = true; // pause the game step so the tap's @onclick isn't starved
+                    } else if (type === 'touchend' || type === 'touchcancel') {
+                        window._uiTouchActive = false;
                     }
                 }, false);
             });
@@ -241,7 +229,7 @@
             // so if the served page is stale the splitter shows the PREVIOUS color. applyLayout
             // paints it onto #splitter. Canonical (no-marker) accent is #007acc — reset to that
             // before merging. See the issue-workflow skill ("Build marker"). Issue #94.
-            var SPLITTER_COLOR = '#007acc'; // canonical accent (no active marker)
+            var SPLITTER_COLOR = '#7048e8'; // purple — mobile build marker (issue #107); reset to #007acc pre-merge
             var splitRatio = 0.45;
             var dragging = false;
             // On touch the finger hit-target is widened separately from the visible bar
@@ -630,8 +618,7 @@
             }
             window._tickInterval = targetFps > 0 ? (1000 / targetFps) : 0;
 
-            wireTouchToolbar();
-            wireExampleModalTouchIsolation();
+            wireTouchInputIsolation();
 
             // ?hover=true — throttle to 2fps when mouse is not over the canvas.
             // Ignored on touch devices (no hover concept; touch FPS capped separately — issue #90).
