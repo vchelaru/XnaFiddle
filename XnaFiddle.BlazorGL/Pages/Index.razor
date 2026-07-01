@@ -621,7 +621,7 @@
 
     @if (_exampleBrowserOpen)
     {
-        <div @onclick="() => _exampleBrowserOpen = false"
+        <div @onclick="CloseExampleBrowser"
              style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); z-index: 100;
                     display: flex; align-items: center; justify-content: center;">
             <div @onclick:stopPropagation="true"
@@ -631,7 +631,7 @@
                 <div style="padding: 10px 16px; background: #2d2d2d; border-bottom: 1px solid #333;
                             display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
                     <span style="color: #d4d4d4; font-size: 14px; font-weight: 500;">Examples</span>
-                    <button @onclick="() => _exampleBrowserOpen = false"
+                    <button @onclick="CloseExampleBrowser"
                             style="background: none; border: none; color: #888; cursor: pointer; font-size: 16px; padding: 0 4px;">&times;</button>
                 </div>
                 <div style="display: flex; flex: 1; min-height: 0; overflow: hidden;">

@@ -96,6 +96,12 @@
         // toolbar taps use capture-phase touchend instead (issue #90). ?fps=N overrides.
         window._tickInterval = 0;
         window._lastTickTime = 0;
+        // When set, tickJS keeps the rAF loop alive but skips the heavy .NET game step so the
+        // single WASM thread is free to service touch input. Set while the Examples modal is open
+        // (its buttons/list-scroll are plain Blazor @onclick, which the uncapped game loop starves
+        // on touch) and while a splitter is being dragged (smooth resize on touch). Issue #94.
+        window._tickSuspended = false;
+        window._uiDragging = false;
 
         function tickJS(timestamp) {
             // FPS cap: skip this tick if not enough time has elapsed since the last one.
@@ -123,6 +129,14 @@
                 }
             }
 
+            // Skip the heavy game step (but keep the canvas sync above, and the rAF loop) while the
+            // Examples modal is open or a splitter is being dragged, so touch input isn't starved by
+            // the uncapped loop. The game freezes for the brief interaction, then resumes. Issue #94.
+            if (window._tickSuspended || window._uiDragging) {
+                window.requestAnimationFrame(tickJS);
+                return;
+            }
+
             var tickStart = performance.now();
             window.theInstance.invokeMethod('TickDotNet');
             var tickMs = performance.now() - tickStart;
@@ -137,6 +151,11 @@
                 window.requestAnimationFrame(tickJS);
             }
         } // end tickJS
+
+        // Blazor toggles this when the Examples modal opens/closes so the game step pauses while
+        // the modal is up, keeping its (plain @onclick) controls and list scrolling responsive on
+        // touch during a running game. Issue #94.
+        window.setTickSuspended = function (v) { window._tickSuspended = !!v; };
 
         // Touch toolbar: capture-phase touchend + invokeMethodAsync bypasses Blazor @onclick
         // when the game loop starves the dispatcher (issue #90). Buttons use data-touch-action.
@@ -247,6 +266,9 @@
                 spl.addEventListener('pointerdown', function (e) {
                     e.preventDefault();
                     dragging = true;
+                    // Pause the game step during the drag so pointermove isn't starved by the
+                    // uncapped loop and the splitter tracks the finger smoothly. Issue #94.
+                    window._uiDragging = true;
                     spl.setPointerCapture(e.pointerId);
                     document.body.style.cursor = isVertical ? 'ns-resize' : 'ew-resize';
                     document.body.style.userSelect = 'none';
@@ -269,6 +291,7 @@
                 function endDrag(e) {
                     if (!dragging) return;
                     dragging = false;
+                    window._uiDragging = false; // resume the game step (issue #94)
                     if (spl.hasPointerCapture && spl.hasPointerCapture(e.pointerId)) {
                         spl.releasePointerCapture(e.pointerId);
                     }
@@ -317,6 +340,7 @@
                 if (e.target && e.target.id === 'diagnosticsSplitter') {
                     e.preventDefault();
                     dragging = true;
+                    window._uiDragging = true; // pause game step for a smooth drag (issue #94)
                     startY = e.clientY;
                     var panel = document.getElementById('diagnosticsPanel');
                     startH = panel ? panel.offsetHeight : 100;
@@ -340,6 +364,7 @@
             function endDrag(e) {
                 if (!dragging) return;
                 dragging = false;
+                window._uiDragging = false; // resume the game step (issue #94)
                 if (captured && captured.releasePointerCapture) {
                     try { captured.releasePointerCapture(e.pointerId); } catch (_) {}
                 }
