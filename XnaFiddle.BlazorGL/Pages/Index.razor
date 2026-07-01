@@ -621,20 +621,12 @@
 
     @if (_exampleBrowserOpen)
     {
-        @* While a game is running, KNI subscribes window-level touch listeners that call
-           preventDefault() on every touch (Window.8.0.10.js). Chrome treats window touchstart/
-           touchmove as passive so their preventDefault is ignored (list scrolling still works),
-           but touchend is NOT passive — its preventDefault is honored and suppresses the
-           synthesized click, so the modal's @onclick (× / card / category / backdrop) never
-           fires. Stopping propagation here — below window in the bubble path, where Blazor's
-           delegated handler runs — keeps those touches from ever reaching KNI, so the click is
-           synthesized normally. We stop ALL four phases (not just touchend) so KNI sees neither
-           the press nor the release and its TouchPanel stays balanced — swallowing only touchend
-           would leave a dangling nativeTouchId and crash on the next tap (issue #90 bug 2).
-           Issue #94. *@
-        <div @onclick="CloseExampleBrowser"
-             @ontouchstart:stopPropagation="true" @ontouchmove:stopPropagation="true"
-             @ontouchend:stopPropagation="true" @ontouchcancel:stopPropagation="true"
+        @* id lets the JS in index.html strip touch events for anything inside this modal before
+           they bubble to KNI's window-level touch listeners — otherwise KNI's unconditional
+           preventDefault() (installed by the first game, permanent for the page) suppresses the
+           synthesized click and the modal's @onclick never fires on touch. See index.html
+           ("Examples modal touch isolation"). Issue #94. *@
+        <div id="exampleModalOverlay" @onclick="CloseExampleBrowser"
              style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); z-index: 100;
                     display: flex; align-items: center; justify-content: center;">
             <div @onclick:stopPropagation="true"

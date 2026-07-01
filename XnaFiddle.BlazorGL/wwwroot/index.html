@@ -185,6 +185,30 @@
             });
         }
 
+        // Examples modal touch isolation (issue #94).
+        // Once any game has run, KNI installs window-level touch listeners that call
+        // event.preventDefault() UNCONDITIONALLY in JS, before dispatching to .NET (Wasm.Dom
+        // Window.<ver>.js) — and they're never removed, so this is permanent for the page. On
+        // Chrome, window touchstart/touchmove are passive so that preventDefault is ignored (the
+        // modal's list scrolling still works), but touchend is NOT passive, so its preventDefault
+        // IS honored and suppresses the compatibility click — so the Examples modal's plain
+        // @onclick (× / card / category / backdrop) never fires on touch. These document-level
+        // BUBBLE listeners fire before KNI's window-level ones (document sits below window in the
+        // bubble path), so stopping propagation for a touch that started inside the modal keeps
+        // KNI from ever seeing it: the click is synthesized normally and @onclick works. We stop
+        // all four phases so KNI sees neither the press nor the release and its TouchPanel stays
+        // balanced (a lone swallowed release would dangle a nativeTouchId — issue #90 bug 2). We
+        // never call preventDefault, so list scrolling is unaffected.
+        function wireExampleModalTouchIsolation() {
+            ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (type) {
+                document.addEventListener(type, function (e) {
+                    if (e.target && e.target.closest && e.target.closest('#exampleModalOverlay')) {
+                        e.stopPropagation();
+                    }
+                }, false);
+            });
+        }
+
         // Splitter + layout logic (supports left/right and top/bottom modes)
         (function () {
             var splitRatio = 0.45;
@@ -573,6 +597,7 @@
             window._tickInterval = targetFps > 0 ? (1000 / targetFps) : 0;
 
             wireTouchToolbar();
+            wireExampleModalTouchIsolation();
 
             // ?hover=true — throttle to 2fps when mouse is not over the canvas.
             // Ignored on touch devices (no hover concept; touch FPS capped separately — issue #90).
