@@ -33,7 +33,7 @@
             <button @onclick="StopCompilation"
                     style="padding: 4px 14px; background: #e04040; color: #fff; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="codicon codicon-debug-stop"></i>
-                Stop
+                <span class="xf-hide-mobile">Stop</span>
             </button>
         }
         else
@@ -42,7 +42,7 @@
                     data-testid="run-button"
                     style="padding: 4px 14px; background: #0e639c; color: white; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="codicon codicon-play"></i>
-                @(_game != null ? "Restart" : "Run")
+                <span class="xf-hide-mobile">@(_game != null ? "Restart" : "Run")</span>
             </button>
             @if (_game != null)
             {
@@ -50,7 +50,7 @@
                         data-testid="stop-button"
                         style="padding: 4px 14px; background: #e04040; color: #fff; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                     <i class="codicon codicon-debug-stop"></i>
-                    Stop
+                    <span class="xf-hide-mobile">Stop</span>
                 </button>
             }
         }
@@ -101,19 +101,14 @@
                 </button>
             }
         }
-        <button @onclick="ToggleEditorCollapsed" title="Hide editor — fullscreen the game (issue #74)"
-                style="margin-left: auto; padding: 4px 8px; background: #3c3c3c; color: #d4d4d4;
-                       border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
-            <i class="codicon codicon-screen-full"></i>
-        </button>
         <a href="https://github.com/vchelaru/XnaFiddle" target="_blank" title="About XnaFiddle"
-           style="padding: 4px 8px; background: #3c3c3c; color: #d4d4d4;
+           style="margin-left: auto; padding: 4px 8px; background: #3c3c3c; color: #d4d4d4;
                   border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;
                   text-decoration: none; opacity: 0.7; transition: opacity 0.15s;"
            onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
             <i class="codicon codicon-question"></i>
         </a>
-        <span style="color: #555; font-size: 11px; white-space: nowrap;" title="Version">built @BuildTimeLocal</span>
+        <span class="xf-hide-mobile" style="color: #555; font-size: 11px; white-space: nowrap;" title="Version">built @BuildTimeLocal</span>
     </div>
 
     @if (_isCompiling)
@@ -733,18 +728,20 @@
     overflow: hidden;
     left: @(_embedMode ? "0" : "calc(45vw + 2px)");">
     <canvas @key="_canvasGen" id="theCanvas" data-testid="game-canvas" style="touch-action:none;"></canvas>
-    @if (!_embedMode && _editorCollapsed)
+    @if (!_embedMode)
     {
-        @* Issue #74: faint restore handle while the editor is collapsed. Kept low-opacity
-           so it stays out of the way of screenshots/video until hovered. *@
-        <button @onclick="ToggleEditorCollapsed" title="Show editor"
-                style="position: absolute; top: 8px; left: 8px; z-index: 15;
+        @* Issue #74: single faint overlay toggle, top-right, present in both states —
+           expands the game (hides editor) and restores the editor. Kept off the top-left,
+           where game UI/HUD typically lives, and low-opacity so it stays out of the way of
+           screenshots/video until hovered. *@
+        <button @onclick="ToggleEditorCollapsed" title="@(_editorCollapsed ? "Show editor" : "Hide editor — fullscreen the game")"
+                style="position: absolute; top: 8px; right: 8px; z-index: 15;
                        padding: 4px 8px; background: rgba(0,0,0,0.5); color: #d4d4d4;
                        border: 1px solid rgba(255,255,255,0.12); border-radius: 3px;
                        cursor: pointer; font-size: 14px; display: flex; align-items: center;
-                       opacity: 0.35; transition: opacity 0.15s;"
-                onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.35'">
-            <i class="codicon codicon-screen-normal"></i>
+                       opacity: 0.5; transition: opacity 0.15s;"
+                onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
+            <i class="codicon @(_editorCollapsed ? "codicon-screen-normal" : "codicon-screen-full")"></i>
         </button>
     }
     @if (_embedMode && _isCompiling)
