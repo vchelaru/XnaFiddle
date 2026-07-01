@@ -83,7 +83,7 @@ mobile testing**, bump a **deterministic** visual marker and tell the user the v
   below, advance to the *next* palette entry after it, and — as part of the same commit that bumps
   `SPLITTER_COLOR` — update that line to the color you just picked. This is the source of truth:
 
-      LAST MARKER: green #2f9e44
+      LAST MARKER: purple #7048e8
 
   Why a committed pointer line and not a git-history search: the shipped `SPLITTER_COLOR` is
   bump-then-reset (magenta on the branch, back to `#007acc` before merge), so its **net diff is

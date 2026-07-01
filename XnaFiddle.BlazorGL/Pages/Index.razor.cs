@@ -346,29 +346,13 @@ technique BasicColorDrawing
         static readonly string SupportedExtensionsDisplay =
             string.Join(", ", SupportedAssetExtensions);
 
+        // Invoked from monaco-interop.js keyboard shortcuts (F5 / Ctrl+S). Not a touch bypass —
+        // touch now uses the same @onclick path as desktop via wireTouchInputIsolation (issue #107).
         [JSInvokable]
         public void TriggerCompileAndRun()
         {
             if (!_isCompiling)
                 CompileAndRun();
-        }
-
-        [JSInvokable]
-        public void TriggerStopGame()
-        {
-            StopGame();
-        }
-
-        [JSInvokable]
-        public async Task TriggerOpenExampleBrowser()
-        {
-            await OpenExampleBrowser();
-        }
-
-        [JSInvokable]
-        public void TriggerStopCompilation()
-        {
-            StopCompilation();
         }
 
         private string GetAssetUrlsFragment()
