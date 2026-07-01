@@ -46,3 +46,36 @@ html, body {
     0%   { transform: translateX(-150%); }
     100% { transform: translateX(400%); }
 }
+
+/* Toolbar wrapping (issue #92). The toolbar was a single non-wrapping flex row, so its
+   ~9 buttons clipped off the right edge whenever the row was narrower than their combined
+   width. That happens on a phone, but also on a normal desktop window: the editor panel is
+   only 45vw, so at common window sizes the panel is already too narrow for one row. Wrapping
+   is keyed to the *container* (always on) rather than the viewport, because the clip is driven
+   by the panel width, not the window width — a viewport media query misses the 45vw-panel case
+   entirely. It's a strict improvement: when the row does fit, nothing wraps and it looks
+   identical to before; the fullscreen/collapse control (held right by margin-left:auto) can no
+   longer be pushed off-screen. Inline button styles set padding, not flex-wrap, so this applies
+   without !important. */
+.xf-toolbar {
+    flex-wrap: wrap;
+}
+
+/* True-mobile-only refinements (issue #92). 768px matches the breakpoint Index.razor.cs uses to
+   switch to a vertical stacked split. Grow every button toward the 44x44 touch-target guideline,
+   and hide controls whose flow is desktop-only (Export builds a local zip — useless on a phone).
+   These are gated to touch/small viewports, not the narrow-panel case, because a desktop user
+   with a narrow panel still has a mouse and can still use Export. */
+@media (max-width: 767px) {
+    .xf-toolbar button,
+    .xf-toolbar > a {
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+    }
+
+    /* display is set inline, so the override needs !important. */
+    .xf-hide-mobile {
+        display: none !important;
+    }
+}
