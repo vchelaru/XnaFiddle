@@ -48,6 +48,16 @@ user testing as fast as possible:
 1. **Open the solution first**, before writing anything: `Start-Process "XnaFiddle.sln"` (PowerShell).
    Launch it up front so Visual Studio loads in the background while you write the steps — don't
    make the user wait on your prose before the IDE is even opening.
+   **Exception — mobile testing:** if the fix must be verified on a phone (touch UI, mobile layout,
+   anything Android/iOS-specific), do **not** open the `.sln`, and do **not** suggest USB /
+   `chrome://inspect` debugging — that route was whack-a-mole and the user abandoned it. Instead
+   have them serve over the LAN and hit it from the phone: `dotnet run --project XnaFiddle.BlazorGL
+   --urls "http://0.0.0.0:60441"`, then open `http://<machine-LAN-ip>:60441` on the phone (same
+   Wi-Fi). Use plain **HTTP** (avoids the dev-cert-trust problem); it's fine unless the specific
+   test needs a secure context (clipboard / CacheStorage). Find the LAN IP with `Get-NetIPAddress
+   -AddressFamily IPv4` (the Wi-Fi one, not the `172.x` WSL vEthernet). If the phone can't connect,
+   it's almost always Windows Firewall blocking inbound 60441 — offer to add a private-profile
+   inbound rule.
 2. **Then write concise, numbered manual steps** — what to run, what to click, and what correct
    behavior looks like (and the failure mode the fix addresses, so the user knows what they're
    confirming).
