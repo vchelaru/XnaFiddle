@@ -47,6 +47,7 @@
             @if (_game != null)
             {
                 <button @onclick="StopGame"
+                        data-testid="stop-button"
                         style="padding: 4px 14px; background: #e04040; color: #fff; border: none; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                     <i class="codicon codicon-debug-stop"></i>
                     Stop
@@ -54,18 +55,19 @@
             }
         }
         <button @onclick="OpenExampleBrowser"
+                data-testid="examples-button"
                 style="padding: 4px 8px; background: @(_exampleBrowserOpen ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
                        border: 1px solid #555; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 5px;
                        user-select: none; -webkit-user-select: none;">
             <i class="codicon codicon-library"></i>
             @(string.IsNullOrEmpty(_selectedExample) ? "Examples" : _selectedExample)
         </button>
-        <button @onclick="OpenShareDialog" title="Share"
+        <button @onclick="OpenShareDialog" title="Share" data-testid="share-button"
                 style="padding: 4px 8px; background: @(_shareOpen ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
                        border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
             <i class="codicon codicon-link-external"></i>
         </button>
-        <button @onclick="() => _assetsOpen = !_assetsOpen" title="@(_assets.Count > 0 ? $"Assets ({_assets.Count})" : "Assets")"
+        <button @onclick="() => _assetsOpen = !_assetsOpen" title="@(_assets.Count > 0 ? $"Assets ({_assets.Count})" : "Assets")" data-testid="assets-button"
                 style="padding: 4px 8px; background: @(_assets.Count > 0 ? "#2d5a2d" : "#3c3c3c"); color: #d4d4d4;
                        border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center; position: relative;">
             <i class="codicon codicon-file-media"></i>
@@ -443,7 +445,7 @@
                                    color: @(!_shareAsSnippet ? "white" : "#aaa"); font-size: 12px;">
                         Code
                     </button>
-                    <button @onclick='() => _shareAsSnippet = true'
+                    <button @onclick='() => _shareAsSnippet = true' data-testid="share-snippet-toggle"
                             style="padding: 3px 12px; cursor: pointer; border: 1px solid #555;
                                    background: @(_shareAsSnippet ? "#0e639c" : "#3c3c3c");
                                    color: @(_shareAsSnippet ? "white" : "#aaa"); font-size: 12px;">
@@ -455,7 +457,7 @@
                 {
                     @* Code mode: URL + copy *@
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <input readonly value="@_shareCodeUrl"
+                        <input readonly value="@_shareCodeUrl" data-testid="share-url-input"
                                style="flex: 1; padding: 3px 8px; background: #1e1e1e; color: #9cdcfe;
                                       border: 1px solid #555; font-size: 12px; font-family: Consolas, monospace;" />
                         <button @onclick="CopyShareUrl"
@@ -519,7 +521,7 @@
 
                         @* Live URL + copy *@
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <input readonly value="@_snippetPreviewUrl"
+                            <input readonly value="@_snippetPreviewUrl" data-testid="share-url-input"
                                    style="flex: 1; padding: 3px 8px; background: #1e1e1e; color: #9cdcfe;
                                           border: 1px solid #555; font-size: 12px; font-family: Consolas, monospace;" />
                             <button @onclick="CopyShareUrl"
@@ -615,7 +617,7 @@
     @if (!string.IsNullOrEmpty(_diagnosticsOutput))
     {
         <div id="diagnosticsSplitter" style="background: #007acc; cursor: ns-resize; flex-shrink: 0; touch-action: none;"></div>
-        <pre id="diagnosticsPanel" style="margin: 0; padding: 8px 12px; background: #1a1a1a; color: @_diagnosticsColor;
+        <pre id="diagnosticsPanel" data-testid="diagnostics" style="margin: 0; padding: 8px 12px; background: #1a1a1a; color: @_diagnosticsColor;
                     font-size: 12px; font-family: Consolas, monospace; overflow: auto;
                     height: 100px; flex-shrink: 0; white-space: pre-wrap; word-wrap: break-word;">@_diagnosticsOutput</pre>
     }
@@ -674,6 +676,7 @@
                             if (example.Category != _selectedCategory) continue;
                             var isSelected = example.Name == _selectedExample;
                             <div @onclick="() => SelectExample(example.Name)"
+                                 data-testid="example-card" data-example-name="@example.Name"
                                  style="padding: 10px 14px; margin-bottom: 6px; cursor: pointer;
                                         background: @(isSelected ? "#0e639c33" : "#2d2d2d");
                                         border: 1px solid @(isSelected ? "#0e639c" : "#3c3c3c");
@@ -729,7 +732,7 @@
     bottom: 0;
     overflow: hidden;
     left: @(_embedMode ? "0" : "calc(45vw + 2px)");">
-    <canvas @key="_canvasGen" id="theCanvas" style="touch-action:none;"></canvas>
+    <canvas @key="_canvasGen" id="theCanvas" data-testid="game-canvas" style="touch-action:none;"></canvas>
     @if (!_embedMode && _editorCollapsed)
     {
         @* Issue #74: faint restore handle while the editor is collapsed. Kept low-opacity
