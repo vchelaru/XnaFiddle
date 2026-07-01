@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Host the published standalone WASM app in-process with Kestrel so Blazor's static
+         assets (incl. application/wasm MIME + _framework files) are served correctly. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Provides UseBlazorFrameworkFiles (correct content types for Webcil .wasm assemblies
+         and _framework files) — the shared framework ships the assembly but not its ref, so
+         the PackageReference is needed at compile time. -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="8.0.17" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <!-- Playwright .NET's first-class runner integration is NUnit (and MSTest). -->
+    <PackageReference Include="Microsoft.Playwright.NUnit" Version="1.49.0" />
+    <PackageReference Include="NUnit" Version="4.2.2" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,39 @@
+name: E2E Smoke Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  e2e:
+    # windows-latest mirrors deploy.yml. The publish must run on Windows: the KNI submodule's
+    # Kni.Platform.Blazor.GL.csproj references ../src/Xna.Framework.Media/Xna.Framework.Media.csproj,
+    # but the file on disk is XNA.Framework.Media.csproj (uppercase XNA). Case-insensitive Windows
+    # resolves it; case-sensitive Linux does not, so a Linux publish fails with CS0234/CS0246 on the
+    # Media types. Windows is also the app's real build/deploy environment (ANGLE -> D3D11).
+    runs-on: windows-latest
+    env:
+      # The static host serves the published WASM app from here (see PublishOutput.cs).
+      E2E_PUBLISH_DIR: ${{ github.workspace }}/artifacts/e2e-publish
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish Blazor WASM app
+        run: dotnet publish XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj -c Release -o "${{ env.E2E_PUBLISH_DIR }}"
+
+      - name: Build E2E test project
+        run: dotnet build XnaFiddle.E2E.Tests/XnaFiddle.E2E.Tests.csproj -c Release
+
+      - name: Install Playwright Chromium
+        shell: pwsh
+        run: XnaFiddle.E2E.Tests/bin/Release/net8.0/playwright.ps1 install chromium
+
+      - name: Run E2E smoke test
+        run: dotnet test XnaFiddle.E2E.Tests/XnaFiddle.E2E.Tests.csproj -c Release --no-build
