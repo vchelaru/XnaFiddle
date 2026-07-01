@@ -726,6 +726,7 @@
     top: 0;
     right: 0;
     bottom: 0;
+    overflow: hidden;
     left: @(_embedMode ? "0" : "calc(45vw + 2px)");">
     <canvas @key="_canvasGen" id="theCanvas" style="touch-action:none;"></canvas>
     @if (!_embedMode && _editorCollapsed)
@@ -792,8 +793,12 @@
     }
     @if (_game == null && !_isCompiling)
     {
-        <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-            <div style="text-align: center; color: #888; font-family: 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.8; user-select: none;">
+        @* Issue #100: scroll container so a short canvas pane (mobile / top-bottom layout) never
+           spills overlay text over the adjacent editor pane. margin:auto on the child centers when
+           it fits and lets it scroll when the pane is too short (justify-content:center would clip
+           the top out of reach). *@
+        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; overflow-y: auto; padding: 16px; box-sizing: border-box; pointer-events: auto;">
+            <div style="margin: auto; text-align: center; color: #888; font-family: 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.8; user-select: none;">
                 <div style="font-size: 22px; color: #aaa; margin-bottom: 12px;">Welcome to XnaFiddle</div>
                 Pick an example with the Examples button, or write your own XNA-style C# code,<br/>
                 then click the Run button to compile and run.
