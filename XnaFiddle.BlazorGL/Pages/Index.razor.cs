@@ -360,9 +360,9 @@ technique BasicColorDrawing
         }
 
         [JSInvokable]
-        public void TriggerOpenExampleBrowser()
+        public async Task TriggerOpenExampleBrowser()
         {
-            OpenExampleBrowser();
+            await OpenExampleBrowser();
         }
 
         [JSInvokable]
@@ -1846,7 +1846,7 @@ technique BasicColorDrawing
             await JsRuntime.InvokeVoidAsync("setEditorCollapsed", _editorCollapsed);
         }
 
-        private void OpenExampleBrowser()
+        private async Task OpenExampleBrowser()
         {
             // Default to the category of the currently selected example, or the first category
             if (!string.IsNullOrEmpty(_selectedExample))
@@ -1864,6 +1864,26 @@ technique BasicColorDrawing
                 _selectedCategory = ExampleGallery.Categories[0];
 
             _exampleBrowserOpen = true;
+            // Pause the game step while the modal is up so its plain @onclick controls and list
+            // scrolling stay responsive on touch while a game runs (the uncapped loop starves
+            // Blazor's dispatcher otherwise). Issue #94.
+            await SetTickSuspended(true);
+            // This path is reached via the touch bypass (invokeMethodAsync), which does NOT trigger
+            // a Blazor re-render on its own — without this the modal never appears. Issue #94.
+            StateHasChanged();
+        }
+
+        private async Task CloseExampleBrowser()
+        {
+            _exampleBrowserOpen = false;
+            await SetTickSuspended(false);
+        }
+
+        // Toggles the JS game-loop pause used to keep touch UI responsive during a run (issue #94).
+        private async Task SetTickSuspended(bool suspended)
+        {
+            try { await JsRuntime.InvokeVoidAsync("setTickSuspended", suspended); }
+            catch { /* stale JS cache — hard-reload to pick up setTickSuspended */ }
         }
 
         private async Task SelectExample(string name)
@@ -1876,6 +1896,9 @@ technique BasicColorDrawing
             {
                 _selectedExample = name;
                 _exampleBrowserOpen = false;
+                // Modal is closing and we're about to compile/run — resume the game step so the
+                // new game ticks (and _pendingCompile is serviced) once it's built. Issue #94.
+                await SetTickSuspended(false);
                 // Drop any shader tabs from the previous fiddle before loading this one's.
                 await ResetShaderTabsAsync();
                 await JsRuntime.InvokeVoidAsync("monacoInterop.setValue", code);

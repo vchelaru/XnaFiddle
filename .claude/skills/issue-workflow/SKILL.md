@@ -48,12 +48,42 @@ user testing as fast as possible:
 1. **Open the solution first**, before writing anything: `Start-Process "XnaFiddle.sln"` (PowerShell).
    Launch it up front so Visual Studio loads in the background while you write the steps — don't
    make the user wait on your prose before the IDE is even opening.
+   **Exception — mobile testing:** if the fix must be verified on a phone (touch UI, mobile layout,
+   anything Android/iOS-specific), do **not** open the `.sln`, and do **not** suggest USB /
+   `chrome://inspect` debugging — that route was whack-a-mole and the user abandoned it. Instead
+   have them serve over the LAN and hit it from the phone: `dotnet run --project XnaFiddle.BlazorGL
+   --urls "http://0.0.0.0:60441"`, then open `http://<machine-LAN-ip>:60441` on the phone (same
+   Wi-Fi). Use plain **HTTP** (avoids the dev-cert-trust problem); it's fine unless the specific
+   test needs a secure context (clipboard / CacheStorage). Find the LAN IP with `Get-NetIPAddress
+   -AddressFamily IPv4` (the Wi-Fi one, not the `172.x` WSL vEthernet). If the phone can't connect,
+   it's almost always Windows Firewall blocking inbound 60441 — offer to add a private-profile
+   inbound rule.
 2. **Then write concise, numbered manual steps** — what to run, what to click, and what correct
    behavior looks like (and the failure mode the fix addresses, so the user knows what they're
    confirming).
 
 Skip this step only when the change is genuinely untestable by hand (pure refactor, build-only,
 or covered entirely by unit tests) — say so briefly instead.
+
+### Build marker — prove the phone is running the new build (not a stale cache)
+
+Over plain HTTP the phone caches `index.html` **and** the compiled DLLs, and mobile Chrome has no
+easy hard-reload — so a normal reload can silently serve the *previous* build and make a working
+fix look broken. We've burned test cycles on exactly this. So on **every build handed off for
+mobile testing**, bump a **deterministic** visual marker and tell the user the value up front:
+
+- The marker is the **main splitter color**, driven by `var SPLITTER_COLOR` in `index.html`
+  (painted onto `#splitter` by `applyLayout`). It lives in the **JS** on purpose — that's the
+  cache-prone file — so a stale page shows the *previous* color.
+- **Advance through this ordered palette** (never reuse the immediately-previous one; the user must
+  be able to name the color at a glance): orange `#e8830c` → magenta `#d6336c` → green `#2f9e44` →
+  purple `#7048e8` → teal `#0ca678` → red `#e03131` → amber `#f59f00` → (wrap). This is a *pick*,
+  not randomness — state the name **and** hex in your reply so the user confirms the served build.
+- Tell the user to load in a **fresh Incognito tab** (guarantees a clean fetch) and check the
+  splitter is the color you named **before** re-running the test. Wrong color = stale cache, not a
+  failed fix.
+- **Before the PR merges, reset `SPLITTER_COLOR` to the canonical accent `#007acc`** so `main`
+  doesn't ship a random marker color.
 
 ## 6. Open the PR as soon as the work is finished
 
