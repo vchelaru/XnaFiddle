@@ -81,11 +81,15 @@ mobile testing**, bump a **deterministic** visual marker and tell the user the v
   not randomness — state the name **and** hex in your reply so the user confirms the served build.
 - **Recover "previous" from git, not memory.** The palette starts at orange, and after a context
   clear you won't remember the last marker — so a fresh agent naively re-picks orange and can reuse
-  it. Don't rely on memory: `main` resets the marker to canonical, but git history still records the
-  real last-used color. Before picking, run
-  `git log --all -p -S "SPLITTER_COLOR = '#" -- XnaFiddle.BlazorGL/wwwroot/index.html` (or diff a few
-  recent commits) to find the most recent **non-`#007acc`** value, then advance to the *next* palette
-  entry after it. This makes the choice stateless and reproducible across context clears.
+  it. Don't rely on memory: resetting to `#007acc` before merge is just another commit, so git
+  history permanently records every marker ever used — it's fully recoverable. Before picking, run
+  `git log --all -p -G "SPLITTER_COLOR = '#" -- XnaFiddle.BlazorGL/wwwroot/index.html` and read the
+  most recent added (`+`) value that is **not** `#007acc`; advance to the *next* palette entry after
+  it. Use **`-G`, not `-S`**: the pickaxe `-S` only fires when the *count* of the match changes, and
+  since every revision has exactly one `SPLITTER_COLOR` line it reports only the commit that first
+  *added* the line (always orange) — it silently misses every later color change. `-G` matches any
+  diff line hitting the regex, so it catches all of them. This makes the choice stateless and
+  reproducible across context clears.
 - Tell the user to load in a **fresh Incognito tab** (guarantees a clean fetch) and check the
   splitter is the color you named **before** re-running the test. Wrong color = stale cache, not a
   failed fix.
