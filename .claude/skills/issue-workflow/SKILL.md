@@ -79,6 +79,13 @@ mobile testing**, bump a **deterministic** visual marker and tell the user the v
   be able to name the color at a glance): orange `#e8830c` → magenta `#d6336c` → green `#2f9e44` →
   purple `#7048e8` → teal `#0ca678` → red `#e03131` → amber `#f59f00` → (wrap). This is a *pick*,
   not randomness — state the name **and** hex in your reply so the user confirms the served build.
+- **Recover "previous" from git, not memory.** The palette starts at orange, and after a context
+  clear you won't remember the last marker — so a fresh agent naively re-picks orange and can reuse
+  it. Don't rely on memory: `main` resets the marker to canonical, but git history still records the
+  real last-used color. Before picking, run
+  `git log --all -p -S "SPLITTER_COLOR = '#" -- XnaFiddle.BlazorGL/wwwroot/index.html` (or diff a few
+  recent commits) to find the most recent **non-`#007acc`** value, then advance to the *next* palette
+  entry after it. This makes the choice stateless and reproducible across context clears.
 - Tell the user to load in a **fresh Incognito tab** (guarantees a clean fetch) and check the
   splitter is the color you named **before** re-running the test. Wrong color = stale cache, not a
   failed fix.
