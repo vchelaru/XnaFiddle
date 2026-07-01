@@ -131,8 +131,10 @@
 
             // Skip the heavy game step (but keep the canvas sync above, and the rAF loop) while the
             // Examples modal is open or a splitter is being dragged, so touch input isn't starved by
-            // the uncapped loop. The game freezes for the brief interaction, then resumes. Issue #94.
-            if (window._tickSuspended || window._uiDragging) {
+            // the uncapped loop. The game freezes for the brief interaction, then resumes. Touch
+            // only: on desktop the loop doesn't starve @onclick/pointer input, so we don't want to
+            // freeze the game behind the modal or during a drag there. Issue #94.
+            if (window._touchDevice && (window._tickSuspended || window._uiDragging)) {
                 window.requestAnimationFrame(tickJS);
                 return;
             }
