@@ -75,21 +75,23 @@ mobile testing**, bump a **deterministic** visual marker and tell the user the v
 - The marker is the **main splitter color**, driven by `var SPLITTER_COLOR` in `index.html`
   (painted onto `#splitter` by `applyLayout`). It lives in the **JS** on purpose — that's the
   cache-prone file — so a stale page shows the *previous* color.
-- **Advance through this ordered palette** (never reuse the immediately-previous one; the user must
-  be able to name the color at a glance): orange `#e8830c` → magenta `#d6336c` → green `#2f9e44` →
-  purple `#7048e8` → teal `#0ca678` → red `#e03131` → amber `#f59f00` → (wrap). This is a *pick*,
-  not randomness — state the name **and** hex in your reply so the user confirms the served build.
-- **Recover "previous" from git, not memory.** The palette starts at orange, and after a context
-  clear you won't remember the last marker — so a fresh agent naively re-picks orange and can reuse
-  it. Don't rely on memory: resetting to `#007acc` before merge is just another commit, so git
-  history permanently records every marker ever used — it's fully recoverable. Before picking, run
-  `git log --all -p -G "SPLITTER_COLOR = '#" -- XnaFiddle.BlazorGL/wwwroot/index.html` and read the
-  most recent added (`+`) value that is **not** `#007acc`; advance to the *next* palette entry after
-  it. Use **`-G`, not `-S`**: the pickaxe `-S` only fires when the *count* of the match changes, and
-  since every revision has exactly one `SPLITTER_COLOR` line it reports only the commit that first
-  *added* the line (always orange) — it silently misses every later color change. `-G` matches any
-  diff line hitting the regex, so it catches all of them. This makes the choice stateless and
-  reproducible across context clears.
+- **The ordered palette** (never reuse the immediately-previous one; the user must be able to name
+  the color at a glance): orange `#e8830c` → magenta `#d6336c` → green `#2f9e44` → purple `#7048e8`
+  → teal `#0ca678` → red `#e03131` → amber `#f59f00` → (wrap). Advancing is a *pick*, not randomness
+  — state the name **and** hex in your reply so the user confirms the served build.
+- **"Last used" is recorded right here, not recovered from git.** Read the `LAST MARKER` line just
+  below, advance to the *next* palette entry after it, and — as part of the same commit that bumps
+  `SPLITTER_COLOR` — update that line to the color you just picked. This is the source of truth:
+
+      LAST MARKER: magenta #d6336c
+
+  Why a committed pointer line and not a git-history search: the shipped `SPLITTER_COLOR` is
+  bump-then-reset (magenta on the branch, back to `#007acc` before merge), so its **net diff is
+  zero** — a squash-merge would collapse it and erase every trace of which color was used, and even
+  a pickaxe (`git log -S/-G`) only works while the un-squashed branch commits stay reachable. This
+  pointer line has a **persistent net change** (magenta → green), so it survives *any* merge
+  strategy and is readable at a glance with no `git log` archaeology. Keep the two in lockstep: the
+  same commit bumps `SPLITTER_COLOR` *and* this line.
 - Tell the user to load in a **fresh Incognito tab** (guarantees a clean fetch) and check the
   splitter is the color you named **before** re-running the test. Wrong color = stale cache, not a
   failed fix.
