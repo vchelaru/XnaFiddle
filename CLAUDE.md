@@ -8,6 +8,8 @@ XnaFiddle is a standalone KNI game runner with an in-browser C# editor. It is a 
 
 On **any** task — research, maintenance, new features, bug fixes, refactors, docs, reviews — first check whether an available skill applies, and load it before proceeding. Skills (e.g. `file-loading`, `intellisense`, `verify`, `run`, `code-review`) carry condensed, repo-specific knowledge that prevents rediscovering subsystem details from scratch. When a skill matches the work, invoke it; if none fit, say so briefly and continue. This check is in addition to, not a replacement for, the Agent Workflow below.
 
+**Proactively suggest a new or updated skill** when — and only when — you finish work having re-derived reusable subsystem knowledge that no skill covers, or having found an existing skill stale/wrong. Don't wait to be asked; surface it as a suggestion and let the user decide (don't create one unprompted). But the bar is **high**: every skill line costs tokens on every relevant load, so err toward *not* proposing. Only suggest when you're confident the knowledge will be re-hit by a concrete upcoming task, not for one-off facts the code already records or that this conversation alone needed. When unsure, stay silent.
+
 ## Agent Workflow
 
 For every task, invoke the appropriate agent from `.claude/agents/` before proceeding. The agent's instructions provide guidelines for how the task should be performed. Before doing any work, announce which agent you are using such as "Invoking coder agent for this task..."
