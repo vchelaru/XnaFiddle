@@ -25,7 +25,11 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Publish Blazor WASM app
+      # "publish" here is the dotnet verb (Blazor WASM needs `publish`, not `build`, to lay out the
+      # _framework boot files a browser can run) — NOT a live deploy. The output is served locally to
+      # headless Chromium as this job's test input and never leaves the runner. The real site deploy is
+      # a separate workflow (deploy.yml -> GitHub Pages, on push to main).
+      - name: Publish WASM app for the local E2E test host (not a deploy)
         run: dotnet publish XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj -c Release -o "${{ env.E2E_PUBLISH_DIR }}"
 
       - name: Build E2E test project

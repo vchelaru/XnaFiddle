@@ -28,7 +28,10 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Publish
+      # This is the real deploy: the published output is uploaded as the GitHub Pages artifact below.
+      # (The E2E workflow also runs `dotnet publish`, but only to serve the app locally to a test
+      # browser — see e2e.yml. Same command, different purpose.)
+      - name: Publish for GitHub Pages deploy
         run: dotnet publish XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj -c Release -o output
 
       - name: Add .nojekyll
