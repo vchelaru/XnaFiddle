@@ -28,6 +28,7 @@ Controlled by `SupportedAssetExtensions` in `Index.razor.cs`:
 - **`.fnt`** — BMFont text format; stored as raw bytes. The UI parses `page` lines to show which texture files the font references (so users know what companion `.png` files to also drop)
 - **`.ttf`** — TrueType font; stored as raw bytes for FontStashSharp
 - **`.ember`** — stored as raw bytes
+- **`.tmx` `.tsx` `.world` `.ldtk` `.ogmo` `.json` `.txt` `.xml`** — text/data formats (tilemap & level-editor files plus generic data); stored as raw bytes and read by user code via `TitleContainer.OpenStream` (no `Load<T>` branch)
 
 `InMemoryContentManager.Load<T>()` has explicit branches for `Texture2D` and `SoundEffect`. Any other type falls through to `base.Load<T>()`, which will fail (no disk content pipeline exists).
 
