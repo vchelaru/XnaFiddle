@@ -342,7 +342,10 @@ technique BasicColorDrawing
 
         static readonly HashSet<string> SupportedAssetExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".achx", ".png", ".fnt", ".ttf", ".ember", ".wav", ".xnb"
+            ".achx", ".png", ".fnt", ".ttf", ".ember", ".wav", ".xnb",
+            // Text/data formats: tilemap & level-editor files plus generic data. Stored as raw
+            // bytes and read by user code via TitleContainer.OpenStream (issue #115).
+            ".tmx", ".tsx", ".world", ".ldtk", ".ogmo", ".json", ".txt", ".xml"
         };
 
         static readonly string SupportedExtensionsDisplay =
@@ -1583,7 +1586,7 @@ technique BasicColorDrawing
                 // First .cs file (fall back to first .txt) is the program; every .fx file is a
                 // shader tab (issue #26 phase 2b). Don't break early — we must see all files.
                 string code = null;
-                string txtFallback = null;
+                JsonProperty? txtFallback = null; // first .txt: program if no .cs, else a data asset (issue #115)
                 var shaderFiles = new List<ShaderFile>();
                 // Gists can bundle image/sound/font assets alongside the code (issue #82). Collect
                 // any file whose extension is a supported asset and register it after the loop, so
@@ -1596,11 +1599,19 @@ technique BasicColorDrawing
                     else if (code == null && file.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                         code = file.Value.GetProperty("content").GetString();
                     else if (txtFallback == null && file.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-                        txtFallback = file.Value.GetProperty("content").GetString();
+                        txtFallback = file;
                     else if (SupportedAssetExtensions.Contains(System.IO.Path.GetExtension(file.Name)))
                         assetFiles.Add(file);
                 }
-                code ??= txtFallback;
+                // The first .txt is the program only when no .cs was found; otherwise (now that
+                // .txt is an allowlisted asset) it's a bundled data file (issue #115).
+                if (txtFallback is JsonProperty txtFile)
+                {
+                    if (code == null)
+                        code = txtFile.Value.GetProperty("content").GetString();
+                    else
+                        assetFiles.Add(txtFile);
+                }
 
                 if (code == null)
                 {
