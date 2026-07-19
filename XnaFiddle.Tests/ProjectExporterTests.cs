@@ -758,6 +758,7 @@ public class Game1 : Game
     [InlineData(ExportTarget.FnaDesktop)]
     [InlineData(ExportTarget.KniAndroid)]
     [InlineData(ExportTarget.MonoGameAndroid)]
+    [InlineData(ExportTarget.MonoGameDesktopVK)] // ShadowDusk 0.12.0 Vulkan backend (issue #52)
     public void SupportsRuntimeShaders_TrueForWiredTargets(ExportTarget target)
     {
         Assert.True(ProjectExporter.SupportsRuntimeShaders(target));
@@ -765,10 +766,22 @@ public class Game1 : Game
 
     [Theory]
     [InlineData(ExportTarget.MonoGameWindowsDX12)]
-    [InlineData(ExportTarget.MonoGameDesktopVK)]
     public void SupportsRuntimeShaders_FalseForGatedTargets(ExportTarget target)
     {
         Assert.False(ProjectExporter.SupportsRuntimeShaders(target));
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_MonoGameDesktopVK_UsesVulkanBackend()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopVK, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // Same desktop compiler package as GL/DX/Android, but the DesktopVK runtime needs SPIR-V.
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.Contains($@"<PackageReference Include=""ShadowDusk.Compiler"" Version=""{PackageVersions.ShadowDusk}"" />",
+            files["MyGame/MyGame.csproj"]);
+        Assert.Contains("PlatformTarget.Vulkan", files["MyGame/Program.cs"]);
     }
 
     [Fact]
@@ -946,15 +959,19 @@ public class Game1 : Game
     [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
     [InlineData(ExportTarget.MonoGameWindowsDX, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
     [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
-    // ...but DX12/VK have no classic MGCB and stay gated even in ContentPipeline mode.
+    // ...but DX12 has no classic MGCB and stays gated even in ContentPipeline mode.
     [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, false)]
-    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, false)]
+    // DesktopVK is wired directly via ShadowDusk (0.12.0+ Vulkan backend, issue #52), so it compiles
+    // regardless of shaderMode — ContentPipeline is a no-op here (DesktopVK isn't classic, see
+    // IsMonoGameClassic) and it falls through to ShadowDusk rather than going gated.
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk,      ContentBuildMode.Raw, true)]
     // In ShadowDusk mode, Android is wired like DesktopGL (issue #88).
     [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
     [InlineData(ExportTarget.KniAndroid,        ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
     [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
     [InlineData(ExportTarget.KniDesktopGL,      ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)] // MGCB ignored; ShadowDusk
-    // ContentBuilder mode closes the DX12/Vulkan gate (issue #52) — every MonoGame target compiles.
+    // ContentBuilder mode closes the remaining DX12 gate (issue #52) — every MonoGame target compiles.
     [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
     [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
     [InlineData(ExportTarget.MonoGameDesktopGL,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
@@ -1139,10 +1156,11 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void SinglePlatform_ContentBuilder_ClosesDx12VulkanShaderGate()
+    public void SinglePlatform_ContentBuilder_ClosesDx12ShaderGate()
     {
-        // Issue #52: the Content Builder isn't limited to mgcb.exe's platform list, so DX12/Vulkan
-        // finally get a way to compile shipped .fx — without touching their existing package set.
+        // Issue #52: the Content Builder isn't limited to mgcb.exe's platform list, so DX12 (which
+        // still has no ShadowDusk backend, unlike DesktopVK) finally gets a way to compile shipped
+        // .fx — without touching its existing package set.
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameWindowsDX12, "MyGame",
             shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
         var files = ExtractTextFiles(zip);

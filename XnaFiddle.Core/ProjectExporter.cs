@@ -109,7 +109,8 @@ namespace XnaFiddle
         // against ShadowDusk.Core's IShaderCompiler interface; each per-platform project supplies the
         // concrete compiler and the backend. Targets absent from GetShaderExportInfo are *gated*: the
         // .fx still ships but no compiler is wired — iOS (no ShadowDusk device backend yet) and
-        // MonoGame DX12/Vulkan are tracked in issue #52.
+        // MonoGame DX12 (issue #52; still no ShadowDusk backend). DesktopVK closed via ShadowDusk
+        // 0.12.0's Vulkan backend — see the MonoGameDesktopVK case below.
         struct ShaderExportInfo
         {
             public bool Supported;
@@ -146,7 +147,12 @@ namespace XnaFiddle
                 PlatformTarget = "OpenGL",
                 IsBrowser = true,
             },
-            // gated: iOS, MonoGame DX12/VK (issue #52). The DX12/VK gate is separately closable via
+            // DesktopVK: ShadowDusk 0.12.0 added a real Vulkan backend. It compiles the same plain .fx
+            // source as every other target (HLSL -> DXC -> SPIR-V -> .mgfx) — no SM6 source rewrite
+            // required, verified via ShadowDuskCLI against the pre-SM6-branch form of the example
+            // shaders. Closes the DesktopVK half of issue #52; DX12 has no ShadowDusk backend at all.
+            ExportTarget.MonoGameDesktopVK => DesktopShaderInfo("Vulkan"),
+            // gated: iOS, MonoGame DX12 (issue #52). The DX12 gate is separately closable via
             // ContentBuildMode.ContentBuilder (see CompilesShippedShaders) — don't "fix" it here too.
             _ => default,
         };
@@ -190,7 +196,7 @@ namespace XnaFiddle
         // (ContentBuildMode.ContentBuilder, every MonoGame target), at build time via MGCB (only when the
         // user opts a classic MonoGame target into ContentPipeline mode), or at runtime via ShadowDusk
         // (every other supported target). The three are mutually exclusive; a target that is none of them
-        // is "gated" (ships .fx, no compiler) — e.g. MonoGame DX12/VK, iOS on ShadowDusk.
+        // is "gated" (ships .fx, no compiler) — e.g. MonoGame DX12, iOS on ShadowDusk.
         // Gated on !UsesContentBuilder(target, ...) rather than a blanket "contentMode == ContentBuilder"
         // check — Content Builder mode is only meaningful on MonoGame targets (the UI gates the picker to
         // ExportRuntime.MonoGame), so a KNI/FNA export passed ContentBuildMode.ContentBuilder directly
@@ -836,8 +842,11 @@ public class Builder : ContentBuilder
                 // packages. The shared game code compiles against any MonoGame framework and binds
                 // to Native at runtime (both ship an assembly named MonoGame.Framework). There is no
                 // MGCB content-builder task here — the legacy MGCB tool has no WindowsDX12/DesktopVK
-                // platform; the new backends use a separate content pipeline (out of scope for
-                // fiddles, which load no compiled content except a library's own shader).
+                // platform; the new backends use a separate content pipeline for library-shipped
+                // compiled content (out of scope for fiddles, which load no compiled content except a
+                // library's own shader). This gap is unrelated to fiddle-authored .fx shaders: those
+                // route through GetShaderExportInfo/ShadowDusk instead, which DOES cover DesktopVK
+                // (0.12.0+ Vulkan backend) — only WindowsDX12 still has no ShadowDusk backend.
                 packages.Add(new NuGetPackage { Id = "MonoGame.Framework.Native", Version = PackageVersions.MonoGameFramework });
                 if (target == ExportTarget.MonoGameWindowsDX12)
                 {
