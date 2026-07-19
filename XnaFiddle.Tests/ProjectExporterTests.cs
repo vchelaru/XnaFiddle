@@ -952,29 +952,41 @@ public class Game1 : Game
         Assert.Contains("ShaderCompiler.Compile(", files["MyGame/RawContentManager.cs"]);
     }
 
-    // ── MGCB shader mode (ShaderCompileMode.ContentPipeline) ──────────────────
+    // ── CompilesShippedShaders: two independent axes (ContentBuildMode x ShaderCompileMode) ──
 
     [Theory]
-    // ContentPipeline mode compiles classic MonoGame targets via MGCB (so they're not gated)...
-    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
-    [InlineData(ExportTarget.MonoGameWindowsDX, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
-    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
-    // ...but DX12 has no classic MGCB and stays gated even in ContentPipeline mode.
-    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, false)]
+    // Native requires the MATCHING content strategy to actually be selected too — Native alone (paired
+    // with Raw) does nothing; ClassicMgcb wires classic MGCB, ContentBuilder wires the new Content
+    // Builder's own DXC pipeline. Classic MonoGame targets compile via MGCB under Native+ClassicMgcb...
+    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, true)]
+    [InlineData(ExportTarget.MonoGameWindowsDX, ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, true)]
+    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, true)]
+    // ...but DX12 has no classic MGCB and stays gated even under Native+ClassicMgcb.
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, false)]
     // DesktopVK is wired directly via ShadowDusk (0.12.0+ Vulkan backend, issue #52), so it compiles
-    // regardless of shaderMode — ContentPipeline is a no-op here (DesktopVK isn't classic, see
+    // regardless of shaderMode — Native+ClassicMgcb is a no-op here (DesktopVK isn't classic, see
     // IsMonoGameClassic) and it falls through to ShadowDusk rather than going gated.
-    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
-    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk,      ContentBuildMode.Raw, true)]
-    // In ShadowDusk mode, Android is wired like DesktopGL (issue #88).
-    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
-    [InlineData(ExportTarget.KniAndroid,        ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
-    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
-    [InlineData(ExportTarget.KniDesktopGL,      ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)] // MGCB ignored; ShadowDusk
-    // ContentBuilder mode closes the remaining DX12 gate (issue #52) — every MonoGame target compiles.
-    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
-    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.Native,     ContentBuildMode.ClassicMgcb, true)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw,         true)]
+    // ShadowDusk is the default under EVERY content strategy now (issue #52 follow-up), not just Raw —
+    // Android is wired like DesktopGL (issue #88) regardless of which strategy is picked for assets.
+    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw,         true)]
+    [InlineData(ExportTarget.KniAndroid,        ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw,         true)]
+    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ShadowDusk, ContentBuildMode.ClassicMgcb, true)] // new default combo
+    [InlineData(ExportTarget.KniDesktopGL,      ShaderCompileMode.Native,     ContentBuildMode.ClassicMgcb, true)] // MGCB ignored (not MonoGame classic); ShadowDusk
+    // ContentBuilder + Native closes the DX12 gate (issue #52) on every MonoGame target.
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.Native, ContentBuildMode.ContentBuilder, true)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.Native, ContentBuildMode.ContentBuilder, true)]
+    [InlineData(ExportTarget.MonoGameDesktopGL,   ShaderCompileMode.Native, ContentBuildMode.ContentBuilder, true)]
+    // ContentBuilder + ShadowDusk (newly possible): still compiles on every target ShadowDusk itself
+    // supports — Content Builder no longer auto-compiles shaders just because it was picked for assets.
     [InlineData(ExportTarget.MonoGameDesktopGL,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    // DX12 + ContentBuilder + ShadowDusk: ShadowDusk 0.12.0 has no DirectX12 PlatformTarget yet (its
+    // README still lists DX12 as "Not yet" — verified against the NuGet feed and PlatformTarget.cs at
+    // implementation time), so unlike DesktopVK this stays gated under the ShadowDusk default. Flip to
+    // true once GetShaderExportInfo gains a MonoGameWindowsDX12 case.
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, false)]
     // ...but it's a no-op for non-MonoGame targets (they ignore it and keep their existing strategy).
     [InlineData(ExportTarget.KniDesktopGL,  ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
     [InlineData(ExportTarget.FnaDesktop,    ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
@@ -984,10 +996,23 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void SinglePlatform_Shader_MonoGameDesktopGL_ContentPipeline_BuildsXnbNotShadowDusk()
+    public void DX12_ContentBuilder_ShadowDusk_StaysGated_UntilShadowDuskAddsDx12()
+    {
+        // Dedicated regression guard (beyond the theory row above) for this specific combo, since it's
+        // the one case in this whole rework gated by a live external dependency rather than by design:
+        // ShadowDusk hasn't shipped a DX12 backend as of 0.12.0. When it does, GetShaderExportInfo gains
+        // a MonoGameWindowsDX12 case and this flips to Assert.True with no other code change needed.
+        Assert.False(ProjectExporter.CompilesShippedShaders(
+            ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder));
+    }
+
+    // ── Classic MGCB mode (ContentBuildMode.ClassicMgcb) — shaders ─────────────
+
+    [Fact]
+    public void SinglePlatform_ClassicMgcbNative_DesktopGL_BuildsXnbNotShadowDusk()
     {
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
-            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ClassicMgcb);
         var files = ExtractTextFiles(zip);
 
         // The .fx SOURCE still ships (the pipeline compiles it at build time) plus a Content.mgcb.
@@ -1002,11 +1027,17 @@ public class Game1 : Game
         Assert.Contains("/profile:HiDef", mgcb);
 
         // The csproj hands the .fx to the content pipeline and ships NO ShadowDusk — a canonical
-        // MonoGame project. The .fx/.mgcb are dropped from the wholesale copy so only the built .xnb
-        // is output (single-platform uses Remove because the .fx are SDK-default None items).
+        // MonoGame project. Every classic-pipeline extension is dropped from the wholesale copy so only
+        // the built .xnb lands in the output (single-platform uses Remove because they're SDK-default
+        // None items) — .fx plus .png/.wav (ClassicMgcb's asset importers, even though none are shipped
+        // in this export) plus Content.mgcb itself, since useClassicMgcbAssets is mode/target-driven,
+        // not asset-existence-driven.
         string csproj = files["MyGame/MyGame.csproj"];
         Assert.Contains(@"<MonoGameContentReference Include=""Content\Content.mgcb"" />", csproj);
         Assert.Contains(@"<None Remove=""Content\**\*.fx"" />", csproj);
+        Assert.Contains(@"<None Remove=""Content\**\*.png"" />", csproj);
+        Assert.Contains(@"<None Remove=""Content\**\*.wav"" />", csproj);
+        Assert.Contains(@"<None Remove=""Content\Content.mgcb"" />", csproj);
         Assert.DoesNotContain("ShadowDusk", csproj);
 
         // No runtime compiler is injected, and the content manager has no ShadowDusk Effect branch —
@@ -1018,10 +1049,10 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void SinglePlatform_Shader_MonoGameWindowsDX_ContentPipeline_UsesWindowsPlatformToken()
+    public void SinglePlatform_ClassicMgcbNative_WindowsDX_UsesWindowsPlatformToken()
     {
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameWindowsDX, "MyGame",
-            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ClassicMgcb);
         var files = ExtractTextFiles(zip);
 
         Assert.Contains("/platform:Windows", files["MyGame/Content/Content.mgcb"]);
@@ -1031,8 +1062,8 @@ public class Game1 : Game
     [Fact]
     public void SinglePlatform_Shader_MonoGameDesktopGL_DefaultModeStaysShadowDusk()
     {
-        // No shaderCompileMode argument: the default must remain the runtime ShadowDusk path so existing
-        // exports are unchanged. (Regression guard for the new opt-in not flipping the default.)
+        // No shaderCompileMode/contentBuildMode arguments: the defaults must remain ShadowDusk/Raw so
+        // existing exports are unchanged. (Regression guard for the new opt-ins not flipping defaults.)
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame", shaders: OneShader());
         var files = ExtractTextFiles(zip);
 
@@ -1042,12 +1073,13 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void ContentPipelineMode_NonMonoGameTarget_IgnoresMgcbAndUsesShadowDusk()
+    public void ClassicMgcbNative_NonMonoGameTarget_IgnoresMgcbAndUsesShadowDusk()
     {
-        // ContentPipeline is honored only on classic MonoGame targets; a KNI export must ignore it and
-        // keep the ShadowDusk wiring (KNI has no MGCB tool).
+        // Native is honored only on classic MonoGame targets; a KNI export must ignore it (and the
+        // ClassicMgcb content strategy, which is equally meaningless for KNI) and keep the ShadowDusk
+        // wiring (KNI has no MGCB tool).
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame",
-            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ClassicMgcb);
         var files = ExtractTextFiles(zip);
 
         Assert.DoesNotContain("MyGame/Content/Content.mgcb", files.Keys);
@@ -1056,9 +1088,9 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void MultiPlatform_Shader_ContentPipeline_SharedMgcbAndNoShadowDuskAnywhere()
+    public void MultiPlatform_ClassicMgcbNative_SharedMgcbAndNoShadowDuskAnywhere()
     {
-        // Two classic MonoGame heads in ContentPipeline mode → one shared Content.mgcb, each head
+        // Two classic MonoGame heads in ClassicMgcb+Native mode → one shared Content.mgcb, each head
         // references it, and the common project is fully canonical (no ShadowDusk.Core, no Effect branch).
         var targets = new List<ExportTarget>
         {
@@ -1066,7 +1098,7 @@ public class Game1 : Game
             ExportTarget.MonoGameWindowsDX,
         };
         byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
-            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ClassicMgcb);
         var files = ExtractTextFiles(zip);
 
         // One shared .mgcb at the solution-root Content/, the .fx alongside it.
@@ -1087,7 +1119,7 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void MultiPlatform_Shader_ContentPipeline_ClassicUsesMgcbWhileDx12Gated()
+    public void MultiPlatform_ClassicMgcbNative_ClassicUsesMgcbWhileDx12Gated()
     {
         // A classic head (MGCB) alongside a DX12 head (no classic MGCB → gated). DX12 ships the .fx but
         // gets neither an MGCB reference nor ShadowDusk; no head uses ShadowDusk, so the common stays clean.
@@ -1097,7 +1129,7 @@ public class Game1 : Game
             ExportTarget.MonoGameWindowsDX12,
         };
         byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
-            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ClassicMgcb);
         var files = ExtractTextFiles(zip);
 
         Assert.Contains(@"<MonoGameContentReference Include=""..\Content\Content.mgcb"" />",
@@ -1107,6 +1139,104 @@ public class Game1 : Game
         Assert.DoesNotContain("MonoGameContentReference", dx12);
         Assert.DoesNotContain("ShadowDusk", dx12);
         Assert.DoesNotContain("ShadowDusk", files["MyGameCommon/MyGameCommon.csproj"]);
+    }
+
+    // ── Classic MGCB mode (ContentBuildMode.ClassicMgcb) — assets ───────────────
+
+    [Fact]
+    public void ClassicMgcbAssets_PngAndWav_EmitColorKeyDisabledImporterBlocks()
+    {
+        // Regression guard for the magenta color-key bug: MonoGame's TextureProcessor defaults
+        // ColorKeyEnabled to TRUE (color-keys pure magenta to transparent), which would silently punch
+        // holes in a shipped .png unless explicitly forced off.
+        var assets = new Dictionary<string, byte[]>
+        {
+            ["sprite.png"] = [1, 2, 3],
+            ["sprite"] = [1, 2, 3], // extensionless dedup key InMemoryContentManager also stores
+            ["blip.wav"] = [4, 5, 6],
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, contentBuildMode: ContentBuildMode.ClassicMgcb);
+        var files = ExtractTextFiles(zip);
+
+        string mgcb = files["MyGame/Content/Content.mgcb"];
+        Assert.Contains("#begin sprite.png", mgcb);
+        Assert.Contains("/importer:TextureImporter", mgcb);
+        Assert.Contains("/processor:TextureProcessor", mgcb);
+        Assert.Contains("/processorParam:ColorKeyEnabled=False", mgcb);
+        Assert.Contains("/processorParam:TextureFormat=Color", mgcb);
+        Assert.Contains("/build:sprite.png", mgcb);
+
+        Assert.Contains("#begin blip.wav", mgcb);
+        Assert.Contains("/importer:WavImporter", mgcb);
+        Assert.Contains("/processor:SoundEffectProcessor", mgcb);
+        Assert.Contains("/processorParam:Quality=Best", mgcb);
+        Assert.Contains("/build:blip.wav", mgcb);
+    }
+
+    [Fact]
+    public void ClassicMgcbAssets_MonoGameContentReference_PresentWithZeroNativeShaders()
+    {
+        // Regression guard for the widened <MonoGameContentReference> condition: ClassicMgcb assets
+        // alone — no shaders at all, let alone Native ones — must still get Content.mgcb referenced.
+        var assets = new Dictionary<string, byte[]> { ["sprite.png"] = [1, 2, 3] };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, contentBuildMode: ContentBuildMode.ClassicMgcb);
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<MonoGameContentReference Include=""Content\Content.mgcb"" />", csproj);
+        Assert.Contains(@"<None Remove=""Content\**\*.png"" />", csproj);
+        Assert.DoesNotContain(@"<None Remove=""Content\**\*.fx"" />", csproj); // no shaders, nothing to compile natively
+        Assert.DoesNotContain("ShadowDusk", csproj); // no shader tabs at all in this export
+    }
+
+    [Fact]
+    public void SinglePlatform_ClassicMgcbAssets_ShadowDuskShaders_NewDefaultCombo()
+    {
+        // The new default combo: ClassicMgcb compiles assets to .xnb at build time; ShadowDusk still
+        // compiles shipped .fx at runtime (issue #52 follow-up — ShadowDusk is the default shader
+        // compiler under every content strategy, not just Raw).
+        var assets = new Dictionary<string, byte[]> { ["sprite.png"] = [1, 2, 3] };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, shaders: OneShader(), contentBuildMode: ContentBuildMode.ClassicMgcb);
+        var files = ExtractTextFiles(zip);
+
+        // The .png is compiled via MGCB...
+        string mgcb = files["MyGame/Content/Content.mgcb"];
+        Assert.Contains("#begin sprite.png", mgcb);
+        Assert.DoesNotContain("#begin Grayscale.fx", mgcb); // the shader is NOT native-compiled here
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<MonoGameContentReference Include=""Content\Content.mgcb"" />", csproj);
+        Assert.Contains(@"<None Remove=""Content\**\*.png"" />", csproj);
+        Assert.DoesNotContain(@"<None Remove=""Content\**\*.fx"" />", csproj); // .fx still ships raw
+
+        // ...while the .fx still ships raw and recompiles at runtime via ShadowDusk.
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.Contains("ShadowDusk.Compiler", csproj);
+        Assert.Contains("typeof(T) == typeof(Effect)", files["MyGame/RawContentManager.cs"]);
+    }
+
+    [Fact]
+    public void MultiPlatform_ClassicMgcbAssets_MixedHeads_OnlyClassicHeadExcludesPngFromRawCopy()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX12 };
+        var assets = new Dictionary<string, byte[]> { ["sprite.png"] = [1, 2, 3] };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
+            assets: assets, contentBuildMode: ContentBuildMode.ClassicMgcb);
+        var files = ExtractTextFiles(zip);
+
+        // DesktopGL is classic — it excludes the compiled .png (and .wav, mode/target-driven regardless
+        // of which extensions are actually shipped) from its raw copy and references the shared .mgcb.
+        string desktopGL = files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"];
+        Assert.Contains(@"Exclude=""..\Content\**\*.png;..\Content\**\*.wav;..\Content\Content.mgcb""", desktopGL);
+        Assert.Contains(@"<MonoGameContentReference Include=""..\Content\Content.mgcb"" />", desktopGL);
+
+        // WindowsDX12 has no classic MGCB — it keeps copying everything raw, .png included.
+        string dx12 = files["MyGame.WindowsDX12/MyGame.WindowsDX12.csproj"];
+        Assert.DoesNotContain("Exclude=", dx12);
+        Assert.DoesNotContain("MonoGameContentReference", dx12);
     }
 
     // ── MonoGame 3.8.5 GA Content Builder mode (ContentBuildMode.ContentBuilder) ─────
@@ -1125,11 +1255,50 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void SinglePlatform_ContentBuilder_RoutesAssetsAndShadersToSeparateContentProject()
+    public void SinglePlatform_ContentBuilder_ShadowDuskShaders_RoutesAssetsOnlyShaderStaysRuntime()
     {
+        // The default shader compiler is ShadowDusk under EVERY content strategy, including Content
+        // Builder (issue #52 follow-up) — Content Builder no longer supersedes shader compilation.
         var assets = new Dictionary<string, byte[]> { ["x.png"] = [1, 2, 3] };
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
             assets: assets, shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+
+        // The asset routes into the Content project's Assets/ folder...
+        Assert.Contains("MyGame.Content/Assets/x.png", files.Keys);
+        // ...but the shader stays in the head's own Content/ and keeps its ShadowDusk wiring.
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.DoesNotContain(files.Keys, k => k.Contains("MyGame.Content/Assets/Grayscale.fx"));
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<Import Project=""..\MyGame.Content\BuildContent.targets"" />", csproj);
+        Assert.Contains("ShadowDusk.Compiler", csproj);
+        Assert.Contains("typeof(T) == typeof(Effect)", files["MyGame/RawContentManager.cs"]);
+    }
+
+    [Fact]
+    public void SinglePlatform_ContentBuilder_ShadowDuskShaders_HeadContentShaderStillWiredForCopyToOutput()
+    {
+        // Regression guard: under Content Builder mode with the default ShadowDusk shader compiler, the
+        // .fx stays in the head's own Content/ (not routed into {projectName}.Content/Assets/), so it
+        // still needs the wholesale Content/ copy-to-output wiring — or the shipped .fx never reaches
+        // the build output and RawContentManager can't find it to compile at runtime.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<None Update=""Content\**\*"">", csproj);
+        Assert.Contains("<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>", csproj);
+    }
+
+    [Fact]
+    public void SinglePlatform_ContentBuilder_NativeShaders_RoutesAssetsAndShadersToSeparateContentProject()
+    {
+        var assets = new Dictionary<string, byte[]> { ["x.png"] = [1, 2, 3] };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native,
+            contentBuildMode: ContentBuildMode.ContentBuilder);
         var files = ExtractTextFiles(zip);
 
         // The three generated Content Builder project files.
@@ -1137,8 +1306,8 @@ public class Game1 : Game
         Assert.Contains("MyGame.Content/BuildContent.targets", files.Keys);
         Assert.Contains("MyGame.Content/Builder/Builder.cs", files.Keys);
 
-        // The asset and shader both route into the Content project's Assets/ folder instead of
-        // the head's own Content/, so Builder.cs's WildcardRule("*") picks them up.
+        // With Native selected, the asset AND shader both route into the Content project's Assets/
+        // folder instead of the head's own Content/, so Builder.cs's WildcardRule("*") picks them up.
         Assert.Contains("MyGame.Content/Assets/x.png", files.Keys);
         Assert.Contains("MyGame.Content/Assets/Grayscale.fx", files.Keys);
 
@@ -1156,13 +1325,14 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void SinglePlatform_ContentBuilder_ClosesDx12ShaderGate()
+    public void SinglePlatform_ContentBuilder_NativeShaders_ClosesDx12ShaderGate()
     {
         // Issue #52: the Content Builder isn't limited to mgcb.exe's platform list, so DX12 (which
-        // still has no ShadowDusk backend, unlike DesktopVK) finally gets a way to compile shipped
-        // .fx — without touching its existing package set.
+        // still has no ShadowDusk backend, unlike DesktopVK) finally gets a way to compile shipped .fx
+        // — but only when Native is explicitly selected; the default ShadowDusk mode leaves it gated
+        // (see DX12_ContentBuilder_ShadowDusk_StaysGated_UntilShadowDuskAddsDx12).
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameWindowsDX12, "MyGame",
-            shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ContentBuilder);
         var files = ExtractTextFiles(zip);
 
         string csproj = files["MyGame/MyGame.csproj"];
@@ -1175,15 +1345,15 @@ public class Game1 : Game
             csproj);
 
         Assert.True(ProjectExporter.CompilesShippedShaders(
-            ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder));
+            ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.Native, ContentBuildMode.ContentBuilder));
     }
 
     [Fact]
-    public void MultiPlatform_ContentBuilder_OneSharedContentProjectReferencedByBothHeads()
+    public void MultiPlatform_ContentBuilder_NativeShaders_OneSharedContentProjectReferencedByBothHeads()
     {
         var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX };
         byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
-            shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ContentBuilder);
         var files = ExtractTextFiles(zip);
 
         // Exactly one shared Content project (a Dictionary key can't repeat, so Contains is sufficient).
@@ -1237,11 +1407,11 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void ContentBuilder_ExcludesRawFormatsFromAssetsFolder()
+    public void ContentBuilder_ExcludesNonPipelineFormatsFromAssetsFolder()
     {
-        // .achx/.fnt (and the rest of SupportedAssetExtensions minus .png/.wav) have no pipeline
-        // importer — WildcardRule("*") would choke on them — so they keep shipping raw into the
-        // head's own Content/ folder instead of {projectName}.Content/Assets/.
+        // .achx/.fnt (and the rest of NonPipelineAssetExtensions) have no pipeline importer —
+        // WildcardRule("*") would choke on them — so they keep shipping raw into the head's own
+        // Content/ folder instead of {projectName}.Content/Assets/.
         var assets = new Dictionary<string, byte[]>
         {
             ["sprite.png"] = [1],
@@ -1261,5 +1431,30 @@ public class Game1 : Game
 
         // The extensionless dedup key never gets written anywhere.
         Assert.DoesNotContain(files.Keys, k => k.EndsWith("/sprite"));
+    }
+
+    [Fact]
+    public void ClassicMgcb_NonPipelineFormatsStayRawAlongsidePipelineFormats()
+    {
+        // NonPipelineAssetExtensions rename regression guard: the same exclusion set also gates
+        // ClassicMgcb's asset routing, not just Content Builder's. .png (has a pipeline importer) gets
+        // excluded from the raw copy; .fnt (doesn't) keeps copying raw like every other asset.
+        var assets = new Dictionary<string, byte[]>
+        {
+            ["sprite.png"] = [1],
+            ["font.fnt"] = [2],
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, contentBuildMode: ContentBuildMode.ClassicMgcb);
+        var files = ExtractTextFiles(zip);
+
+        // Both assets physically ship in the same Content/ folder — ClassicMgcb needs no separate
+        // Assets/ destination (only the csproj-level copy-to-output exclusion differs per extension).
+        Assert.Contains("MyGame/Content/sprite.png", files.Keys);
+        Assert.Contains("MyGame/Content/font.fnt", files.Keys);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<None Remove=""Content\**\*.png"" />", csproj);
+        Assert.DoesNotContain(@"<None Remove=""Content\**\*.fnt"" />", csproj);
     }
 }
