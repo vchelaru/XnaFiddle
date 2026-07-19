@@ -291,15 +291,15 @@
     @if (_exportOpen)
     {
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
-            @{ bool contentBuilderMode = _exportRuntime == ExportRuntime.MonoGame && _contentBuildMode == ContentBuildMode.ContentBuilder; }
+            @{ bool contentBuilderMode = _exportRuntime == ExportRuntime.MonoGame && _contentStrategy == ContentStrategy.ContentBuilder; }
             @if (_shaderTabs.Count > 0 || contentBuilderMode)
             {
                 @* issue #39: shaders now export — the .fx source ships and the exported project
                    recompiles it at runtime via ShadowDusk, like the in-browser editor. For MonoGame
-                   the user can instead opt into the build-time MonoGame Content Pipeline (MGCB), or
+                   the user can instead opt into the build-time classic MonoGame Content Pipeline (MGCB), or
                    MonoGame 3.8.5's newer Content Builder, which also covers plain assets (issue #52). *@
                 var gatedShaderPlatforms = _shaderTabs.Count > 0 ? GatedShaderPlatforms() : new List<ExportPlatform>();
-                bool mgcbShaders = _exportRuntime == ExportRuntime.MonoGame && _shaderCompileMode == ShaderCompileMode.ContentPipeline && !contentBuilderMode;
+                bool mgcbShaders = _exportRuntime == ExportRuntime.MonoGame && _contentStrategy == ContentStrategy.ClassicMgcb;
                 <div style="color: #9cdcaa; font-size: 12px; line-height: 1.5; background: #1e2d20; border: 1px solid #2d5c34; border-radius: 3px; padding: 6px 8px;">
                     @if (contentBuilderMode)
                     {
@@ -380,45 +380,34 @@
                     }
                 </div>
 
-                @* Content pipeline choice — MonoGame only; covers both regular assets and shaders.
-                   Picking Content Builder supersedes the shader-compilation choice below (issue #52). *@
+                @* Content strategy — MonoGame only; the single control for how both shaders and
+                   Assets/ content are built. Used to be two separate radio groups ("Shader
+                   compilation:" and "Content pipeline:") that silently overrode each other and
+                   reused the words "Content Pipeline" for two different things — collapsed into one
+                   mutually-exclusive choice (issue #52 follow-up). ShadowDusk/Classic MGCB only
+                   affect this fiddle's .fx tabs (Classic MGCB is inert without any); Content Builder
+                   also builds plain assets and supersedes shader compilation entirely. *@
                 @if (_exportRuntime == ExportRuntime.MonoGame)
                 {
                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <span style="color: #aaa; margin-bottom: 2px;">Content pipeline:</span>
+                        <span style="color: #aaa; margin-bottom: 2px;">Content strategy:</span>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
-                            <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.Raw)"
-                                   @onchange="() => _contentBuildMode = ContentBuildMode.Raw"
+                            <input type="radio" name="contentStrategy" checked="@(_contentStrategy == ContentStrategy.ShadowDusk)"
+                                   @onchange="() => _contentStrategy = ContentStrategy.ShadowDusk"
                                    style="accent-color: #0e639c;" />
-                            Raw assets (default)
+                            ShadowDusk (default)
                         </label>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
-                            <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.ContentBuilder)"
-                                   @onchange="() => _contentBuildMode = ContentBuildMode.ContentBuilder"
+                            <input type="radio" name="contentStrategy" checked="@(_contentStrategy == ContentStrategy.ClassicMgcb)"
+                                   @onchange="() => _contentStrategy = ContentStrategy.ClassicMgcb"
+                                   style="accent-color: #0e639c;" />
+                            Classic MGCB (.xnb)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                            <input type="radio" name="contentStrategy" checked="@(_contentStrategy == ContentStrategy.ContentBuilder)"
+                                   @onchange="() => _contentStrategy = ContentStrategy.ContentBuilder"
                                    style="accent-color: #0e639c;" />
                             MonoGame Content Builder (3.8.5)
-                        </label>
-                    </div>
-                }
-
-                @* Shader-compilation choice — only meaningful for MonoGame (the classic MGCB pipeline),
-                   only when the fiddle actually has shader (.fx) tabs to compile, and superseded once
-                   Content Builder mode is chosen (it builds shaders too, via the Content pipeline above). *@
-                @if (_exportRuntime == ExportRuntime.MonoGame && _shaderTabs.Count > 0 && _contentBuildMode != ContentBuildMode.ContentBuilder)
-                {
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <span style="color: #aaa; margin-bottom: 2px;">Shader compilation:</span>
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
-                            <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ShadowDusk)"
-                                   @onchange="() => _shaderCompileMode = ShaderCompileMode.ShadowDusk"
-                                   style="accent-color: #0e639c;" />
-                            ShadowDusk (runtime)
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
-                            <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ContentPipeline)"
-                                   @onchange="() => _shaderCompileMode = ShaderCompileMode.ContentPipeline"
-                                   style="accent-color: #0e639c;" />
-                            Content Pipeline (.xnb)
                         </label>
                     </div>
                 }

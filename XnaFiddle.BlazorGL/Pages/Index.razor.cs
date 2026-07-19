@@ -107,19 +107,28 @@ namespace XnaFiddle.Pages
         enum ExportRuntime { Kni, MonoGame, Fna }
         enum ExportPlatform { DesktopGL, WindowsDX, Android, BlazorGL, WindowsDX12, DesktopVK }
 
+        // The export dialog's single source of truth for how shaders/content are built. Maps to
+        // ProjectExporter's (ShaderCompileMode, ContentBuildMode) pair via EffectiveContentModes()
+        // below — kept as one UI-facing enum so the dialog never shows two radio groups whose
+        // combination can silently contradict each other (they used to; see issue #52 follow-up).
+        enum ContentStrategy
+        {
+            // Ship .fx SOURCE, recompiled at runtime via ShadowDusk. Default; works everywhere shaders
+            // are supported at all.
+            ShadowDusk,
+            // Classic MonoGame Content Pipeline (MGCB) — build-time .xnb. Only meaningful on classic
+            // MonoGame targets (DesktopGL/WindowsDX/Android); other targets fall back to ShadowDusk.
+            ClassicMgcb,
+            // MonoGame 3.8.5's new Content Builder — compiles assets AND shaders together, on every
+            // MonoGame target including DX12/Vulkan (issue #52). Supersedes shader mode entirely.
+            ContentBuilder
+        }
+
         bool _exportOpen;
         bool _isExporting;
         ExportRuntime _exportRuntime = ExportRuntime.Kni;
         HashSet<ExportPlatform> _selectedPlatforms = new() { ExportPlatform.DesktopGL };
-        // How exported .fx shaders are compiled. Runtime ShadowDusk is the default and the only option
-        // that works across every target; the MonoGame Content Pipeline (MGCB, build-time .xnb) is an
-        // opt-in honored only on classic MonoGame targets (the export dialog shows it just for MonoGame).
-        ShaderCompileMode _shaderCompileMode = ShaderCompileMode.ShadowDusk;
-        // How exported MonoGame projects build Assets/ content. Raw is the default; ContentBuilder opts
-        // into MonoGame 3.8.5's new Content Builder pipeline (assets + shaders together) and supersedes
-        // _shaderCompileMode for that export — it's the mechanism that closes the DX12/Vulkan shader
-        // gate (issue #52).
-        ContentBuildMode _contentBuildMode = ContentBuildMode.Raw;
+        ContentStrategy _contentStrategy = ContentStrategy.ShadowDusk;
         string _exportProjectName = "MyFiddle";
         List<AssetInfo> _assets = new();
         string _assetUrlInput = "";
@@ -1735,18 +1744,25 @@ technique BasicColorDrawing
             return targets;
         }
 
+        // _contentStrategy is MonoGame-only; force the runtime default for other runtimes so a stale
+        // selection can't leak in (the exporter ignores it for non-MonoGame targets anyway).
+        (ShaderCompileMode shaderMode, ContentBuildMode contentMode) EffectiveContentModes() =>
+            _exportRuntime == ExportRuntime.MonoGame
+                ? _contentStrategy switch
+                {
+                    ContentStrategy.ClassicMgcb => (ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw),
+                    ContentStrategy.ContentBuilder => (ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder),
+                    _ => (ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw),
+                }
+                : (ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw);
+
         // Selected platforms that can't compile shipped .fx in the chosen mode — neither ShadowDusk
         // (runtime) nor MGCB (build-time) — so the project builds but its shaders won't load there
         // (issue #39/#52). Mode-aware: in MGCB mode the classic MonoGame targets are no longer gated.
         // Delegates to ProjectExporter.CompilesShippedShaders (the single source of truth).
         List<ExportPlatform> GatedShaderPlatforms()
         {
-            ShaderCompileMode mode = _exportRuntime == ExportRuntime.MonoGame
-                ? _shaderCompileMode
-                : ShaderCompileMode.ShadowDusk;
-            ContentBuildMode contentMode = _exportRuntime == ExportRuntime.MonoGame
-                ? _contentBuildMode
-                : ContentBuildMode.Raw;
+            (ShaderCompileMode mode, ContentBuildMode contentMode) = EffectiveContentModes();
             var list = new List<ExportPlatform>();
             foreach (var p in _selectedPlatforms)
                 if (!ProjectExporter.CompilesShippedShaders(GetExportTarget(p), mode, contentMode))
@@ -1825,15 +1841,7 @@ technique BasicColorDrawing
                         shaders[s.Name] = s.Source ?? "";
                 }
 
-                // The MGCB shader option is MonoGame-only; force the runtime default for other runtimes
-                // so a stale selection can't leak in (the exporter ignores it for non-classic targets anyway).
-                ShaderCompileMode shaderMode = _exportRuntime == ExportRuntime.MonoGame
-                    ? _shaderCompileMode
-                    : ShaderCompileMode.ShadowDusk;
-                // Same idiom for the Content Builder toggle — MonoGame-only, so force Raw for other runtimes.
-                ContentBuildMode contentMode = _exportRuntime == ExportRuntime.MonoGame
-                    ? _contentBuildMode
-                    : ContentBuildMode.Raw;
+                (ShaderCompileMode shaderMode, ContentBuildMode contentMode) = EffectiveContentModes();
                 byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null,
                     libraryRegistry: LibraryRegistry, shaders: shaders, shaderCompileMode: shaderMode, contentBuildMode: contentMode);
                 string base64 = Convert.ToBase64String(zipBytes);
