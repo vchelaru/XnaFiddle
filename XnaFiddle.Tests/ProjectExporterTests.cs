@@ -943,20 +943,27 @@ public class Game1 : Game
 
     [Theory]
     // ContentPipeline mode compiles classic MonoGame targets via MGCB (so they're not gated)...
-    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ContentPipeline, true)]
-    [InlineData(ExportTarget.MonoGameWindowsDX, ShaderCompileMode.ContentPipeline, true)]
-    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ContentPipeline, true)]
+    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
+    [InlineData(ExportTarget.MonoGameWindowsDX, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
+    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)]
     // ...but DX12/VK have no classic MGCB and stay gated even in ContentPipeline mode.
-    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ContentPipeline, false)]
-    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ContentPipeline, false)]
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, false)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, false)]
     // In ShadowDusk mode, Android is wired like DesktopGL (issue #88).
-    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, true)]
-    [InlineData(ExportTarget.KniAndroid,        ShaderCompileMode.ShadowDusk, true)]
-    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ShadowDusk, true)]
-    [InlineData(ExportTarget.KniDesktopGL,      ShaderCompileMode.ContentPipeline, true)] // MGCB ignored; ShadowDusk
-    public void CompilesShippedShaders_ReflectsModeAndTarget(ExportTarget target, ShaderCompileMode mode, bool expected)
+    [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
+    [InlineData(ExportTarget.KniAndroid,        ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
+    [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw, true)]
+    [InlineData(ExportTarget.KniDesktopGL,      ShaderCompileMode.ContentPipeline, ContentBuildMode.Raw, true)] // MGCB ignored; ShadowDusk
+    // ContentBuilder mode closes the DX12/Vulkan gate (issue #52) — every MonoGame target compiles.
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    [InlineData(ExportTarget.MonoGameDesktopGL,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    // ...but it's a no-op for non-MonoGame targets (they ignore it and keep their existing strategy).
+    [InlineData(ExportTarget.KniDesktopGL,  ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    [InlineData(ExportTarget.FnaDesktop,    ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
+    public void CompilesShippedShaders_ReflectsModeAndTarget(ExportTarget target, ShaderCompileMode shaderMode, ContentBuildMode contentMode, bool expected)
     {
-        Assert.Equal(expected, ProjectExporter.CompilesShippedShaders(target, mode));
+        Assert.Equal(expected, ProjectExporter.CompilesShippedShaders(target, shaderMode, contentMode));
     }
 
     [Fact]
@@ -1083,5 +1090,158 @@ public class Game1 : Game
         Assert.DoesNotContain("MonoGameContentReference", dx12);
         Assert.DoesNotContain("ShadowDusk", dx12);
         Assert.DoesNotContain("ShadowDusk", files["MyGameCommon/MyGameCommon.csproj"]);
+    }
+
+    // ── MonoGame 3.8.5 GA Content Builder mode (ContentBuildMode.ContentBuilder) ─────
+
+    [Fact]
+    public void ContentBuilder_DefaultMode_EmitsNoContentProject()
+    {
+        // Regression guard: exporting without a contentBuildMode argument must not emit any
+        // {projectName}.Content/... entries — the new opt-in must not flip the default.
+        var assets = new Dictionary<string, byte[]> { ["x.png"] = [0] };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        Assert.DoesNotContain(files.Keys, k => k.Contains("MyGame.Content"));
+    }
+
+    [Fact]
+    public void SinglePlatform_ContentBuilder_RoutesAssetsAndShadersToSeparateContentProject()
+    {
+        var assets = new Dictionary<string, byte[]> { ["x.png"] = [1, 2, 3] };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+
+        // The three generated Content Builder project files.
+        Assert.Contains("MyGame.Content/MyGame.Content.csproj", files.Keys);
+        Assert.Contains("MyGame.Content/BuildContent.targets", files.Keys);
+        Assert.Contains("MyGame.Content/Builder/Builder.cs", files.Keys);
+
+        // The asset and shader both route into the Content project's Assets/ folder instead of
+        // the head's own Content/, so Builder.cs's WildcardRule("*") picks them up.
+        Assert.Contains("MyGame.Content/Assets/x.png", files.Keys);
+        Assert.Contains("MyGame.Content/Assets/Grayscale.fx", files.Keys);
+
+        // The head's own Content/ has nothing pipeline-related left in it.
+        Assert.DoesNotContain(files.Keys, k => k.StartsWith("MyGame/Content/"));
+
+        // The head csproj imports the Content project's build step and ships no ShadowDusk/MGCB wiring.
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<Import Project=""..\MyGame.Content\BuildContent.targets"" />", csproj);
+        Assert.DoesNotContain("ShadowDusk", csproj);
+        Assert.DoesNotContain(@"<None Include=""Content", csproj);
+        Assert.DoesNotContain("MonoGameContentReference", csproj);
+
+        Assert.Contains(@"<Project Path=""MyGame.Content\MyGame.Content.csproj"" />", files["MyGame.slnx"]);
+    }
+
+    [Fact]
+    public void SinglePlatform_ContentBuilder_ClosesDx12VulkanShaderGate()
+    {
+        // Issue #52: the Content Builder isn't limited to mgcb.exe's platform list, so DX12/Vulkan
+        // finally get a way to compile shipped .fx — without touching their existing package set.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameWindowsDX12, "MyGame",
+            shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(@"<Import Project=""..\MyGame.Content\BuildContent.targets"" />", csproj);
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Framework.Native"" Version=""{PackageVersions.MonoGameFramework}"" />",
+            csproj);
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Runtime.Windows.DX12"" Version=""{PackageVersions.MonoGameFramework}"" />",
+            csproj);
+
+        Assert.True(ProjectExporter.CompilesShippedShaders(
+            ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder));
+    }
+
+    [Fact]
+    public void MultiPlatform_ContentBuilder_OneSharedContentProjectReferencedByBothHeads()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
+            shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+
+        // Exactly one shared Content project (a Dictionary key can't repeat, so Contains is sufficient).
+        Assert.Contains("MyGame.Content/MyGame.Content.csproj", files.Keys);
+        Assert.Contains("MyGame.Content/BuildContent.targets", files.Keys);
+        Assert.Contains("MyGame.Content/Builder/Builder.cs", files.Keys);
+        Assert.Contains("MyGame.Content/Assets/Grayscale.fx", files.Keys);
+
+        Assert.Contains(@"<Import Project=""..\MyGame.Content\BuildContent.targets"" />",
+            files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"]);
+        Assert.Contains(@"<Import Project=""..\MyGame.Content\BuildContent.targets"" />",
+            files["MyGame.WindowsDX/MyGame.WindowsDX.csproj"]);
+        Assert.Contains(@"<Project Path=""MyGame.Content\MyGame.Content.csproj"" />", files["MyGame.slnx"]);
+    }
+
+    [Fact]
+    public void ContentBuilder_NonMonoGameTargets_AreNoOp()
+    {
+        // ContentBuildMode.ContentBuilder is honored only on MonoGame targets (UsesContentBuilder
+        // requires target.IsMonoGame()); KNI and FNA must build exactly as if it were never passed.
+        byte[] kniZip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame",
+            shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+        var kniFiles = ExtractTextFiles(kniZip);
+        Assert.DoesNotContain(kniFiles.Keys, k => k.Contains("MyGame.Content"));
+        Assert.Contains("ShadowDusk.Compiler", kniFiles["MyGame/MyGame.csproj"]);
+
+        byte[] fnaZip = ProjectExporter.Export(MinimalCode, ExportTarget.FnaDesktop, "MyGame",
+            shaders: OneShader(), contentBuildMode: ContentBuildMode.ContentBuilder);
+        var fnaFiles = ExtractTextFiles(fnaZip);
+        Assert.DoesNotContain(fnaFiles.Keys, k => k.Contains("MyGame.Content"));
+        Assert.Contains("ShadowDusk.Compiler", fnaFiles["MyGame/MyGame.csproj"]);
+    }
+
+    [Fact]
+    public void ContentBuilder_ClassicTarget_KeepsMgcbToolManifestAlongsideImport()
+    {
+        // MonoGame.Content.Builder.Task (and its dotnet-tools.json manifest) stays installed on classic
+        // targets even in Content Builder mode — Apos.Shapes/Gum ship their own buildTransitive .mgcb,
+        // invisible to Builder.cs (which only walks the fiddle's own Assets/ folder). Both pipelines
+        // coexist on classic targets; mirrors MonoGame_StableVersion_EmitsMgcbToolManifest.
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/.config/dotnet-tools.json", files.Keys);
+        string csproj = files["MyGame/MyGame.csproj"];
+        Assert.Contains(
+            $@"<PackageReference Include=""MonoGame.Content.Builder.Task"" Version=""{PackageVersions.MonoGameFramework}"" />",
+            csproj);
+        Assert.Contains(@"<Import Project=""..\MyGame.Content\BuildContent.targets"" />", csproj);
+    }
+
+    [Fact]
+    public void ContentBuilder_ExcludesRawFormatsFromAssetsFolder()
+    {
+        // .achx/.fnt (and the rest of SupportedAssetExtensions minus .png/.wav) have no pipeline
+        // importer — WildcardRule("*") would choke on them — so they keep shipping raw into the
+        // head's own Content/ folder instead of {projectName}.Content/Assets/.
+        var assets = new Dictionary<string, byte[]>
+        {
+            ["sprite.png"] = [1],
+            ["sprite"] = [1], // extensionless dedup key InMemoryContentManager also stores
+            ["font.fnt"] = [2],
+            ["anim.achx"] = [3],
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
+            assets: assets, contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame.Content/Assets/sprite.png", files.Keys);
+        Assert.DoesNotContain("MyGame.Content/Assets/font.fnt", files.Keys);
+        Assert.DoesNotContain("MyGame.Content/Assets/anim.achx", files.Keys);
+        Assert.Contains("MyGame/Content/font.fnt", files.Keys);
+        Assert.Contains("MyGame/Content/anim.achx", files.Keys);
+
+        // The extensionless dedup key never gets written anywhere.
+        Assert.DoesNotContain(files.Keys, k => k.EndsWith("/sprite"));
     }
 }

@@ -291,15 +291,21 @@
     @if (_exportOpen)
     {
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
-            @if (_shaderTabs.Count > 0)
+            @{ bool contentBuilderMode = _exportRuntime == ExportRuntime.MonoGame && _contentBuildMode == ContentBuildMode.ContentBuilder; }
+            @if (_shaderTabs.Count > 0 || contentBuilderMode)
             {
                 @* issue #39: shaders now export — the .fx source ships and the exported project
                    recompiles it at runtime via ShadowDusk, like the in-browser editor. For MonoGame
-                   the user can instead opt into the build-time MonoGame Content Pipeline (MGCB). *@
-                var gatedShaderPlatforms = GatedShaderPlatforms();
-                bool mgcbShaders = _exportRuntime == ExportRuntime.MonoGame && _shaderCompileMode == ShaderCompileMode.ContentPipeline;
+                   the user can instead opt into the build-time MonoGame Content Pipeline (MGCB), or
+                   MonoGame 3.8.5's newer Content Builder, which also covers plain assets (issue #52). *@
+                var gatedShaderPlatforms = _shaderTabs.Count > 0 ? GatedShaderPlatforms() : new List<ExportPlatform>();
+                bool mgcbShaders = _exportRuntime == ExportRuntime.MonoGame && _shaderCompileMode == ShaderCompileMode.ContentPipeline && !contentBuilderMode;
                 <div style="color: #9cdcaa; font-size: 12px; line-height: 1.5; background: #1e2d20; border: 1px solid #2d5c34; border-radius: 3px; padding: 6px 8px;">
-                    @if (mgcbShaders)
+                    @if (contentBuilderMode)
+                    {
+                        <text>&#10003; Assets@(_shaderTabs.Count > 0 ? $" and your {_shaderTabs.Count} .fx shader file(s)" : "") will be compiled at build time by the MonoGame Content Builder (3.8.5) in a separate <b>@(_exportProjectName).Content</b> project.</text>
+                    }
+                    else if (mgcbShaders)
                     {
                         <text>&#10003; Your @_shaderTabs.Count <b>.fx</b> shader file(s) will be compiled to <b>.xnb</b> at build time by the MonoGame Content Pipeline (MGCB) in the exported project.</text>
                     }
@@ -374,9 +380,31 @@
                     }
                 </div>
 
-                @* Shader-compilation choice — only meaningful for MonoGame (the classic MGCB pipeline)
-                   and only when the fiddle actually has shader (.fx) tabs to compile. *@
-                @if (_exportRuntime == ExportRuntime.MonoGame && _shaderTabs.Count > 0)
+                @* Content pipeline choice — MonoGame only; covers both regular assets and shaders.
+                   Picking Content Builder supersedes the shader-compilation choice below (issue #52). *@
+                @if (_exportRuntime == ExportRuntime.MonoGame)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="color: #aaa; margin-bottom: 2px;">Content pipeline:</span>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                            <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.Raw)"
+                                   @onchange="() => _contentBuildMode = ContentBuildMode.Raw"
+                                   style="accent-color: #0e639c;" />
+                            Raw assets (default)
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                            <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.ContentBuilder)"
+                                   @onchange="() => _contentBuildMode = ContentBuildMode.ContentBuilder"
+                                   style="accent-color: #0e639c;" />
+                            MonoGame Content Builder (3.8.5)
+                        </label>
+                    </div>
+                }
+
+                @* Shader-compilation choice — only meaningful for MonoGame (the classic MGCB pipeline),
+                   only when the fiddle actually has shader (.fx) tabs to compile, and superseded once
+                   Content Builder mode is chosen (it builds shaders too, via the Content pipeline above). *@
+                @if (_exportRuntime == ExportRuntime.MonoGame && _shaderTabs.Count > 0 && _contentBuildMode != ContentBuildMode.ContentBuilder)
                 {
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                         <span style="color: #aaa; margin-bottom: 2px;">Shader compilation:</span>

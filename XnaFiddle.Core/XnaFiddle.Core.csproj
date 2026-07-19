@@ -52,6 +52,14 @@ namespace XnaFiddle {
         public const string Fna = &quot;$(FnaNetVersion)&quot;%3B
         // ShadowDusk HLSL .fx runtime compiler — exported projects compile shaders at runtime (issue #39)
         public const string ShadowDusk = &quot;$(ShadowDuskVersion)&quot;%3B
+        // MonoGame Content Builder (3.8.5 GA)
+        public const string MonoGameLibraryFreeType = &quot;$(MonoGameLibraryFreeTypeVersion)&quot;%3B
+        public const string MonoGameLibraryMojoShader = &quot;$(MonoGameLibraryMojoShaderVersion)&quot;%3B
+        public const string MonoGameToolBasisu = &quot;$(MonoGameToolBasisuVersion)&quot;%3B
+        public const string MonoGameToolCrunch = &quot;$(MonoGameToolCrunchVersion)&quot;%3B
+        public const string MonoGameToolDxc = &quot;$(MonoGameToolDxcVersion)&quot;%3B
+        public const string MonoGameToolFFmpeg = &quot;$(MonoGameToolFFmpegVersion)&quot;%3B
+        public const string MonoGameToolFFprobe = &quot;$(MonoGameToolFFprobeVersion)&quot;%3B
         // Third-party libraries
         public const string AetherPhysics = &quot;$(AetherPhysicsVersion)&quot;%3B
         public const string AposShapes = &quot;$(AposShapesVersion)&quot;%3B

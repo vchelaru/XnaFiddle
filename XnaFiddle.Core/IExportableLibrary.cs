@@ -41,5 +41,15 @@ namespace XnaFiddle
             ExportTarget.KniBlazorGL => true,
             _ => false,
         };
+
+        public static bool IsMonoGame(this ExportTarget target) => target switch
+        {
+            ExportTarget.MonoGameDesktopGL => true,
+            ExportTarget.MonoGameWindowsDX => true,
+            ExportTarget.MonoGameAndroid => true,
+            ExportTarget.MonoGameWindowsDX12 => true,
+            ExportTarget.MonoGameDesktopVK => true,
+            _ => false,
+        };
     }
 }

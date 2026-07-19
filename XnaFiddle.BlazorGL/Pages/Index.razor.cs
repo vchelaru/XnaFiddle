@@ -115,6 +115,11 @@ namespace XnaFiddle.Pages
         // that works across every target; the MonoGame Content Pipeline (MGCB, build-time .xnb) is an
         // opt-in honored only on classic MonoGame targets (the export dialog shows it just for MonoGame).
         ShaderCompileMode _shaderCompileMode = ShaderCompileMode.ShadowDusk;
+        // How exported MonoGame projects build Assets/ content. Raw is the default; ContentBuilder opts
+        // into MonoGame 3.8.5's new Content Builder pipeline (assets + shaders together) and supersedes
+        // _shaderCompileMode for that export — it's the mechanism that closes the DX12/Vulkan shader
+        // gate (issue #52).
+        ContentBuildMode _contentBuildMode = ContentBuildMode.Raw;
         string _exportProjectName = "MyFiddle";
         List<AssetInfo> _assets = new();
         string _assetUrlInput = "";
@@ -1739,9 +1744,12 @@ technique BasicColorDrawing
             ShaderCompileMode mode = _exportRuntime == ExportRuntime.MonoGame
                 ? _shaderCompileMode
                 : ShaderCompileMode.ShadowDusk;
+            ContentBuildMode contentMode = _exportRuntime == ExportRuntime.MonoGame
+                ? _contentBuildMode
+                : ContentBuildMode.Raw;
             var list = new List<ExportPlatform>();
             foreach (var p in _selectedPlatforms)
-                if (!ProjectExporter.CompilesShippedShaders(GetExportTarget(p), mode))
+                if (!ProjectExporter.CompilesShippedShaders(GetExportTarget(p), mode, contentMode))
                     list.Add(p);
             return list;
         }
@@ -1822,8 +1830,12 @@ technique BasicColorDrawing
                 ShaderCompileMode shaderMode = _exportRuntime == ExportRuntime.MonoGame
                     ? _shaderCompileMode
                     : ShaderCompileMode.ShadowDusk;
+                // Same idiom for the Content Builder toggle — MonoGame-only, so force Raw for other runtimes.
+                ContentBuildMode contentMode = _exportRuntime == ExportRuntime.MonoGame
+                    ? _contentBuildMode
+                    : ContentBuildMode.Raw;
                 byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null,
-                    libraryRegistry: LibraryRegistry, shaders: shaders, shaderCompileMode: shaderMode);
+                    libraryRegistry: LibraryRegistry, shaders: shaders, shaderCompileMode: shaderMode, contentBuildMode: contentMode);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }
