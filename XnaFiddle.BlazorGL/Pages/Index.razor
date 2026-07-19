@@ -401,7 +401,7 @@
                             <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.Raw)"
                                    @onchange="() => _contentBuildMode = ContentBuildMode.Raw"
                                    style="accent-color: #0e639c;" />
-                            Raw (default)
+                            Raw
                         </label>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
                             <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.ClassicMgcb)"
@@ -434,7 +434,7 @@
                                 <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ShadowDusk)"
                                        @onchange="() => _shaderCompileMode = ShaderCompileMode.ShadowDusk"
                                        style="accent-color: #0e639c;" />
-                                ShadowDusk (default)
+                                ShadowDusk
                             </label>
                             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
                                 <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.Native)"

@@ -883,15 +883,18 @@ public class Builder : ContentBuilder
 
             var sb = new StringBuilder();
             sb.AppendLine($@"<Solution>{deployConfig}");
-            sb.AppendLine($@"  <Project Path=""{commonName}\{commonName}.csproj"" />");
-            if (anyContentBuilder)
-                sb.AppendLine($@"  <Project Path=""{projectName}.Content\{projectName}.Content.csproj"" />");
+            // Platform-head (actual game) projects come FIRST: .sln/.slnx tooling (Visual Studio) picks
+            // the first listed project as the default startup project, and neither the shared Common
+            // library nor the Content Builder console project is something a user wants to hit F5 on.
             foreach (var target in targets)
             {
                 string suffix = GetPlatformSuffix(target);
                 string platformDir = $"{projectName}.{suffix}";
                 sb.AppendLine($@"  <Project Path=""{platformDir}\{platformDir}.csproj"" />");
             }
+            sb.AppendLine($@"  <Project Path=""{commonName}\{commonName}.csproj"" />");
+            if (anyContentBuilder)
+                sb.AppendLine($@"  <Project Path=""{projectName}.Content\{projectName}.Content.csproj"" />");
             sb.AppendLine("</Solution>");
             return sb.ToString();
         }

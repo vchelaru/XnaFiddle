@@ -498,6 +498,28 @@ public class Game1 : Game
     }
 
     [Fact]
+    public void MultiPlatform_SlnxListsPlatformHeadsBeforeCommonAndContent()
+    {
+        // .sln/.slnx tooling (Visual Studio) picks the first listed project as the default startup
+        // project — neither the shared Common library nor the Content Builder console project should
+        // ever win that slot over an actual game project.
+        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX12 };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame", contentBuildMode: ContentBuildMode.ContentBuilder);
+        var files = ExtractTextFiles(zip);
+        string slnx = files["MyGame.slnx"];
+
+        int firstHeadIndex = Math.Min(
+            slnx.IndexOf(@"MyGame.DesktopGL\MyGame.DesktopGL.csproj", StringComparison.Ordinal),
+            slnx.IndexOf(@"MyGame.WindowsDX12\MyGame.WindowsDX12.csproj", StringComparison.Ordinal));
+        int commonIndex = slnx.IndexOf(@"MyGameCommon\MyGameCommon.csproj", StringComparison.Ordinal);
+        int contentIndex = slnx.IndexOf(@"MyGame.Content\MyGame.Content.csproj", StringComparison.Ordinal);
+
+        Assert.True(firstHeadIndex >= 0 && commonIndex >= 0 && contentIndex >= 0);
+        Assert.True(firstHeadIndex < commonIndex);
+        Assert.True(firstHeadIndex < contentIndex);
+    }
+
+    [Fact]
     public void MultiPlatform_SlnxHasDeployConfigForAndroid()
     {
         var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
