@@ -111,9 +111,10 @@ namespace XnaFiddle.Pages
         bool _isExporting;
         ExportRuntime _exportRuntime = ExportRuntime.Kni;
         HashSet<ExportPlatform> _selectedPlatforms = new() { ExportPlatform.DesktopGL };
-        // How exported .fx shaders are compiled. Runtime ShadowDusk is the default and the only option
-        // that works across every target; the MonoGame Content Pipeline (MGCB, build-time .xnb) is an
-        // opt-in honored only on classic MonoGame targets (the export dialog shows it just for MonoGame).
+        // Two independent axes (issue #52 follow-up) — ContentBuildMode is itself the 3-way UI choice
+        // for non-shader assets now, so no separate UI-facing enum is needed. ShaderCompileMode is
+        // clamped to ShadowDusk under Raw by EffectiveContentModes() below, not here.
+        ContentBuildMode _contentBuildMode = ContentBuildMode.Raw;
         ShaderCompileMode _shaderCompileMode = ShaderCompileMode.ShadowDusk;
         string _exportProjectName = "MyFiddle";
         List<AssetInfo> _assets = new();
@@ -1730,18 +1731,24 @@ technique BasicColorDrawing
             return targets;
         }
 
+        // _contentBuildMode/_shaderCompileMode are MonoGame-only; force the runtime default for other
+        // runtimes so a stale selection can't leak in (the exporter ignores them for non-MonoGame
+        // targets anyway). Raw always clamps to ShadowDusk — it has no native .fx pipeline to opt into.
+        (ShaderCompileMode shaderMode, ContentBuildMode contentMode) EffectiveContentModes() =>
+            _exportRuntime == ExportRuntime.MonoGame
+                ? (_contentBuildMode == ContentBuildMode.Raw ? ShaderCompileMode.ShadowDusk : _shaderCompileMode, _contentBuildMode)
+                : (ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw);
+
         // Selected platforms that can't compile shipped .fx in the chosen mode — neither ShadowDusk
         // (runtime) nor MGCB (build-time) — so the project builds but its shaders won't load there
         // (issue #39/#52). Mode-aware: in MGCB mode the classic MonoGame targets are no longer gated.
         // Delegates to ProjectExporter.CompilesShippedShaders (the single source of truth).
         List<ExportPlatform> GatedShaderPlatforms()
         {
-            ShaderCompileMode mode = _exportRuntime == ExportRuntime.MonoGame
-                ? _shaderCompileMode
-                : ShaderCompileMode.ShadowDusk;
+            (ShaderCompileMode mode, ContentBuildMode contentMode) = EffectiveContentModes();
             var list = new List<ExportPlatform>();
             foreach (var p in _selectedPlatforms)
-                if (!ProjectExporter.CompilesShippedShaders(GetExportTarget(p), mode))
+                if (!ProjectExporter.CompilesShippedShaders(GetExportTarget(p), mode, contentMode))
                     list.Add(p);
             return list;
         }
@@ -1817,13 +1824,9 @@ technique BasicColorDrawing
                         shaders[s.Name] = s.Source ?? "";
                 }
 
-                // The MGCB shader option is MonoGame-only; force the runtime default for other runtimes
-                // so a stale selection can't leak in (the exporter ignores it for non-classic targets anyway).
-                ShaderCompileMode shaderMode = _exportRuntime == ExportRuntime.MonoGame
-                    ? _shaderCompileMode
-                    : ShaderCompileMode.ShadowDusk;
+                (ShaderCompileMode shaderMode, ContentBuildMode contentMode) = EffectiveContentModes();
                 byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null,
-                    libraryRegistry: LibraryRegistry, shaders: shaders, shaderCompileMode: shaderMode);
+                    libraryRegistry: LibraryRegistry, shaders: shaders, shaderCompileMode: shaderMode, contentBuildMode: contentMode);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }

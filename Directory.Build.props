@@ -68,7 +68,19 @@
          property feeds the editor's PackageReference AND the exporter's PackageVersions.ShadowDusk.
          0.5.0+ is required: it adds InitializeAsync() + a synchronous Compile(), which the exported
          project needs to compile lazily inside the synchronous Content.Load<Effect> call site. -->
-    <ShadowDuskVersion>0.11.0</ShadowDuskVersion>
+    <ShadowDuskVersion>0.12.0</ShadowDuskVersion>
+
+    <!-- MonoGame 3.8.5 GA Content Builder (opt-in ContentBuildMode.ContentBuilder) — the new
+         code-first content pipeline's own dependencies, pinned to what MonoGame's 3.8.5 GA
+         templates reference. MonoGame.Framework.Content.Pipeline and MonoGame.Framework.Native
+         reuse MonoGameFrameworkVersion above instead of getting their own property. -->
+    <MonoGameLibraryFreeTypeVersion>2.13.2.3</MonoGameLibraryFreeTypeVersion>
+    <MonoGameLibraryMojoShaderVersion>1.0.0.5</MonoGameLibraryMojoShaderVersion>
+    <MonoGameToolBasisuVersion>2.0.2.1</MonoGameToolBasisuVersion>
+    <MonoGameToolCrunchVersion>1.0.4.7</MonoGameToolCrunchVersion>
+    <MonoGameToolDxcVersion>1.8.2505.11</MonoGameToolDxcVersion>
+    <MonoGameToolFFmpegVersion>7.0.0.10</MonoGameToolFFmpegVersion>
+    <MonoGameToolFFprobeVersion>7.0.0.10</MonoGameToolFFprobeVersion>
   </PropertyGroup>
 
 </Project>

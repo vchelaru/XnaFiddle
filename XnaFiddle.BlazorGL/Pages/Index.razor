@@ -291,17 +291,32 @@
     @if (_exportOpen)
     {
         <div style="background: #252526; border-bottom: 1px solid #333; flex-shrink: 0; font-size: 12px; color: #d4d4d4; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
-            @if (_shaderTabs.Count > 0)
+            @{ bool monoGameContentMode = _exportRuntime == ExportRuntime.MonoGame && _contentBuildMode != ContentBuildMode.Raw; }
+            @if (_shaderTabs.Count > 0 || monoGameContentMode)
             {
                 @* issue #39: shaders now export — the .fx source ships and the exported project
-                   recompiles it at runtime via ShadowDusk, like the in-browser editor. For MonoGame
-                   the user can instead opt into the build-time MonoGame Content Pipeline (MGCB). *@
-                var gatedShaderPlatforms = GatedShaderPlatforms();
-                bool mgcbShaders = _exportRuntime == ExportRuntime.MonoGame && _shaderCompileMode == ShaderCompileMode.ContentPipeline;
+                   recompiles it at runtime via ShadowDusk by default, like the in-browser editor,
+                   regardless of content strategy. The user can separately opt shaders into Native
+                   compilation (issue #52 follow-up: content strategy and shader compiler are two
+                   independent axes — ContentBuildMode/ShaderCompileMode — not one combined choice). *@
+                var gatedShaderPlatforms = _shaderTabs.Count > 0 ? GatedShaderPlatforms() : new List<ExportPlatform>();
+                (ShaderCompileMode effShaderMode, ContentBuildMode effContentMode) = EffectiveContentModes();
                 <div style="color: #9cdcaa; font-size: 12px; line-height: 1.5; background: #1e2d20; border: 1px solid #2d5c34; border-radius: 3px; padding: 6px 8px;">
-                    @if (mgcbShaders)
+                    @if (effContentMode == ContentBuildMode.ContentBuilder && effShaderMode == ShaderCompileMode.Native)
                     {
-                        <text>&#10003; Your @_shaderTabs.Count <b>.fx</b> shader file(s) will be compiled to <b>.xnb</b> at build time by the MonoGame Content Pipeline (MGCB) in the exported project.</text>
+                        <text>&#10003; Assets@(_shaderTabs.Count > 0 ? $" and your {_shaderTabs.Count} .fx shader file(s)" : "") will be compiled at build time by the MonoGame Content Builder (3.8.5) in a separate <b>@(_exportProjectName).Content</b> project.</text>
+                    }
+                    else if (effContentMode == ContentBuildMode.ContentBuilder)
+                    {
+                        <text>&#10003; Assets will be compiled at build time by the MonoGame Content Builder (3.8.5) in a separate <b>@(_exportProjectName).Content</b> project.@(_shaderTabs.Count > 0 ? $" Your {_shaderTabs.Count} .fx shader file(s) will still be compiled at runtime via ShadowDusk." : "")</text>
+                    }
+                    else if (effContentMode == ContentBuildMode.ClassicMgcb && effShaderMode == ShaderCompileMode.Native)
+                    {
+                        <text>&#10003; Assets@(_shaderTabs.Count > 0 ? $" and your {_shaderTabs.Count} .fx shader file(s)" : "") will be compiled to <b>.xnb</b> at build time by the classic MonoGame Content Pipeline (MGCB) in the exported project.</text>
+                    }
+                    else if (effContentMode == ContentBuildMode.ClassicMgcb)
+                    {
+                        <text>&#10003; Assets will be compiled to <b>.xnb</b> at build time by the classic MonoGame Content Pipeline (MGCB).@(_shaderTabs.Count > 0 ? $" Your {_shaderTabs.Count} .fx shader file(s) will still be compiled at runtime via ShadowDusk in the exported project." : "")</text>
                     }
                     else
                     {
@@ -374,24 +389,60 @@
                     }
                 </div>
 
-                @* Shader-compilation choice — only meaningful for MonoGame (the classic MGCB pipeline)
-                   and only when the fiddle actually has shader (.fx) tabs to compile. *@
-                @if (_exportRuntime == ExportRuntime.MonoGame && _shaderTabs.Count > 0)
+                @* Content strategy — MonoGame only; how non-shader Content/ assets get built. Independent
+                   from the shader compiler group below (issue #52 follow-up: these used to be one
+                   combined 3-way choice that silently forced shaders through Content Builder's native
+                   pipeline whenever it was picked for assets). *@
+                @if (_exportRuntime == ExportRuntime.MonoGame)
                 {
                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                        <span style="color: #aaa; margin-bottom: 2px;">Shader compilation:</span>
+                        <span style="color: #aaa; margin-bottom: 2px;">Content strategy:</span>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
-                            <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ShadowDusk)"
-                                   @onchange="() => _shaderCompileMode = ShaderCompileMode.ShadowDusk"
+                            <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.Raw)"
+                                   @onchange="() => _contentBuildMode = ContentBuildMode.Raw"
                                    style="accent-color: #0e639c;" />
-                            ShadowDusk (runtime)
+                            Raw
                         </label>
                         <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
-                            <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ContentPipeline)"
-                                   @onchange="() => _shaderCompileMode = ShaderCompileMode.ContentPipeline"
+                            <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.ClassicMgcb)"
+                                   @onchange="() => _contentBuildMode = ContentBuildMode.ClassicMgcb"
                                    style="accent-color: #0e639c;" />
-                            Content Pipeline (.xnb)
+                            Classic MGCB (.xnb)
                         </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                            <input type="radio" name="contentBuildMode" checked="@(_contentBuildMode == ContentBuildMode.ContentBuilder)"
+                                   @onchange="() => _contentBuildMode = ContentBuildMode.ContentBuilder"
+                                   style="accent-color: #0e639c;" />
+                            MonoGame Content Builder (3.8.5)
+                        </label>
+                    </div>
+
+                    @* Shader compiler — independent of Content strategy above. ShadowDusk (runtime
+                       compile) is the default under every content strategy, not just Raw (issue #52
+                       follow-up); Native means "compile via whichever pipeline Content strategy
+                       selected" and is meaningless under Raw (nothing to natively compile .fx with
+                       there), so Raw shows a fixed label instead of radios. *@
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span style="color: #aaa; margin-bottom: 2px;">Shader compiler:</span>
+                        @if (_contentBuildMode == ContentBuildMode.Raw)
+                        {
+                            <span style="color: #777; font-style: italic;">ShadowDusk (fixed — Raw has no native .fx pipeline)</span>
+                        }
+                        else
+                        {
+                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                                <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.ShadowDusk)"
+                                       @onchange="() => _shaderCompileMode = ShaderCompileMode.ShadowDusk"
+                                       style="accent-color: #0e639c;" />
+                                ShadowDusk
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #ccc;">
+                                <input type="radio" name="shaderCompileMode" checked="@(_shaderCompileMode == ShaderCompileMode.Native)"
+                                       @onchange="() => _shaderCompileMode = ShaderCompileMode.Native"
+                                       style="accent-color: #0e639c;" />
+                                Native
+                            </label>
+                        }
                     </div>
                 }
             </div>
