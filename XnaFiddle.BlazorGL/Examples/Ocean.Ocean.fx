@@ -12,6 +12,11 @@
     #define SV_POSITION POSITION
     #define VS_SHADERMODEL vs_3_0
     #define PS_SHADERMODEL ps_3_0
+#elif defined(SM6) || defined(VULKAN)
+    // MonoGame's native Content Builder (DX12/Vulkan) compiles via DXC, which requires Shader
+    // Model 6. This shader has no texture/sampler, so no other change is needed here.
+    #define VS_SHADERMODEL vs_6_0
+    #define PS_SHADERMODEL ps_6_0
 #else
     #define VS_SHADERMODEL vs_4_0_level_9_1
     #define PS_SHADERMODEL ps_4_0_level_9_1
@@ -379,6 +384,65 @@ float3 aces_tonemap(float3 color)
     return pow(clamp(mul(m2, (a / b)), 0.0f, 1.0f), 1.0f / 2.2f);
 }
 
+// ShadowDusk's OpenGL translator (and the real MonoGame Content Builder's DXC pass) rewrite/validate
+// the pixel shader entry point by matching a literal, unconditioned `: COLOR0` return semantic --
+// splitting just the signature across an #if breaks that even with an otherwise-shared body
+// (verified against the real ShadowDuskCLI tool and a real DX12 Content Builder build while fixing
+// issue #52's SM6 gap: SM6 also requires `SV_Target0` instead of `COLOR0`). So the two shader
+// models get fully separate, self-contained entry points instead of one shared function.
+#if defined(SM6) || defined(VULKAN)
+float4 MainPS(VSOutput input) : SV_Target0
+{
+    // get the ray
+    float3 ray = getRay(input.TexCoord);
+
+    if (ray.y >= 0.0f)
+    {
+        // if ray.y is positive, render the sky
+        float3 C = getAtmosphere(ray);
+        return float4(aces_tonemap(C * 2.0f), 1.0f);
+    }
+
+    // now ray.y must be negative, water must be hit
+    // define water planes
+    float3 waterPlaneHigh = float3(0.0f, 0.0f, 0.0f);
+    float3 waterPlaneLow = float3(0.0f, -WATER_DEPTH, 0.0f);
+
+    // define ray origin, moving around
+    float3 origin = CameraPosition;
+
+    // calculate intersections and reconstruct positions
+    float highPlaneHit = intersectPlane(origin, ray, waterPlaneHigh, float3(0.0f, 1.0f, 0.0f));
+    float lowPlaneHit = intersectPlane(origin, ray, waterPlaneLow, float3(0.0f, 1.0f, 0.0f));
+    float3 highHitPos = origin + ray * highPlaneHit;
+    float3 lowHitPos = origin + ray * lowPlaneHit;
+
+    // raymarch water and reconstruct the hit pos
+    float dist = raymarchwater(origin, highHitPos, lowHitPos, WATER_DEPTH);
+    float3 waterHitPos = origin + ray * dist;
+
+    // calculate normal at the hit position
+    float3 N = normal(waterHitPos.xz, 0.01f, WATER_DEPTH);
+
+    // smooth the normal with distance to avoid disturbing high frequency noise
+    N = lerp(N, float3(0.0f, 1.0f, 0.0f), 0.8f * min(1.0f, sqrt(dist * 0.01f) * 1.1f));
+
+    // calculate fresnel coefficient
+    float fresnel = 0.04f + (1.0f - 0.04f) * pow(1.0f - max(0.0f, dot(-N, ray)), 5.0f);
+
+    // reflect the ray and make sure it bounces up
+    float3 R = normalize(reflect(ray, N));
+    R.y = abs(R.y);
+
+    // calculate the reflection and approximate subsurface scattering
+    float3 reflection = getAtmosphere(R);
+    float3 scattering = float3(0.016f, 0.043f, 0.122f) * 0.085f * (0.2f + (waterHitPos.y + WATER_DEPTH) / WATER_DEPTH);
+
+    // return the combined result
+    float3 C = fresnel * reflection + scattering;
+    return float4(aces_tonemap(C * 2.0f), 1.0f);
+}
+#else
 float4 MainPS(VSOutput input) : COLOR0
 {
     // get the ray
@@ -430,6 +494,7 @@ float4 MainPS(VSOutput input) : COLOR0
     float3 C = fresnel * reflection + scattering;
     return float4(aces_tonemap(C * 2.0f), 1.0f);
 }
+#endif
 
 technique ProceduralOcean
 {
