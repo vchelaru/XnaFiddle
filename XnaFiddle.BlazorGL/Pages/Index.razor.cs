@@ -111,10 +111,6 @@ namespace XnaFiddle.Pages
         bool _isExporting;
         ExportRuntime _exportRuntime = ExportRuntime.Kni;
         HashSet<ExportPlatform> _selectedPlatforms = new() { ExportPlatform.DesktopGL };
-        // MonoGame framework version chosen in the export panel's version selector. Only meaningful
-        // when the MonoGame runtime is selected; defaults to the stable release. The preview option
-        // is experimental — a third-party lib restore conflict on it is expected, not our bug.
-        string _monoGameVersion = PackageVersions.MonoGameFramework;
         // How exported .fx shaders are compiled. Runtime ShadowDusk is the default and the only option
         // that works across every target; the MonoGame Content Pipeline (MGCB, build-time .xnb) is an
         // opt-in honored only on classic MonoGame targets (the export dialog shows it just for MonoGame).
@@ -1773,16 +1769,12 @@ technique BasicColorDrawing
             PruneUnavailablePlatforms();
         }
 
-        // WindowsDX12 and DesktopVK are MonoGame 3.8.5 preview-only backends. Keep them offered
-        // (and selected) only while the MonoGame runtime and the preview version are both chosen;
-        // otherwise drop them so a hidden checkbox can't silently stay in the export.
-        bool IsPreviewBackendAvailable =>
-            _exportRuntime == ExportRuntime.MonoGame
-            && _monoGameVersion == PackageVersions.MonoGameFrameworkPreview;
-
         void PruneUnavailablePlatforms()
         {
-            if (!IsPreviewBackendAvailable)
+            // WindowsDX12 and DesktopVK are MonoGame-only backends (not available for KNI or FNA
+            // runtimes). Keep them offered (and selected) only while the MonoGame runtime is chosen;
+            // otherwise drop them so a hidden checkbox can't silently stay in the export.
+            if (_exportRuntime != ExportRuntime.MonoGame)
             {
                 _selectedPlatforms.Remove(ExportPlatform.WindowsDX12);
                 _selectedPlatforms.Remove(ExportPlatform.DesktopVK);
@@ -1812,8 +1804,6 @@ technique BasicColorDrawing
 
                 var assets = InMemoryContentManager.Files;
                 var targets = GetExportTargets();
-                // Pass the chosen MonoGame version only for MonoGame exports; KNI/FNA ignore it (null).
-                string monoGameVersion = _exportRuntime == ExportRuntime.MonoGame ? _monoGameVersion : null;
 
                 // Ship each open shader's live .fx SOURCE so the exported project recompiles it at runtime
                 // via ShadowDusk (issue #39). Re-collect fresh — _shareShaders is only refreshed on
@@ -1833,7 +1823,7 @@ technique BasicColorDrawing
                     ? _shaderCompileMode
                     : ShaderCompileMode.ShadowDusk;
                 byte[] zipBytes = ProjectExporter.Export(code, targets, projectName, assets: assets.Count > 0 ? assets : null,
-                    libraryRegistry: LibraryRegistry, monoGameVersion: monoGameVersion, shaders: shaders, shaderCompileMode: shaderMode);
+                    libraryRegistry: LibraryRegistry, shaders: shaders, shaderCompileMode: shaderMode);
                 string base64 = Convert.ToBase64String(zipBytes);
                 await JsRuntime.InvokeVoidAsync("downloadFile", projectName + ".zip", base64);
             }

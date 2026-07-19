@@ -139,14 +139,13 @@ public class Game1 : Game
         Assert.Contains("MyGame.Android/Resources/drawable-xxxhdpi/icon.png", allFiles);
     }
 
-    // ── MonoGame DX12 (3.8.5 preview) export ─────────────────────────────────
+    // ── MonoGame DX12 export ──────────────────────────────────────────────────
 
     [Fact]
     public void MonoGameDX12_SinglePlatform_UsesNativeFrameworkAndDx12Runtime()
     {
         var targets = new List<ExportTarget> { ExportTarget.MonoGameWindowsDX12 };
-        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
-            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
         var files = ExtractTextFiles(zip);
         string csproj = files["MyGame/MyGame.csproj"];
 
@@ -165,8 +164,7 @@ public class Game1 : Game
     public void MonoGameDesktopVK_SinglePlatform_UsesNativeFrameworkAndCrossPlatformVulkanRuntimes()
     {
         var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopVK };
-        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
-            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
         var files = ExtractTextFiles(zip);
         string csproj = files["MyGame/MyGame.csproj"];
 
@@ -191,8 +189,7 @@ public class Game1 : Game
             ExportTarget.MonoGameDesktopGL,
             ExportTarget.MonoGameWindowsDX12,
         };
-        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
-            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
         var files = ExtractTextFiles(zip);
 
         string dx12 = files["MyGame.WindowsDX12/MyGame.WindowsDX12.csproj"];
@@ -268,15 +265,15 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void CommonCsproj_MonoGame_GetsDesktopGLWithPrivateAssets()
+    public void CommonCsproj_MonoGame_GetsNativeFrameworkWithPrivateAssets()
     {
         var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameAndroid };
         byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
         var files = ExtractTextFiles(zip);
         string common = files["MyGameCommon/MyGameCommon.csproj"];
 
-        // Should have MonoGame.Framework.DesktopGL as compile-time reference
-        Assert.Contains("MonoGame.Framework.DesktopGL", common);
+        // Should have MonoGame.Framework.Native as compile-time reference
+        Assert.Contains("MonoGame.Framework.Native", common);
         Assert.Contains("PrivateAssets", common);
 
         // Should NOT have MonoGame.Content.Builder.Task
@@ -284,37 +281,20 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void CommonCsproj_MonoGame_PreviewVersion_UsesNativeFramework()
+    public void CommonCsproj_MonoGame_UsesNativeFramework()
     {
-        // MonoGame 3.8.5+ shared libraries compile against the renderer-agnostic
+        // MonoGame 3.8.5 shared libraries compile against the renderer-agnostic
         // MonoGame.Framework.Native (the mg2dstartkit convention), not DesktopGL.
-        var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX };
-        byte[] zip = ProjectExporter.Export(
-            MinimalCode, targets, "MyGame",
-            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
-        var files = ExtractTextFiles(zip);
-        string common = files["MyGameCommon/MyGameCommon.csproj"];
-
-        Assert.Contains(
-            $@"<PackageReference Include=""MonoGame.Framework.Native"" Version=""{PackageVersions.MonoGameFrameworkPreview}"" PrivateAssets=""All"" />",
-            common);
-        // The common project must not pin a concrete backend as its framework reference.
-        Assert.DoesNotContain("MonoGame.Framework.DesktopGL", common);
-    }
-
-    [Fact]
-    public void CommonCsproj_MonoGame_DefaultVersion_UsesDesktopGLFramework()
-    {
-        // Stable 3.8.4 keeps the legacy DesktopGL shared reference (no .Native package yet).
         var targets = new List<ExportTarget> { ExportTarget.MonoGameDesktopGL, ExportTarget.MonoGameWindowsDX };
         byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
         var files = ExtractTextFiles(zip);
         string common = files["MyGameCommon/MyGameCommon.csproj"];
 
         Assert.Contains(
-            $@"<PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{PackageVersions.MonoGameFramework}"" PrivateAssets=""All"" />",
+            $@"<PackageReference Include=""MonoGame.Framework.Native"" Version=""{PackageVersions.MonoGameFramework}"" PrivateAssets=""All"" />",
             common);
-        Assert.DoesNotContain("MonoGame.Framework.Native", common);
+        // The common project must not pin a concrete backend as its framework reference.
+        Assert.DoesNotContain("MonoGame.Framework.DesktopGL", common);
     }
 
     [Fact]
@@ -391,40 +371,17 @@ public class Game1 : Game
     [Fact]
     public void MonoGame_DefaultVersion_PinsStableFramework()
     {
-        // No monoGameVersion argument → stable default for both lockstep packages.
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame");
         var files = ExtractTextFiles(zip);
         string csproj = files["MyGame/MyGame.csproj"];
 
-        Assert.Equal("3.8.4.1", PackageVersions.MonoGameFramework);
+        Assert.Equal("3.8.5", PackageVersions.MonoGameFramework);
         Assert.Contains(
             $@"<PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{PackageVersions.MonoGameFramework}"" />",
             csproj);
         Assert.Contains(
             $@"<PackageReference Include=""MonoGame.Content.Builder.Task"" Version=""{PackageVersions.MonoGameFramework}"" />",
             csproj);
-    }
-
-    [Fact]
-    public void MonoGame_PreviewVersion_PinsPreviewForFrameworkAndBuilder()
-    {
-        // Passing the preview version must move BOTH the framework package and the content
-        // builder package in lockstep onto the prerelease.
-        byte[] zip = ProjectExporter.Export(
-            MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
-            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
-        var files = ExtractTextFiles(zip);
-        string csproj = files["MyGame/MyGame.csproj"];
-
-        Assert.Equal("3.8.5-preview.6", PackageVersions.MonoGameFrameworkPreview);
-        Assert.Contains(
-            $@"<PackageReference Include=""MonoGame.Framework.DesktopGL"" Version=""{PackageVersions.MonoGameFrameworkPreview}"" />",
-            csproj);
-        Assert.Contains(
-            $@"<PackageReference Include=""MonoGame.Content.Builder.Task"" Version=""{PackageVersions.MonoGameFrameworkPreview}"" />",
-            csproj);
-        // The stable version must not leak into the preview export.
-        Assert.DoesNotContain(PackageVersions.MonoGameFramework + @"""", csproj);
     }
 
     // ── MGCB dotnet-tools manifest ───────────────────────────────────────────
@@ -441,23 +398,6 @@ public class Game1 : Game
         string manifest = files["MyFiddle/.config/dotnet-tools.json"];
         Assert.Contains("dotnet-mgcb", manifest);
         Assert.Contains(PackageVersions.MonoGameFramework, manifest);
-    }
-
-    [Fact]
-    public void MonoGame_PreviewVersion_EmitsMgcbToolManifest()
-    {
-        // The 3.8.5 preview still uses the legacy content-builder task (dotnet-mgcb exists at
-        // 3.8.5-preview.6), so the manifest is emitted for all MonoGame versions and pins the
-        // tool to the preview version in lockstep with the framework/builder packages.
-        byte[] zip = ProjectExporter.Export(
-            MinimalCode, ExportTarget.MonoGameDesktopGL, "MyFiddle",
-            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
-        var files = ExtractTextFiles(zip);
-
-        Assert.Contains("MyFiddle/.config/dotnet-tools.json", files.Keys);
-        string manifest = files["MyFiddle/.config/dotnet-tools.json"];
-        Assert.Contains("dotnet-mgcb", manifest);
-        Assert.Contains(PackageVersions.MonoGameFrameworkPreview, manifest);
     }
 
     [Fact]
@@ -1133,8 +1073,7 @@ public class Game1 : Game
             ExportTarget.MonoGameWindowsDX12,
         };
         byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame",
-            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline,
-            monoGameVersion: PackageVersions.MonoGameFrameworkPreview);
+            shaders: OneShader(), shaderCompileMode: ShaderCompileMode.ContentPipeline);
         var files = ExtractTextFiles(zip);
 
         Assert.Contains(@"<MonoGameContentReference Include=""..\Content\Content.mgcb"" />",

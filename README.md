@@ -218,7 +218,7 @@ Click the **Export** button in the toolbar to download your fiddle as a complete
 | Runtime | Platforms |
 |---|---|
 | KNI | DesktopGL, WindowsDX, Android, BlazorGL (Browser) |
-| MonoGame | DesktopGL, WindowsDX, Android |
+| MonoGame | DesktopGL, WindowsDX, Android, WindowsDX12, DesktopVK |
 
 The exported project includes the correct NuGet packages, entry point (`Program.cs` / `Activity1.cs` / `Index.razor`), and any assets you've loaded. Third-party libraries (Gum, Apos.Shapes, MonoGame.Extended, FontStashSharp, Aether.Physics2D, KernSmith) are detected automatically from your code and included in the `.csproj`.
 

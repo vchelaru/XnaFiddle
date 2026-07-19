@@ -20,8 +20,6 @@ namespace XnaFiddle
         // MonoGame 3.8.5+ next-gen backends: DirectX 12 (Windows) and Vulkan (cross-platform).
         // Both use the unified managed framework (MonoGame.Framework.Native) plus native-binary
         // MonoGame.Runtime.* package(s), not the per-platform MonoGame.Framework.* + MGCB path.
-        // Preview-only — the packages ship only as 3.8.5 previews, so the UI gates them behind the
-        // preview version.
         MonoGameWindowsDX12,
         MonoGameDesktopVK,
         // FNA is a third runtime category, neither KNI nor MonoGame. It is exported
@@ -263,7 +261,6 @@ namespace XnaFiddle
             string projectName = "MyFiddle",
             IReadOnlyDictionary<string, byte[]> assets = null,
             LibraryRegistry libraryRegistry = null,
-            string monoGameVersion = null,
             IReadOnlyDictionary<string, string> shaders = null,
             ShaderCompileMode shaderCompileMode = ShaderCompileMode.ShadowDusk)
         {
@@ -271,26 +268,22 @@ namespace XnaFiddle
                 throw new ArgumentException("At least one export target is required.", nameof(targets));
 
             if (targets.Count == 1)
-                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry, monoGameVersion, shaders, shaderCompileMode);
+                return Export(expandedSource, targets[0], projectName, assets, libraryRegistry, shaders, shaderCompileMode);
 
             // FNA is single-target only — it must never reach the multi-platform common-project
             // path (GenerateCommonCsproj's isMonoGame framework-reference logic assumes KNI/MonoGame).
             if (targets.Contains(ExportTarget.FnaDesktop))
                 throw new ArgumentException("FnaDesktop cannot be combined with other export targets.", nameof(targets));
 
-            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry, monoGameVersion, shaders, shaderCompileMode);
+            return ExportMultiPlatform(expandedSource, targets, projectName, assets, libraryRegistry, shaders, shaderCompileMode);
         }
 
-        // monoGameVersion, when non-null, overrides the MonoGame framework + content-builder package
-        // version (the version selector's preview option). Null preserves the stable default; KNI and
-        // FNA targets ignore it entirely.
         public static byte[] Export(
             string expandedSource,
             ExportTarget target,
             string projectName = "MyFiddle",
             IReadOnlyDictionary<string, byte[]> assets = null,
             LibraryRegistry libraryRegistry = null,
-            string monoGameVersion = null,
             IReadOnlyDictionary<string, string> shaders = null,
             ShaderCompileMode shaderCompileMode = ShaderCompileMode.ShadowDusk)
         {
@@ -302,7 +295,7 @@ namespace XnaFiddle
             bool includeShaderLoader = hasShaders && UsesShadowDuskShaders(target, shaderCompileMode);
             bool useMgcbShaders = hasShaders && UsesMgcbShaders(target, shaderCompileMode);
 
-            List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
+            List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry);
             string slnx = GenerateSlnx(projectName, target);
             // Shaders are content too: the .fx must be copied to the build output so the runtime
             // compiler can read it, so the content-linking csproj block fires for shaders as well.
@@ -319,9 +312,8 @@ namespace XnaFiddle
 
                 // Emit the dotnet-tools manifest so `dotnet mgcb` resolves at build time
                 // (mirrors how BuildPackageList resolves the MonoGame version).
-                string mgVersion = monoGameVersion ?? PackageVersions.MonoGameFramework;
                 if (NeedsMgcbToolManifest(target))
-                    AddTextEntry(archive, $"{projectName}/.config/dotnet-tools.json", GenerateMgcbToolManifest(mgVersion));
+                    AddTextEntry(archive, $"{projectName}/.config/dotnet-tools.json", GenerateMgcbToolManifest(PackageVersions.MonoGameFramework));
 
                 // Each platform has its own entry-point and hosting structure.
                 if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
@@ -398,7 +390,6 @@ namespace XnaFiddle
             string projectName,
             IReadOnlyDictionary<string, byte[]> assets,
             LibraryRegistry libraryRegistry,
-            string monoGameVersion,
             IReadOnlyDictionary<string, string> shaders = null,
             ShaderCompileMode shaderCompileMode = ShaderCompileMode.ShadowDusk)
         {
@@ -416,7 +407,7 @@ namespace XnaFiddle
 
             // The common project holds Game1.cs, RawContentManager.cs and shared code.
             // Each platform project references the common project and adds its entry point.
-            List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0], libraryRegistry, monoGameVersion);
+            List<NuGetPackage> commonPackages = BuildPackageList(expandedSource, targets[0], libraryRegistry);
             string commonCsproj = GenerateCommonCsproj(projectName, commonName, commonPackages, includeShaderLoader);
             string slnx = GenerateSlnx(projectName, commonName, targets);
 
@@ -441,7 +432,7 @@ namespace XnaFiddle
                     // manager's compiler unset (issue #39).
                     bool wireShaders = hasShaders && UsesShadowDuskShaders(target, shaderCompileMode);
                     bool useMgcbShaders = hasShaders && UsesMgcbShaders(target, shaderCompileMode);
-                    List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry, monoGameVersion);
+                    List<NuGetPackage> packages = BuildPackageList(expandedSource, target, libraryRegistry);
                     string csproj = GenerateCsproj(projectName, target, packages, hasContent, isMultiPlatform: true, commonProjectName: commonName,
                         includeShaders: wireShaders, useMgcbShaders: useMgcbShaders);
 
@@ -449,9 +440,8 @@ namespace XnaFiddle
 
                     // Emit the dotnet-tools manifest per MonoGame project so `dotnet mgcb`
                     // resolves at build time without affecting sibling KNI projects.
-                    string mgVersion = monoGameVersion ?? PackageVersions.MonoGameFramework;
                     if (NeedsMgcbToolManifest(target))
-                        AddTextEntry(archive, $"{platformDir}/.config/dotnet-tools.json", GenerateMgcbToolManifest(mgVersion));
+                        AddTextEntry(archive, $"{platformDir}/.config/dotnet-tools.json", GenerateMgcbToolManifest(PackageVersions.MonoGameFramework));
 
                     // Platform-specific entry points
                     if (target == ExportTarget.KniAndroid || target == ExportTarget.MonoGameAndroid)
@@ -505,33 +495,6 @@ namespace XnaFiddle
             return memoryStream.ToArray();
         }
 
-        // True when the MonoGame framework version is >= 3.8.5, the first release whose
-        // mg2dstartkit convention references the renderer-agnostic MonoGame.Framework.Native
-        // from the shared library. Parses the leading Major.Minor.Patch (prerelease suffix
-        // dropped); short/non-numeric strings fall back to false (DesktopGL).
-        static bool UsesNativeSharedFramework(string version)
-        {
-            if (string.IsNullOrEmpty(version))
-                return false;
-
-            // Drop any prerelease suffix, e.g. "3.8.5-preview.6" -> "3.8.5".
-            int dash = version.IndexOf('-');
-            string core = dash >= 0 ? version.Substring(0, dash) : version;
-
-            string[] parts = core.Split('.');
-            int[] v = new int[3];
-            for (int i = 0; i < 3; i++)
-            {
-                if (i >= parts.Length || !int.TryParse(parts[i], out v[i]))
-                    v[i] = 0;
-            }
-
-            // Compare (Major, Minor, Patch) against (3, 8, 5).
-            if (v[0] != 3) return v[0] > 3;
-            if (v[1] != 8) return v[1] > 8;
-            return v[2] >= 5;
-        }
-
         /// <summary>
         /// Generates a common (shared) .csproj for multi-platform exports.
         /// Contains only platform-agnostic packages; platform-specific packages
@@ -554,17 +517,14 @@ namespace XnaFiddle
 
             // The common library compiles against a renderer-agnostic framework reference
             // (PrivateAssets=All); each platform head still supplies its concrete backend.
-            // For MonoGame 3.8.5+ that agnostic reference is MonoGame.Framework.Native — the
-            // contract any backend's MonoGame.Framework.dll satisfies at runtime (the
-            // mg2dstartkit convention). For 3.8.4 it stays MonoGame.Framework.DesktopGL.
+            // MonoGame 3.8.5's agnostic reference is MonoGame.Framework.Native — the contract
+            // any backend's MonoGame.Framework.dll satisfies at runtime (the mg2dstartkit
+            // convention) — so the common project always compiles against it.
             bool isMonoGame = packages.Exists(p => p.Id.StartsWith("MonoGame.Framework."));
             if (isMonoGame)
             {
                 var mgPkg = packages.Find(p => p.Id.StartsWith("MonoGame.Framework."));
-                string frameworkId = UsesNativeSharedFramework(mgPkg.Version)
-                    ? "MonoGame.Framework.Native"
-                    : "MonoGame.Framework.DesktopGL";
-                sb.AppendLine($@"    <PackageReference Include=""{frameworkId}"" Version=""{mgPkg.Version}"" PrivateAssets=""All"" />");
+                sb.AppendLine($@"    <PackageReference Include=""MonoGame.Framework.Native"" Version=""{mgPkg.Version}"" PrivateAssets=""All"" />");
             }
 
             foreach (var pkg in packages)
@@ -628,7 +588,7 @@ namespace XnaFiddle
             return sb.ToString();
         }
 
-        static List<NuGetPackage> BuildPackageList(string source, ExportTarget target, LibraryRegistry libraryRegistry, string monoGameVersion = null)
+        static List<NuGetPackage> BuildPackageList(string source, ExportTarget target, LibraryRegistry libraryRegistry)
         {
             var packages = new List<NuGetPackage>();
             bool isKni = target.IsKni();
@@ -676,20 +636,18 @@ namespace XnaFiddle
                 // to Native at runtime (both ship an assembly named MonoGame.Framework). There is no
                 // MGCB content-builder task here — the legacy MGCB tool has no WindowsDX12/DesktopVK
                 // platform; the new backends use a separate content pipeline (out of scope for
-                // fiddles, which load no compiled content except a library's own shader). These
-                // packages ship only as 3.8.5 previews, so pin to the preview line.
-                string previewVersion = monoGameVersion ?? PackageVersions.MonoGameFrameworkPreview;
-                packages.Add(new NuGetPackage { Id = "MonoGame.Framework.Native", Version = previewVersion });
+                // fiddles, which load no compiled content except a library's own shader).
+                packages.Add(new NuGetPackage { Id = "MonoGame.Framework.Native", Version = PackageVersions.MonoGameFramework });
                 if (target == ExportTarget.MonoGameWindowsDX12)
                 {
-                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Windows.DX12", Version = previewVersion });
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Windows.DX12", Version = PackageVersions.MonoGameFramework });
                 }
                 else
                 {
                     // DesktopVK is cross-platform Vulkan — ship the native runtime for all three desktop OSes.
-                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Windows.Vulkan", Version = previewVersion });
-                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Linux.Vulkan", Version = previewVersion });
-                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Mac.Vulkan", Version = previewVersion });
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Windows.Vulkan", Version = PackageVersions.MonoGameFramework });
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Linux.Vulkan", Version = PackageVersions.MonoGameFramework });
+                    packages.Add(new NuGetPackage { Id = "MonoGame.Runtime.Mac.Vulkan", Version = PackageVersions.MonoGameFramework });
                 }
             }
             else
@@ -701,11 +659,9 @@ namespace XnaFiddle
                     ExportTarget.MonoGameAndroid   => "MonoGame.Framework.Android",
                     _ => "MonoGame.Framework.DesktopGL",
                 };
-                // The framework and content-builder packages ship in lockstep, so both take the
-                // chosen version (the version selector's preview option) or fall back to stable.
-                string mgVersion = monoGameVersion ?? PackageVersions.MonoGameFramework;
-                packages.Add(new NuGetPackage { Id = monoGamePkg, Version = mgVersion });
-                packages.Add(new NuGetPackage { Id = "MonoGame.Content.Builder.Task", Version = mgVersion });
+                // The framework and content-builder packages ship in lockstep.
+                packages.Add(new NuGetPackage { Id = monoGamePkg, Version = PackageVersions.MonoGameFramework });
+                packages.Add(new NuGetPackage { Id = "MonoGame.Content.Builder.Task", Version = PackageVersions.MonoGameFramework });
             }
 
             // Third-party libraries — detected by scanning the source for namespace/type names
@@ -1720,12 +1676,11 @@ public class RawContentManager : ContentManager
         // buildTransitive MonoGameContentReference) by shelling out to the `dotnet mgcb` local tool.
         // That tool only resolves when the project ships a .config/dotnet-tools.json manifest; without
         // it the build fails with MSB3073. The legacy content-builder task (MonoGame.Content.Builder.Task
-        // + dotnet-mgcb + MonoGameContentReference) is the path the export uses on both 3.8.4 stable and
-        // the 3.8.5 preview — it's mechanically identical and dotnet-mgcb ships at both versions — so the
-        // manifest is emitted for all MonoGame targets. The caller pins dotnet-mgcb to mgVersion so the
-        // restored tool stays in lockstep with the framework/builder packages. KNI/FNA use different
-        // tooling and are out of scope. This is exactly the classic-MonoGame set, so it also gates the
-        // user-.fx MGCB path (ShaderCompileMode.ContentPipeline).
+        // + dotnet-mgcb + MonoGameContentReference) is the path the export uses on MonoGame 3.8.5, so the
+        // manifest is emitted for all MonoGame targets. The caller pins dotnet-mgcb to the framework
+        // version so the restored tool stays in lockstep with the framework/builder packages. KNI/FNA use
+        // different tooling and are out of scope. This is exactly the classic-MonoGame set, so it also
+        // gates the user-.fx MGCB path (ShaderCompileMode.ContentPipeline).
         static bool NeedsMgcbToolManifest(ExportTarget target) => IsMonoGameClassic(target);
 
         // dotnet-mgcb is pinned to the same version as the framework/content-builder packages so the
