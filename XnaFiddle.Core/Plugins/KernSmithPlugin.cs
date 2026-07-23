@@ -15,7 +15,7 @@ namespace XnaFiddle.Plugins
         public List<ExportPackage> GetExportPackages(ExportTarget target, string source) =>
         [
             new() { Id = "KernSmith", Version = PackageVersions.KernSmith },
-            new() { Id = target.IsKni() ? "KernSmith.KniGum" : "KernSmith.MonoGameGum", Version = PackageVersions.KernSmith },
+            new() { Id = target.IsKni() ? "KernSmith.KniGum" : "KernSmith.MonoGameGum", Version = PackageVersions.Gum },
             new() { Id = "KernSmith.Rasterizers.StbTrueType", Version = PackageVersions.KernSmith },
         ];
     }
