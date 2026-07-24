@@ -46,7 +46,7 @@ Third-party library packages are added per-target by scanning the user's source 
 
 ## Shaders (`.fx`) — runtime ShadowDusk compilation (issue #39)
 
-Exports honor the contract above for shaders by shipping the **`.fx` source** (into `Content/`) plus a **ShadowDusk `PackageReference`**, and recompiling at runtime — no XNB, no MGCB. `Export` takes a `shaders` (`name.fx -> HLSL`) map. The seam: the shared/common project references **`ShadowDusk.Core`** (the `IShaderCompiler` interface, net8.0, no natives) and the generated content manager has an `Effect` branch that compiles against it; each **per-platform** project references the concrete compiler (`ShadowDusk.Compiler` desktop+FNA / `ShadowDusk.Wasm` Blazor) and its entry point injects it + the `PlatformTarget` (GL vs DX vs `Fna` is just that value; FNA emits legacy D3D9 `.fxb` instead of `.mgfx`). `ProjectExporter.SupportsRuntimeShaders(target)` is the single source of truth for which targets are wired (desktop GL/DX + Blazor + FNA Desktop); Android/iOS and MonoGame DX12/VK are gated (ship `.fx`, no compiler) — issue #52. Full detail lives in the **`shaders`** skill.
+Exports honor the contract above for shaders by shipping the **`.fx` source** (into `Content/`) plus a **ShadowDusk `PackageReference`**, and recompiling at runtime — no XNB, no MGCB. `Export` takes a `shaders` (`name.fx -> HLSL`) map. The seam: the shared/common project references **`ShadowDusk.Core`** (the `IShaderCompiler` interface, net8.0, no natives) and the generated content manager has an `Effect` branch that compiles against it; each **per-platform** project references the concrete compiler (`ShadowDusk.Compiler` desktop+FNA / `ShadowDusk.Wasm` Blazor) and its entry point injects it + the `PlatformTarget` (GL vs DX vs `Fna` is just that value; FNA emits legacy D3D9 `.fxb` instead of `.mgfx`). `ProjectExporter.SupportsRuntimeShaders(target)` is the single source of truth for which targets are wired (desktop GL/DX + Blazor + FNA Desktop + Android + MonoGame DesktopVK/WindowsDX12); only iOS is gated (ship `.fx`, no compiler) — issue #52. Full detail lives in the **`shaders`** skill.
 
 ### Two orthogonal axes: `ContentBuildMode` and `ShaderCompileMode` (issue #52 follow-up)
 
@@ -63,7 +63,7 @@ MGCB path mechanics (`GenerateContentMgcb`): emits one `Content.mgcb` per export
 
 **Export dialog UI** (`Index.razor`/`.cs`): two independent radio groups — "Content strategy:" (Raw / Classic MGCB / Content Builder) always shown for MonoGame, and "Shader compiler:" (ShadowDusk / Native) shown only when content strategy ≠ `Raw`. `EffectiveContentModes()` collapses back to `(ShadowDusk, Raw)` when the runtime isn't MonoGame.
 
-**MonoGame DX12 gate:** `MonoGameWindowsDX12` shaders stay gated under ShadowDusk (no DX12 backend there) — only `ContentBuildMode.ContentBuilder` + `ShaderCompileMode.Native` closes that gap today. `MonoGameDesktopVK` has a ShadowDusk Vulkan backend, so it isn't gated under the default `ShadowDusk` mode.
+**MonoGame DX12/VK backends:** ShadowDusk 0.14.0 added a DirectX12 backend, so `MonoGameWindowsDX12` shaders are wired under the default `ShaderCompileMode.ShadowDusk` too, same as `MonoGameDesktopVK`'s Vulkan backend (0.12.0+) — issue #122. `ContentBuildMode.ContentBuilder` + `ShaderCompileMode.Native` is still available as an alternative on both, just no longer the only way.
 
 ## Library MGCB content compiles into the NuGet cache at build time (not shipped)
 

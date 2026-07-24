@@ -114,9 +114,9 @@ namespace XnaFiddle
         // exactly like the in-browser editor — no XNB, no MGCB. The shared/common project compiles
         // against ShadowDusk.Core's IShaderCompiler interface; each per-platform project supplies the
         // concrete compiler and the backend. Targets absent from GetShaderExportInfo are *gated*: the
-        // .fx still ships but no compiler is wired — iOS (no ShadowDusk device backend yet) and
-        // MonoGame DX12 (issue #52; still no ShadowDusk backend). DesktopVK closed via ShadowDusk
-        // 0.12.0's Vulkan backend — see the MonoGameDesktopVK case below.
+        // .fx still ships but no compiler is wired — iOS is the only remaining case (no ShadowDusk
+        // device backend yet). DesktopVK closed via ShadowDusk 0.12.0's Vulkan backend and DX12 closed
+        // via ShadowDusk 0.14.0's DirectX12 backend (issue #122) — see the cases below.
         struct ShaderExportInfo
         {
             public bool Supported;
@@ -156,10 +156,12 @@ namespace XnaFiddle
             // DesktopVK: ShadowDusk 0.12.0 added a real Vulkan backend. It compiles the same plain .fx
             // source as every other target (HLSL -> DXC -> SPIR-V -> .mgfx) — no SM6 source rewrite
             // required, verified via ShadowDuskCLI against the pre-SM6-branch form of the example
-            // shaders. Closes the DesktopVK half of issue #52; DX12 has no ShadowDusk backend at all.
+            // shaders. Closes the DesktopVK half of issue #52.
             ExportTarget.MonoGameDesktopVK => DesktopShaderInfo("Vulkan"),
-            // gated: iOS, MonoGame DX12 (issue #52). The DX12 gate is separately closable via
-            // ContentBuildMode.ContentBuilder (see CompilesShippedShaders) — don't "fix" it here too.
+            // WindowsDX12: ShadowDusk 0.14.0 added a DirectX12 backend (SM6 DXIL, MonoGame-only,
+            // MGFX profile byte 2 matching MonoGame 3.8.5's DirectX12ShaderProfile) — issue #122.
+            ExportTarget.MonoGameWindowsDX12 => DesktopShaderInfo("DirectX12"),
+            // gated: iOS (no ShadowDusk device backend yet).
             _ => default,
         };
 
@@ -949,8 +951,8 @@ public class Builder : ContentBuilder
                 // platform; the new backends use a separate content pipeline for library-shipped
                 // compiled content (out of scope for fiddles, which load no compiled content except a
                 // library's own shader). This gap is unrelated to fiddle-authored .fx shaders: those
-                // route through GetShaderExportInfo/ShadowDusk instead, which DOES cover DesktopVK
-                // (0.12.0+ Vulkan backend) — only WindowsDX12 still has no ShadowDusk backend.
+                // route through GetShaderExportInfo/ShadowDusk instead, which covers both DesktopVK
+                // (0.12.0+ Vulkan backend) and WindowsDX12 (0.14.0+ DirectX12 backend, issue #122).
                 packages.Add(new NuGetPackage { Id = "MonoGame.Framework.Native", Version = PackageVersions.MonoGameFramework });
                 if (target == ExportTarget.MonoGameWindowsDX12)
                 {
