@@ -781,16 +781,10 @@ public class Game1 : Game
     [InlineData(ExportTarget.KniAndroid)]
     [InlineData(ExportTarget.MonoGameAndroid)]
     [InlineData(ExportTarget.MonoGameDesktopVK)] // ShadowDusk 0.12.0 Vulkan backend (issue #52)
+    [InlineData(ExportTarget.MonoGameWindowsDX12)] // ShadowDusk 0.14.0 DirectX12 backend (issue #122)
     public void SupportsRuntimeShaders_TrueForWiredTargets(ExportTarget target)
     {
         Assert.True(ProjectExporter.SupportsRuntimeShaders(target));
-    }
-
-    [Theory]
-    [InlineData(ExportTarget.MonoGameWindowsDX12)]
-    public void SupportsRuntimeShaders_FalseForGatedTargets(ExportTarget target)
-    {
-        Assert.False(ProjectExporter.SupportsRuntimeShaders(target));
     }
 
     [Fact]
@@ -804,6 +798,19 @@ public class Game1 : Game
         Assert.Contains($@"<PackageReference Include=""ShadowDusk.Compiler"" Version=""{PackageVersions.ShadowDusk}"" />",
             files["MyGame/MyGame.csproj"]);
         Assert.Contains("PlatformTarget.Vulkan", files["MyGame/Program.cs"]);
+    }
+
+    [Fact]
+    public void SinglePlatform_Shader_MonoGameWindowsDX12_UsesDirectX12Backend()
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameWindowsDX12, "MyGame", shaders: OneShader());
+        var files = ExtractTextFiles(zip);
+
+        // Same desktop compiler package as GL/DX/Vulkan, but the DX12 runtime needs SM6 DXIL.
+        Assert.Contains("MyGame/Content/Grayscale.fx", files.Keys);
+        Assert.Contains($@"<PackageReference Include=""ShadowDusk.Compiler"" Version=""{PackageVersions.ShadowDusk}"" />",
+            files["MyGame/MyGame.csproj"]);
+        Assert.Contains("PlatformTarget.DirectX12", files["MyGame/Program.cs"]);
     }
 
     [Fact]
@@ -983,11 +990,10 @@ public class Game1 : Game
     [InlineData(ExportTarget.MonoGameDesktopGL, ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, true)]
     [InlineData(ExportTarget.MonoGameWindowsDX, ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, true)]
     [InlineData(ExportTarget.MonoGameAndroid,   ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, true)]
-    // ...but DX12 has no classic MGCB and stays gated even under Native+ClassicMgcb.
-    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, false)]
-    // DesktopVK is wired directly via ShadowDusk (0.12.0+ Vulkan backend, issue #52), so it compiles
-    // regardless of shaderMode — Native+ClassicMgcb is a no-op here (DesktopVK isn't classic, see
-    // IsMonoGameClassic) and it falls through to ShadowDusk rather than going gated.
+    // ...DX12 and DesktopVK have no classic MGCB (neither is IsMonoGameClassic), so Native+ClassicMgcb
+    // is a no-op for both — but each is wired directly via ShadowDusk (0.14.0+ DirectX12 / 0.12.0+
+    // Vulkan backends, issues #122/#52), so both fall through to ShadowDusk rather than going gated.
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.Native, ContentBuildMode.ClassicMgcb, true)]
     [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.Native,     ContentBuildMode.ClassicMgcb, true)]
     [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk, ContentBuildMode.Raw,         true)]
     // ShadowDusk is the default under EVERY content strategy now (issue #52 follow-up), not just Raw —
@@ -1004,11 +1010,9 @@ public class Game1 : Game
     // supports — Content Builder no longer auto-compiles shaders just because it was picked for assets.
     [InlineData(ExportTarget.MonoGameDesktopGL,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
     [InlineData(ExportTarget.MonoGameDesktopVK,   ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
-    // DX12 + ContentBuilder + ShadowDusk: ShadowDusk 0.12.0 has no DirectX12 PlatformTarget yet (its
-    // README still lists DX12 as "Not yet" — verified against the NuGet feed and PlatformTarget.cs at
-    // implementation time), so unlike DesktopVK this stays gated under the ShadowDusk default. Flip to
-    // true once GetShaderExportInfo gains a MonoGameWindowsDX12 case.
-    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, false)]
+    // DX12 + ContentBuilder + ShadowDusk: ShadowDusk 0.14.0 added a DirectX12 PlatformTarget (issue
+    // #122), so DX12 now compiles under the ShadowDusk default too, same as DesktopVK's Vulkan backend.
+    [InlineData(ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
     // ...but it's a no-op for non-MonoGame targets (they ignore it and keep their existing strategy).
     [InlineData(ExportTarget.KniDesktopGL,  ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
     [InlineData(ExportTarget.FnaDesktop,    ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder, true)]
@@ -1018,13 +1022,12 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void DX12_ContentBuilder_ShadowDusk_StaysGated_UntilShadowDuskAddsDx12()
+    public void DX12_ContentBuilder_ShadowDusk_CompilesViaShadowDuskBackend()
     {
-        // Dedicated regression guard (beyond the theory row above) for this specific combo, since it's
-        // the one case in this whole rework gated by a live external dependency rather than by design:
-        // ShadowDusk hasn't shipped a DX12 backend as of 0.12.0. When it does, GetShaderExportInfo gains
-        // a MonoGameWindowsDX12 case and this flips to Assert.True with no other code change needed.
-        Assert.False(ProjectExporter.CompilesShippedShaders(
+        // Dedicated regression guard (beyond the theory row above) for this specific combo: ShadowDusk
+        // 0.14.0 added a DirectX12 backend (issue #122), so DX12 shaders compile under the default
+        // ShadowDusk mode now, same as DesktopVK's Vulkan backend.
+        Assert.True(ProjectExporter.CompilesShippedShaders(
             ExportTarget.MonoGameWindowsDX12, ShaderCompileMode.ShadowDusk, ContentBuildMode.ContentBuilder));
     }
 
@@ -1141,10 +1144,11 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void MultiPlatform_ClassicMgcbNative_ClassicUsesMgcbWhileDx12Gated()
+    public void MultiPlatform_ClassicMgcbNative_ClassicUsesMgcbWhileDx12FallsThroughToShadowDusk()
     {
-        // A classic head (MGCB) alongside a DX12 head (no classic MGCB → gated). DX12 ships the .fx but
-        // gets neither an MGCB reference nor ShadowDusk; no head uses ShadowDusk, so the common stays clean.
+        // A classic head (MGCB) alongside a DX12 head. DX12 has no classic MGCB (Native+ClassicMgcb is a
+        // no-op there), so it falls through to its ShadowDusk backend (0.14.0+, issue #122) instead of
+        // going gated — same precedent as DesktopVK. That means the common project picks up ShadowDusk.Core.
         var targets = new List<ExportTarget>
         {
             ExportTarget.MonoGameDesktopGL,
@@ -1156,11 +1160,11 @@ public class Game1 : Game
 
         Assert.Contains(@"<MonoGameContentReference Include=""..\Content\Content.mgcb"" />",
             files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"]);
-        // DX12 is gated: no content reference, no ShadowDusk.
+        // DX12 falls through to ShadowDusk: no classic MGCB content reference, but the concrete compiler.
         string dx12 = files["MyGame.WindowsDX12/MyGame.WindowsDX12.csproj"];
         Assert.DoesNotContain("MonoGameContentReference", dx12);
-        Assert.DoesNotContain("ShadowDusk", dx12);
-        Assert.DoesNotContain("ShadowDusk", files["MyGameCommon/MyGameCommon.csproj"]);
+        Assert.Contains("ShadowDusk.Compiler", dx12);
+        Assert.Contains("ShadowDusk.Core", files["MyGameCommon/MyGameCommon.csproj"]);
     }
 
     // ── Classic MGCB mode (ContentBuildMode.ClassicMgcb) — assets ───────────────
@@ -1349,10 +1353,9 @@ public class Game1 : Game
     [Fact]
     public void SinglePlatform_ContentBuilder_NativeShaders_ClosesDx12ShaderGate()
     {
-        // Issue #52: the Content Builder isn't limited to mgcb.exe's platform list, so DX12 (which
-        // still has no ShadowDusk backend, unlike DesktopVK) finally gets a way to compile shipped .fx
-        // — but only when Native is explicitly selected; the default ShadowDusk mode leaves it gated
-        // (see DX12_ContentBuilder_ShadowDusk_StaysGated_UntilShadowDuskAddsDx12).
+        // Issue #52: the Content Builder isn't limited to mgcb.exe's platform list, so DX12 gets a way
+        // to compile shipped .fx via Native + ContentBuilder too — an alternative to the ShadowDusk
+        // default (see DX12_ContentBuilder_ShadowDusk_CompilesViaShadowDuskBackend), not the only path.
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameWindowsDX12, "MyGame",
             shaders: OneShader(), shaderCompileMode: ShaderCompileMode.Native, contentBuildMode: ContentBuildMode.ContentBuilder);
         var files = ExtractTextFiles(zip);
