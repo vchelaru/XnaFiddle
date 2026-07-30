@@ -1199,9 +1199,11 @@ technique BasicColorDrawing
             {
                 SetError("Error.", e.ToString());
             }
-
-            _isCompiling = false;
-            StateHasChanged();
+            finally
+            {
+                _isCompiling = false;
+                StateHasChanged();
+            }
         }
 
         // Shared game-swap path after compile (or cache hit). Returns false when shader compile
