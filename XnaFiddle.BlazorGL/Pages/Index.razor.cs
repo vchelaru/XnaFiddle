@@ -1202,6 +1202,11 @@ technique BasicColorDrawing
             finally
             {
                 _isCompiling = false;
+                // Any exit path that leaves _game null shows the welcome/library overlay
+                // (Index.razor: `_game == null && !_isCompiling`). Clear the canvas so that
+                // overlay never appears on top of a stale frame from a previous successful run.
+                if (_game == null)
+                    _ = JsRuntime.InvokeVoidAsync("clearCanvas");
                 StateHasChanged();
             }
         }
