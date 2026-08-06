@@ -562,6 +562,17 @@ technique BasicColorDrawing
                 return;
             }
 
+            if (fileName.StartsWith("std/", StringComparison.OrdinalIgnoreCase))
+            {
+                // "std/" is reserved for built-in standard content (see StandardContentRegistry /
+                // STANDARD_CONTENT_PLAN.md) so a dropped file can never shadow it.
+                _statusMessage = $"\"{fileName}\": names starting with \"std/\" are reserved.";
+                _statusColor = ColorError;
+                _assetsOpen = true;
+                StateHasChanged();
+                return;
+            }
+
             string ext = System.IO.Path.GetExtension(fileName);
             if (!SupportedAssetExtensions.Contains(ext))
             {
@@ -942,6 +953,15 @@ technique BasicColorDrawing
             if (string.IsNullOrEmpty(fileName))
                 fileName = "asset";
 
+            if (fileName.StartsWith("std/", StringComparison.OrdinalIgnoreCase))
+            {
+                // "std/" is reserved for built-in standard content (see StandardContentRegistry /
+                // STANDARD_CONTENT_PLAN.md) so a crafted URL can never shadow it.
+                _statusMessage = $"\"{fileName}\": names starting with \"std/\" are reserved.";
+                _statusColor = ColorError;
+                return;
+            }
+
             string ext = System.IO.Path.GetExtension(fileName);
             if (!SupportedAssetExtensions.Contains(ext))
             {
@@ -1118,6 +1138,27 @@ technique BasicColorDrawing
             try
             {
                 string sourceCode = await JsRuntime.InvokeAsync<string>("monacoInterop.getValue");
+
+                // Lazily register any standard content the fiddle references (e.g. std/DroidSans.ttf),
+                // so it ships in exports too — ExportProject reads straight from
+                // InMemoryContentManager.Files, which only ever contains assets actually used.
+                // See STANDARD_CONTENT_PLAN.md.
+                foreach (var (name, resourceFile) in StandardContentRegistry.Items)
+                {
+                    if (sourceCode.Contains(name) && !InMemoryContentManager.Files.ContainsKey(name))
+                    {
+                        byte[] data = StandardContentRegistry.Load(resourceFile);
+                        RegisterContentFile(name, data);
+
+                        // Standard content silently registers during a normal compile, so
+                        // (unlike the drag-and-drop/URL/gist-import paths) don't force
+                        // _assetsOpen = true here — just make sure it's listed once the
+                        // user opens the panel themselves.
+                        _assets.RemoveAll(a => string.Equals(a.FileName, name, StringComparison.OrdinalIgnoreCase));
+                        _assets.Add(new AssetInfo { FileName = name, Size = data.Length, FntTextures = null, SourceUrl = null });
+                    }
+                }
+
                 string fingerprint = await BuildCompileFingerprintAsync(sourceCode);
                 bool cacheHit = fingerprint == _compiledFingerprint && _cachedGameType != null;
                 Type gameType;
@@ -1637,7 +1678,11 @@ technique BasicColorDrawing
                         skippedAssets.Add(file.Name);
                         continue;
                     }
-                    RegisterGistAsset(file.Name, bytes);
+                    if (!RegisterGistAsset(file.Name, bytes))
+                    {
+                        skippedAssets.Add(file.Name);
+                        continue;
+                    }
                     assetCount++;
                 }
 
@@ -1656,7 +1701,7 @@ technique BasicColorDrawing
                     ? $"Gist loaded ({assetCount} asset{(assetCount == 1 ? "" : "s")})."
                     : "Gist loaded.";
                 if (skippedAssets.Count > 0)
-                    _statusMessage += $" Skipped {skippedAssets.Count} unreadable asset file(s): {string.Join(", ", skippedAssets)}.";
+                    _statusMessage += $" Skipped {skippedAssets.Count} asset file(s): {string.Join(", ", skippedAssets)}.";
                 _statusColor = ColorSuccess;
                 _selectedExample = "";
                 StateHasChanged();
@@ -1700,8 +1745,12 @@ technique BasicColorDrawing
 
         // Registers a gist-bundled asset like a dropped file: into the content store + JS XHR cache,
         // and into the UI asset list (parsing .fnt page references so missing-texture warnings work).
-        private void RegisterGistAsset(string fileName, byte[] data)
+        // Returns false without registering if fileName is reserved (see the "std/" guard below).
+        private bool RegisterGistAsset(string fileName, byte[] data)
         {
+            if (fileName.StartsWith("std/", StringComparison.OrdinalIgnoreCase))
+                return false; // reserved for built-in standard content — see STANDARD_CONTENT_PLAN.md
+
             RegisterContentFile(fileName, data);
 
             string[] fntTextures = null;
@@ -1710,6 +1759,7 @@ technique BasicColorDrawing
 
             _assets.RemoveAll(a => string.Equals(a.FileName, fileName, StringComparison.OrdinalIgnoreCase));
             _assets.Add(new AssetInfo { FileName = fileName, Size = data.Length, FntTextures = fntTextures });
+            return true;
         }
 
         ExportTarget GetExportTarget(ExportPlatform platform) => (_exportRuntime, platform) switch

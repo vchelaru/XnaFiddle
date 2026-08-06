@@ -14,6 +14,13 @@ namespace XnaFiddle
         // Static store: persists across recompilations
         private static readonly Dictionary<string, byte[]> _files = new(StringComparer.OrdinalIgnoreCase);
 
+        // Exact names passed to AddFile/RemoveFile, without the bare-filename/no-extension
+        // aliases GetCandidateKeys adds to _files. Callers that enumerate "the registered
+        // assets" (e.g. export) must use this instead of _files, or a single asset registered
+        // under a "/"-containing name (e.g. "std/DroidSans.ttf") ships twice — once under its
+        // real path, once under its aliased bare filename.
+        private static readonly Dictionary<string, byte[]> _primaryFiles = new(StringComparer.OrdinalIgnoreCase);
+
         // Cache loaded assets so we don't re-decode every call
         private readonly Dictionary<string, object> _loaded = new(StringComparer.OrdinalIgnoreCase);
         private AchxLoader _achxLoader;
@@ -27,17 +34,23 @@ namespace XnaFiddle
         {
             foreach (string key in GetCandidateKeys(name))
                 _files[key] = data;
+            _primaryFiles[name] = data;
         }
 
         public static void RemoveFile(string name)
         {
             foreach (string key in GetCandidateKeys(name))
                 _files.Remove(key);
+            _primaryFiles.Remove(name);
         }
 
-        public static void ClearFiles() => _files.Clear();
+        public static void ClearFiles()
+        {
+            _files.Clear();
+            _primaryFiles.Clear();
+        }
 
-        public static IReadOnlyDictionary<string, byte[]> Files => _files;
+        public static IReadOnlyDictionary<string, byte[]> Files => _primaryFiles;
 
         private GraphicsDevice GetGraphicsDevice()
         {

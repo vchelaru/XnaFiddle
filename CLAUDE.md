@@ -23,7 +23,6 @@ Available agents:
 - **docs-writer** — Writing or updating documentation
 - **product-manager** — Breaking down tasks and tracking progress
 - **security-auditor** — Security reviews and vulnerability assessments
-- **skills-writer** — Creating or updating skill files for Claude Code agent context
 
 Select the agent that best matches the task at hand. For tasks that span multiple concerns (e.g., implement a feature and write tests), invoke the relevant agents in sequence.
 
