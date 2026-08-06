@@ -77,6 +77,11 @@
     <EmbeddedResource Include="Examples\*.cs" />
     <!-- Embed non-code assets alongside examples (e.g. TextureLoading.KniIcon.png) -->
     <EmbeddedResource Include="Examples\*.*" Exclude="Examples\*.cs" />
+    <!-- Standard content (StandardContentRegistry): built-in assets any fiddle can reference by
+         name without uploading, e.g. std/DroidSans.ttf. New files dropped in this folder are
+         picked up automatically; still requires a matching entry in StandardContentRegistry.Items
+         to actually be reachable from a fiddle. See STANDARD_CONTENT_PLAN.md. -->
+    <EmbeddedResource Include="StandardContent\*.*" />
   </ItemGroup>
 
   <!-- Generate BuildInfo.g.cs with the UTC build timestamp into obj/ -->

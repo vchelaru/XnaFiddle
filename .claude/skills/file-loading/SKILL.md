@@ -108,6 +108,8 @@ Multi-platform exports produce a solution with a common project (`{Name}Common`)
 
 `InMemoryContentManager._files` is static — assets survive across recompilations. The loaded-asset cache (`_loaded`) is per-instance and cleared on `Unload()`. Each compile run creates a fresh `InMemoryContentManager` instance, but the underlying file store persists.
 
+`_files` also holds alias keys (bare filename, no-extension) for `Load<T>` resolution; the public `Files` property returns a separate `_primaryFiles` dict (exact registered names only, no aliases) so callers like export don't double-ship an asset under its alias.
+
 ## Adding a new file format
 
 1. Add the extension to `SupportedAssetExtensions` in `Index.razor.cs`

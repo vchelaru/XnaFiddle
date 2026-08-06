@@ -246,6 +246,41 @@ public class Game1 : Game
         Assert.DoesNotContain(files.Keys, k => k.StartsWith("MyGame.DesktopGL/Content"));
     }
 
+    // ── Standard content export (std/ prefix, see STANDARD_CONTENT_PLAN.md) ───
+
+    [Fact]
+    public void SinglePlatform_StandardContentAsset_ShipsUnderContentSubfolder()
+    {
+        // Reproduces exactly what StandardContentRegistry + RegisterContentFile put into
+        // InMemoryContentManager.Files for a lazily-registered standard asset: the key is a
+        // "std/" path, not a bare filename.
+        var assets = new Dictionary<string, byte[]> { ["std/DroidSans.ttf"] = new byte[] { 1, 2, 3 } };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame", assets);
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/Content/std/DroidSans.ttf", files.Keys);
+    }
+
+    [Fact]
+    public void SinglePlatform_AssetDictWithAliasedKeys_ShipsEachKeyVerbatim()
+    {
+        // ProjectExporter has no dedup responsibility — it ships whatever the caller's asset
+        // dict contains, one entry per key. InMemoryContentManager.Files no longer contains
+        // bare-filename aliases (that bug is fixed upstream — see STANDARD_CONTENT_PLAN.md),
+        // but a caller could still hand ProjectExporter a dict with two keys for the same
+        // bytes, so this documents that ProjectExporter ships both, verbatim, without deduping.
+        var assets = new Dictionary<string, byte[]>
+        {
+            ["std/DroidSans.ttf"] = new byte[] { 1, 2, 3 },
+            ["DroidSans.ttf"] = new byte[] { 1, 2, 3 },
+        };
+        byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.KniDesktopGL, "MyGame", assets);
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("MyGame/Content/std/DroidSans.ttf", files.Keys);
+        Assert.Contains("MyGame/Content/DroidSans.ttf", files.Keys);
+    }
+
     // ── Common csproj package filtering ──────────────────────────────────────
 
     [Fact]
