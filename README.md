@@ -211,6 +211,22 @@ Drops to 2fps when the mouse is not over the canvas, and jumps back to full spee
 
 ---
 
+## Standard Content
+
+XnaFiddle ships a small library of built-in assets any fiddle can reference by name — no upload needed. Reference the name literally in your code and it's registered automatically when you compile, and included in your export only if you actually use it (unused items add nothing to the zip).
+
+| Name | Description |
+|---|---|
+| `std/DroidSans.ttf` | Droid Sans TrueType font (Apache-2.0) — handy for testing dynamic font generation, e.g. with [KernSmith](https://github.com/kaltinril/Kernsmith) |
+
+```csharp
+using Stream stream = TitleContainer.OpenStream(Path.Combine(Content.RootDirectory, "std/DroidSans.ttf"));
+```
+
+Names are permanent once shipped — new items only ever get added, never renamed or removed.
+
+---
+
 ## Export
 
 Click the **Export** button in the toolbar to download your fiddle as a complete, buildable project (`.zip`). Choose a runtime and platform:
