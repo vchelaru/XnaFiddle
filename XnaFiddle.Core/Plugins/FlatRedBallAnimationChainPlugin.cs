@@ -5,7 +5,7 @@ namespace XnaFiddle.Plugins
     public class FlatRedBallAnimationChainPlugin : ILibraryPlugin, IExportableLibrary
     {
         public string Name => "FlatRedBall.AnimationChain";
-        public string[] RequiredAssemblies => ["AnimationChain.KNI"];
+        public string[] RequiredAssemblies => ["AnimationChain.KNI", "AnimationChain.Common"];
         public string[] VersionAssemblies => ["AnimationChain.KNI"];
 
         public void CleanUp() { }

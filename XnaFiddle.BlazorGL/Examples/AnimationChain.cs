@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using FlatRedBall.AnimationChain;
+using FlatRedBall2.AnimationEditorCommon;
 using FontStashSharp;
 
 public class Game1 : Game
@@ -12,7 +13,7 @@ public class Game1 : Game
     SpriteBatch spriteBatch;
     FontSystem fontSystem;
 
-    AnimationPlayer player;
+    AnimationPlayer<AnimationFrame> player;
     string currentChain = "";
 
     public Game1()
@@ -29,10 +30,10 @@ public class Game1 : Game
         // Load a FlatRedBall AnimationChainList from an .achx file authored in the
         // FlatRedBall Animation Editor. The .achx slices frames out of
         // AnimatedSpritesheet.png; both files are bundled with this example.
-        AnimationChainList animations = Content.Load<AnimationChainList>("PlatformerAnimations");
+        AnimationChainList<AnimationFrame> animations = Content.Load<AnimationChainList<AnimationFrame>>("PlatformerAnimations");
 
         // AnimationPlayer plays one named chain at a time and advances it over time.
-        player = new AnimationPlayer(animations) { IsLooping = true };
+        player = new AnimationPlayer<AnimationFrame>(animations) { IsLooping = true };
         Play("CharacterWalkRight");
 
         // A TTF loaded with FontStashSharp, used only to draw the on-screen controls.
@@ -91,7 +92,7 @@ public class Game1 : Game
             return;
 
         // SourceRectangle is the sub-region of the spritesheet for this frame.
-        Rectangle? source = frame.SourceRectangle;
+        Rectangle? source = frame.SourceRectangle?.ToXnaRectangle();
         int frameWidth = source?.Width ?? frame.Texture.Width;
         int frameHeight = source?.Height ?? frame.Texture.Height;
 

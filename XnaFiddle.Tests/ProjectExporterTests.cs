@@ -653,7 +653,7 @@ public class Game1 : Game
         string csproj = files["MyGame/MyGame.csproj"];
         // Verify version from PackageVersions (0.4.0-preview.1)
         Assert.Contains("FlatRedBall.AnimationChain.KNI", csproj);
-        Assert.Contains("0.4.0-preview.1", csproj);
+        Assert.Contains("0.5.0-preview.1", csproj);
     }
 
     [Fact]
@@ -666,7 +666,7 @@ public class Game1 : Game
         // RawContentManager lives in the common project, alongside the package reference.
         string rcm = files["MyGameCommon/RawContentManager.cs"];
         Assert.Contains("using FlatRedBall.AnimationChain;", rcm);
-        Assert.Contains("typeof(T) == typeof(AnimationChainList)", rcm);
+        Assert.Contains("typeof(T) == typeof(AnimationChainList<AnimationFrame>)", rcm);
         Assert.Contains("new AchxLoader(", rcm);
         Assert.Contains("SanitizeFrames", rcm);
     }
@@ -694,7 +694,7 @@ public class Game1 : Game
         var files = ExtractTextFiles(zip);
 
         string rcm = files["MyGame/RawContentManager.cs"];
-        Assert.Contains("typeof(T) == typeof(AnimationChainList)", rcm);
+        Assert.Contains("typeof(T) == typeof(AnimationChainList<AnimationFrame>)", rcm);
     }
 
     [Fact]
