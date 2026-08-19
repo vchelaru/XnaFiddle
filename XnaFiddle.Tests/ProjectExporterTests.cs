@@ -651,9 +651,9 @@ public class Game1 : Game
         var files = ExtractTextFiles(zip);
 
         string csproj = files["MyGame/MyGame.csproj"];
-        // Verify version from PackageVersions (0.3.1-preview.1)
+        // Verify version from PackageVersions (0.4.0-preview.1)
         Assert.Contains("FlatRedBall.AnimationChain.KNI", csproj);
-        Assert.Contains("0.3.1-preview.1", csproj);
+        Assert.Contains("0.4.0-preview.1", csproj);
     }
 
     [Fact]
@@ -669,6 +669,21 @@ public class Game1 : Game
         Assert.Contains("typeof(T) == typeof(AnimationChainList)", rcm);
         Assert.Contains("new AchxLoader(", rcm);
         Assert.Contains("SanitizeFrames", rcm);
+    }
+
+    [Fact]
+    public void FlatRedBallAnimationChain_RawContentManager_AchxBranch_FallsBackToAchj()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(FlatRedBallAnimationChainCode, targets, "MyGame", libraryRegistry: CreateRegistry());
+        var files = ExtractTextFiles(zip);
+
+        string rcm = files["MyGameCommon/RawContentManager.cs"];
+        // Generated Load<T> checks both extensions: pass-through when assetName already ends
+        // with .achx/.achj, otherwise probe .achx first and fall back to .achj.
+        Assert.Contains("EndsWith(\".achx\"", rcm);
+        Assert.Contains("EndsWith(\".achj\"", rcm);
+        Assert.Contains("\".achj\"", rcm);
     }
 
     [Fact]
@@ -1469,7 +1484,7 @@ public class Game1 : Game
     [Fact]
     public void ContentBuilder_ExcludesNonPipelineFormatsFromAssetsFolder()
     {
-        // .achx/.fnt (and the rest of NonPipelineAssetExtensions) have no pipeline importer —
+        // .achx/.achj/.fnt (and the rest of NonPipelineAssetExtensions) have no pipeline importer —
         // WildcardRule("*") would choke on them — so they keep shipping raw into the head's own
         // Content/ folder instead of {projectName}.Content/Assets/.
         var assets = new Dictionary<string, byte[]>
@@ -1478,6 +1493,7 @@ public class Game1 : Game
             ["sprite"] = [1], // extensionless dedup key InMemoryContentManager also stores
             ["font.fnt"] = [2],
             ["anim.achx"] = [3],
+            ["anim2.achj"] = [4],
         };
         byte[] zip = ProjectExporter.Export(MinimalCode, ExportTarget.MonoGameDesktopGL, "MyGame",
             assets: assets, contentBuildMode: ContentBuildMode.ContentBuilder);
@@ -1486,8 +1502,10 @@ public class Game1 : Game
         Assert.Contains("MyGame.Content/Assets/sprite.png", files.Keys);
         Assert.DoesNotContain("MyGame.Content/Assets/font.fnt", files.Keys);
         Assert.DoesNotContain("MyGame.Content/Assets/anim.achx", files.Keys);
+        Assert.DoesNotContain("MyGame.Content/Assets/anim2.achj", files.Keys);
         Assert.Contains("MyGame/Content/font.fnt", files.Keys);
         Assert.Contains("MyGame/Content/anim.achx", files.Keys);
+        Assert.Contains("MyGame/Content/anim2.achj", files.Keys);
 
         // The extensionless dedup key never gets written anywhere.
         Assert.DoesNotContain(files.Keys, k => k.EndsWith("/sprite"));

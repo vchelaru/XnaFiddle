@@ -375,7 +375,7 @@ namespace XnaFiddle
         // own Content/ folder, exactly as today.
         static readonly HashSet<string> NonPipelineAssetExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".achx", ".fnt", ".ttf", ".ember", ".xnb",
+            ".achx", ".achj", ".fnt", ".ttf", ".ember", ".xnb",
             ".tmx", ".tsx", ".world", ".ldtk", ".ogmo", ".json", ".txt", ".xml",
         };
 
@@ -1797,12 +1797,19 @@ internal class Program
             string achxLoadBranch = includeAnimationChain
                 ? @"        if (typeof(T) == typeof(AnimationChainList))
         {
-            string achxName = assetName.EndsWith("".achx"", StringComparison.OrdinalIgnoreCase) ? assetName : assetName + "".achx"";
+            string achxName = assetName;
+            if (!assetName.EndsWith("".achx"", StringComparison.OrdinalIgnoreCase) && !assetName.EndsWith("".achj"", StringComparison.OrdinalIgnoreCase))
+            {
+                // No extension given: try .achx (XML) first, then fall back to .achj (JSON).
+                achxName = assetName + "".achx"";
+                if (TryReadAllBytes(Path.Combine(RootDirectory, achxName)) == null)
+                    achxName = assetName + "".achj"";
+            }
             string achxPath = Path.Combine(RootDirectory, achxName);
             _achxLoader ??= new AchxLoader(_graphics.GraphicsDevice);
 
-            // AchxLoader asks for the .achx file and each referenced texture by relative path;
-            // resolve against RootDirectory and bare filename so all platforms find them.
+            // AchxLoader asks for the .achx/.achj file and each referenced texture by relative
+            // path; resolve against RootDirectory and bare filename so all platforms find them.
             Stream OpenStreamOrNull(string path)
             {
                 string[] candidates = { path, Path.Combine(RootDirectory, path), Path.Combine(RootDirectory, Path.GetFileName(path)) };
@@ -1857,7 +1864,7 @@ internal class Program
 
             string achxMethods = includeAnimationChain
                 ? @"
-    // .achx frames can contain negative or out-of-bounds pixel coordinates (e.g.
+    // .achx/.achj frames can contain negative or out-of-bounds pixel coordinates (e.g.
     // LeftCoordinate=-1), which produce Rectangles that raise GL_INVALID_OPERATION
     // (0x0502) on WebGL when submitted to SpriteBatch. Clamp every frame to texture
     // bounds, and premultiply alpha on KNI (AchxLoader's FromStream returns straight alpha).
