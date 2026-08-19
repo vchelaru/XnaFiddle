@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using FlatRedBall.AnimationChain;
+using FlatRedBall2.AnimationEditorCommon;
 using FontStashSharp;
 
 public class Game1 : Game
@@ -12,7 +13,7 @@ public class Game1 : Game
     SpriteBatch spriteBatch;
     FontSystem fontSystem;
 
-    AnimationPlayer player;
+    AnimationPlayer<AnimationFrame> player;
     string currentChain = "";
 
     public Game1()
@@ -29,15 +30,14 @@ public class Game1 : Game
         // Load a FlatRedBall AnimationChainList from an .achx file authored in the
         // FlatRedBall Animation Editor. The .achx slices frames out of
         // AnimatedSpritesheet.png; both files are bundled with this example.
-        AnimationChainList animations = Content.Load<AnimationChainList>("PlatformerAnimations");
+        AnimationChainList<AnimationFrame> animations = Content.Load<AnimationChainList<AnimationFrame>>("PlatformerAnimations");
 
         // AnimationPlayer plays one named chain at a time and advances it over time.
-        player = new AnimationPlayer(animations) { IsLooping = true };
+        player = new AnimationPlayer<AnimationFrame>(animations) { IsLooping = true };
         Play("CharacterWalkRight");
 
-        // A TTF loaded with FontStashSharp, used only to draw the on-screen controls.
         using var stream = TitleContainer.OpenStream(
-            Path.Combine(Content.RootDirectory, "DroidSans.ttf"));
+            Path.Combine(Content.RootDirectory, "std/DroidSans.ttf"));
         using var ms = new MemoryStream();
         stream.CopyTo(ms);
         fontSystem = new FontSystem();
@@ -58,7 +58,6 @@ public class Game1 : Game
     {
         KeyboardState kb = Keyboard.GetState();
 
-        // Default is a calm walk; hold an arrow key to run or jump.
         if (kb.IsKeyDown(Keys.Right))
             Play("CharacterRunRight");
         else if (kb.IsKeyDown(Keys.Left))
@@ -68,7 +67,6 @@ public class Game1 : Game
         else
             Play("CharacterWalkRight");
 
-        // Advance the current animation by the elapsed frame time.
         player.Update(gameTime.ElapsedGameTime);
 
         base.Update(gameTime);
@@ -86,31 +84,22 @@ public class Game1 : Game
 
     void DrawSprite()
     {
-        AnimationFrame frame = player.CurrentFrame;
-        if (frame == null || frame.Texture == null)
-            return;
-
-        // SourceRectangle is the sub-region of the spritesheet for this frame.
-        Rectangle? source = frame.SourceRectangle;
-        int frameWidth = source?.Width ?? frame.Texture.Width;
-        int frameHeight = source?.Height ?? frame.Texture.Height;
-
         Vector2 screenCenter = new Vector2(
             GraphicsDevice.Viewport.Width / 2f,
             GraphicsDevice.Viewport.Height / 2f);
-        Vector2 origin = new Vector2(frameWidth / 2f, frameHeight / 2f);
 
-        // A frame can request horizontal/vertical mirroring.
-        SpriteEffects effects = SpriteEffects.None;
-        if (frame.FlipHorizontal)
-            effects |= SpriteEffects.FlipHorizontally;
-        if (frame.FlipVertical)
-            effects |= SpriteEffects.FlipVertically;
+        // Center on the current frame's size so the sprite doesn't jump around as its
+        // source rectangle changes between animations.
+        PixelRectangle? source = player.CurrentFrame?.SourceRectangle;
+        Vector2 origin = source.HasValue
+            ? new Vector2(source.Value.Width / 2f, source.Value.Height / 2f)
+            : Vector2.Zero;
 
-        // PointClamp keeps the pixel art crisp when scaled up.
+        // DrawAnimation is FlatRedBall.AnimationChain's own SpriteBatch extension: it reads
+        // the player's current frame and applies flip, per-frame offset, and per-frame color
+        // for you -- no manual Rectangle/SpriteEffects bookkeeping needed.
         spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        spriteBatch.Draw(frame.Texture, screenCenter, source, Color.White,
-            0f, origin, 6f, effects, 0f);
+        spriteBatch.DrawAnimation(player, screenCenter, Color.White, origin, scale: 6f);
         spriteBatch.End();
     }
 
@@ -118,9 +107,6 @@ public class Game1 : Game
     {
         var font = fontSystem.GetFont(22);
 
-        // Keyboard input only reaches the game once the canvas has focus, so tell
-        // the user to click first. "Now playing" shows the live chain name, which
-        // updates as you press keys — the point of named animation chains.
         spriteBatch.Begin();
         spriteBatch.DrawString(font, "Click here, then hold Left/Right to run, Up to jump",
             new Vector2(16, 14), Color.White);

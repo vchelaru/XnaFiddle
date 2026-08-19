@@ -76,9 +76,7 @@ The `.csproj` has two wildcard `EmbeddedResource` includes — one for `*.cs` (e
 
 Every example asset is **also** served as a static file under `wwwroot/examples/{ExampleName}/{AssetFile}`. This duplicate is what makes share links work: `LoadExampleAssets()` sets `AssetInfo.SourceUrl` to `{Navigation.BaseUri}examples/{ExampleName}/{file}`, so `GetAssetUrlsFragment()` includes those URLs in the `&assets=` share fragment.
 
-**When adding a new example asset:** place the file in `Examples/` (embedded resource, picked up by wildcard), **and** copy it to `wwwroot/examples/{ExampleName}/{AssetFile}` (static web asset). Both locations are required.
-
-Current static copies: `AetherPhysics/CircleSprite.png`, `AetherPhysics/GroundSprite.png`, `FontStashSharp/DroidSans.ttf`, `SoundPlayback/powerup.wav`, `TextureLoading/KniIcon.png`.
+**When adding a new example asset:** place the file in `Examples/` (embedded resource, picked up by wildcard) — the `CopyExampleStaticAssets` MSBuild target (`BeforeBuild` in `XnaFiddle.BlazorGL.csproj`) copies it to `wwwroot/examples/{ExampleName}/{AssetFile}` automatically on the next build. No manual copy step.
 
 ## Drag-and-drop flow
 

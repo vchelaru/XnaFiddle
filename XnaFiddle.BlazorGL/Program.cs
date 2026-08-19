@@ -19,7 +19,7 @@ namespace XnaFiddle
             _ = typeof(Gum.GumService);                  // Gum.KNI
             _ = typeof(MonoGameAndGum.Renderables.ShapeRenderer); // Gum.Shapes.KNI
             _ = typeof(Apos.Shapes.ShapeBatch);           // Apos.Shapes.KNI
-            _ = typeof(FlatRedBall.AnimationChain.AnimationChainList); // FlatRedBall.AnimationChain.KNI
+            _ = typeof(FlatRedBall2.AnimationEditorCommon.AnimationChainList<FlatRedBall.AnimationChain.AnimationFrame>); // FlatRedBall.AnimationChain.KNI + .Common
             _ = typeof(MonoGame.Extended.OrthographicCamera); // KNI.Extended
 
             // Force-load StbTrueType rasterizer so KernSmith can discover it at runtime.

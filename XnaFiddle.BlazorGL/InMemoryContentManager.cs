@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using FlatRedBall.AnimationChain;
+using FlatRedBall2.AnimationEditorCommon;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Content;
@@ -152,7 +153,7 @@ namespace XnaFiddle
                 // XHR intercept that serves these cached bytes back).
                 bool isXnb = bytes.Length >= 3 && bytes[0] == (byte)'X' && bytes[1] == (byte)'N' && bytes[2] == (byte)'B';
 
-                if (!isXnb && typeof(T) == typeof(AnimationChainList))
+                if (!isXnb && typeof(T) == typeof(AnimationChainList<AnimationFrame>))
                 {
                     string achxPath = EnsureAnimationChainExtension(assetName);
                     _achxLoader ??= new AchxLoader(GetGraphicsDevice());
@@ -160,7 +161,7 @@ namespace XnaFiddle
                     Stream OpenStreamOrNull(string path) =>
                         TryGetFileBytes(path, out byte[] data) ? new MemoryStream(data, writable: false) : null;
 
-                    AnimationChainList chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
+                    AnimationChainList<AnimationFrame> chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
                     // .achx/.achj files can contain negative or out-of-bounds pixel coordinates (e.g. LeftCoordinate=-1),
                     // which cause GL_INVALID_OPERATION when passed to SpriteBatch.Draw. Sanitize and premultiply
                     // all frames after loading so they are always safe to draw.
@@ -223,10 +224,10 @@ namespace XnaFiddle
         // .achx/.achj files regularly contain negative LeftCoordinate / TopCoordinate values
         // (e.g. LeftCoordinate=-1) that produce out-of-range Rectangle values. WebGL
         // raises GL_INVALID_OPERATION (0x0502) when SpriteBatch submits such a rect.
-        private static void SanitizeFrames(AnimationChainList chainList)
+        private static void SanitizeFrames(AnimationChainList<AnimationFrame> chainList)
         {
             var premultiplied = new HashSet<Texture2D>(ReferenceEqualityComparer.Instance);
-            foreach (AnimationChain chain in chainList)
+            foreach (AnimationChain<AnimationFrame> chain in chainList)
             {
                 for (int i = 0; i < chain.Count; i++)
                 {
@@ -243,7 +244,7 @@ namespace XnaFiddle
                     if (!frame.SourceRectangle.HasValue)
                         continue;
 
-                    Rectangle r = frame.SourceRectangle.Value;
+                    Rectangle r = frame.SourceRectangle.Value.ToXnaRectangle();
                     int texW = frame.Texture.Width;
                     int texH = frame.Texture.Height;
 
@@ -266,7 +267,7 @@ namespace XnaFiddle
                     if (r.Right > texW) r.Width = texW - r.X;
                     if (r.Bottom > texH) r.Height = texH - r.Y;
 
-                    frame.SourceRectangle = r;
+                    frame.SourceRectangle = new PixelRectangle(r.X, r.Y, r.Width, r.Height);
                 }
             }
         }

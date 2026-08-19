@@ -60,7 +60,8 @@ namespace XnaFiddle
             // Libraries (alphabetical)
             new ExampleInfo { Name = "AetherPhysics",                Category = "Aether.Physics2D",  Description = "2D physics simulation with a bouncing ball and keyboard controls" },
             new ExampleInfo { Name = "AposShapes",                   Category = "Apos.Shapes",       Description = "Draw shapes with the Apos.Shapes library" },
-            new ExampleInfo { Name = "AnimationChain",               Category = "AnimationChain",    Description = "Play a sprite animation from a FlatRedBall .achx/.achj file with AnimationPlayer — arrow keys switch animations" },
+            new ExampleInfo { Name = "AnimationChain",               Category = "AnimationChain",    Description = "Play a sprite animation from a FlatRedBall .achx/.achj file using AnimationPlayer + DrawAnimation — arrow keys switch animations" },
+            new ExampleInfo { Name = "AnimationChainManualDraw",      Category = "AnimationChain",    Description = "Load the same .achx/.achj animation with only FlatRedBall.AnimationChain.Common and draw it yourself via SpriteBatch" },
             new ExampleInfo { Name = "FontStashSharp",               Category = "FontStashSharp",     Description = "Dynamic text rendering with multiple sizes and colors" },
             new ExampleInfo { Name = "DynamicFonts",                    Category = "Gum",                Description = "Runtime font generation with KernSmith — pick family, size, bold, italic, and outline" },
             new ExampleInfo { Name = "GumUI",                        Category = "Gum",                Description = "UI layout with buttons and text using Gum" },

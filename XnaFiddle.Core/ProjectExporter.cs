@@ -1772,7 +1772,7 @@ internal class Program
             // The .achx branch references types from FlatRedBall.AnimationChain, which is only
             // referenced when the source uses it, so emit these pieces conditionally.
             string achxUsings = includeAnimationChain
-                ? "using FlatRedBall.AnimationChain;\n"
+                ? "using FlatRedBall.AnimationChain;\nusing FlatRedBall2.AnimationEditorCommon;\n"
                 : "";
 
             // The shader branch compiles against ShadowDusk.Core's IShaderCompiler interface (issue #39).
@@ -1795,7 +1795,7 @@ internal class Program
                 : "";
 
             string achxLoadBranch = includeAnimationChain
-                ? @"        if (typeof(T) == typeof(AnimationChainList))
+                ? @"        if (typeof(T) == typeof(AnimationChainList<AnimationFrame>))
         {
             string achxName = assetName;
             if (!assetName.EndsWith("".achx"", StringComparison.OrdinalIgnoreCase) && !assetName.EndsWith("".achj"", StringComparison.OrdinalIgnoreCase))
@@ -1821,7 +1821,7 @@ internal class Program
                 return null;
             }
 
-            AnimationChainList chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
+            AnimationChainList<AnimationFrame> chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
             SanitizeFrames(chainList);
             return (T)(object)chainList;
         }
@@ -1868,10 +1868,10 @@ internal class Program
     // LeftCoordinate=-1), which produce Rectangles that raise GL_INVALID_OPERATION
     // (0x0502) on WebGL when submitted to SpriteBatch. Clamp every frame to texture
     // bounds, and premultiply alpha on KNI (AchxLoader's FromStream returns straight alpha).
-    void SanitizeFrames(AnimationChainList chainList)
+    void SanitizeFrames(AnimationChainList<AnimationFrame> chainList)
     {
         var premultiplied = new HashSet<Texture2D>();
-        foreach (AnimationChain chain in chainList)
+        foreach (AnimationChain<AnimationFrame> chain in chainList)
         {
             for (int i = 0; i < chain.Count; i++)
             {
@@ -1883,7 +1883,7 @@ internal class Program
 
                 if (!frame.SourceRectangle.HasValue) continue;
 
-                Rectangle r = frame.SourceRectangle.Value;
+                Rectangle r = frame.SourceRectangle.Value.ToXnaRectangle();
                 int texW = frame.Texture.Width;
                 int texH = frame.Texture.Height;
 
@@ -1901,7 +1901,7 @@ internal class Program
                 if (r.Right > texW) r.Width = texW - r.X;
                 if (r.Bottom > texH) r.Height = texH - r.Y;
 
-                frame.SourceRectangle = r;
+                frame.SourceRectangle = new PixelRectangle(r.X, r.Y, r.Width, r.Height);
             }
         }
     }
