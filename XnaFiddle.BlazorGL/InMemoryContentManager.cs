@@ -117,7 +117,7 @@ namespace XnaFiddle
             return false;
         }
 
-        private static string EnsureAchxExtension(string assetName)
+        private static string EnsureAnimationChainExtension(string assetName)
         {
             string normalized = NormalizeAssetPath(assetName);
             if (string.IsNullOrEmpty(normalized))
@@ -126,8 +126,14 @@ namespace XnaFiddle
             if (!string.IsNullOrEmpty(Path.GetExtension(normalized)))
                 return normalized;
 
-            string withExtension = normalized + ".achx";
-            return _files.ContainsKey(withExtension) ? withExtension : normalized;
+            // No extension given: prefer .achx (XML) over .achj (JSON) when both are somehow
+            // registered, to keep existing behavior stable for .achx-only assets.
+            string achxKey = normalized + ".achx";
+            if (_files.ContainsKey(achxKey))
+                return achxKey;
+
+            string achjKey = normalized + ".achj";
+            return _files.ContainsKey(achjKey) ? achjKey : normalized;
         }
 
         public override T Load<T>(string assetName)
@@ -148,14 +154,14 @@ namespace XnaFiddle
 
                 if (!isXnb && typeof(T) == typeof(AnimationChainList))
                 {
-                    string achxPath = EnsureAchxExtension(assetName);
+                    string achxPath = EnsureAnimationChainExtension(assetName);
                     _achxLoader ??= new AchxLoader(GetGraphicsDevice());
 
                     Stream OpenStreamOrNull(string path) =>
                         TryGetFileBytes(path, out byte[] data) ? new MemoryStream(data, writable: false) : null;
 
                     AnimationChainList chainList = _achxLoader.Load(achxPath, OpenStreamOrNull, OpenStreamOrNull);
-                    // .achx files can contain negative or out-of-bounds pixel coordinates (e.g. LeftCoordinate=-1),
+                    // .achx/.achj files can contain negative or out-of-bounds pixel coordinates (e.g. LeftCoordinate=-1),
                     // which cause GL_INVALID_OPERATION when passed to SpriteBatch.Draw. Sanitize and premultiply
                     // all frames after loading so they are always safe to draw.
                     SanitizeFrames(chainList);
@@ -214,7 +220,7 @@ namespace XnaFiddle
         }
 
         // Clamp all frame source rectangles to valid bounds and premultiply textures.
-        // .achx files regularly contain negative LeftCoordinate / TopCoordinate values
+        // .achx/.achj files regularly contain negative LeftCoordinate / TopCoordinate values
         // (e.g. LeftCoordinate=-1) that produce out-of-range Rectangle values. WebGL
         // raises GL_INVALID_OPERATION (0x0502) when SpriteBatch submits such a rect.
         private static void SanitizeFrames(AnimationChainList chainList)

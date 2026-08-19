@@ -339,7 +339,7 @@ technique BasicColorDrawing
 
         static readonly HashSet<string> SupportedAssetExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
-            ".achx", ".png", ".fnt", ".ttf", ".ember", ".wav", ".xnb",
+            ".achx", ".achj", ".png", ".fnt", ".ttf", ".ember", ".wav", ".xnb",
             // Text/data formats: tilemap & level-editor files plus generic data. Stored as raw
             // bytes and read by user code via TitleContainer.OpenStream (issue #115).
             ".tmx", ".tsx", ".world", ".ldtk", ".ogmo", ".json", ".txt", ".xml"
