@@ -32,7 +32,7 @@ namespace XnaFiddle.Plugins
             try
             {
                 // Resolve KNI's BlazorGameWindow by name rather than a compile-time reference:
-                // this plugin lives in the platform-agnostic XnaFiddle.Core (net8.0), but the type
+                // this plugin lives in the platform-agnostic XnaFiddle.Core (net10.0), but the type
                 // is in the browser-only KNI Blazor platform assembly. Clearing its static
                 // _instances dictionary prevents stale window handles leaking across runs.
                 Type windowType = AppDomain.CurrentDomain.GetAssemblies()
@@ -106,7 +106,7 @@ namespace XnaFiddle.Plugins
             }
             catch
             {
-                // Intentionally swallowed — same rationale as the clears above. Under net8.0 (tests)
+                // Intentionally swallowed — same rationale as the clears above. Under net10.0 (tests)
                 // nkast.Wasm.Dom is absent so windowDomType is null and this block no-ops.
             }
         }

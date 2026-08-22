@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
 
   <PropertyGroup>
-    <!-- net8.0-browser (NOT plain net8.0): required to reference ShadowDusk.Wasm, whose
-         [JSImport] shader backends target net8.0-browser (a plain net8.0 reference fails
+    <!-- net10.0-browser (NOT plain net10.0): required to reference ShadowDusk.Wasm, whose
+         [JSImport] shader backends target net*.0-browser (a plain net10.0 reference fails
          NU1201). Needs the wasm-tools workload installed. See issue #26.
-         NOTE: XnaFiddle.Tests (net8.0) cannot reference a browser-targeted project. That test
-         reference is handled separately (extract the tested logic into a net8.0 XnaFiddle.Core
+         NOTE: XnaFiddle.Tests (net10.0) cannot reference a browser-targeted project. That test
+         reference is handled separately (extract the tested logic into a net10.0 XnaFiddle.Core
          library), NOT by multi-targeting this app — multi-targeting breaks VS restore because
          the KNI/ShadowDusk ProjectReferences aren't solution members. -->
-    <TargetFramework>net8.0-browser</TargetFramework>
+    <TargetFramework>net10.0-browser</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>XnaFiddle</RootNamespace>
@@ -23,8 +23,8 @@
   </PropertyGroup>
 
   <!-- SHADOWDUSK gates the in-browser shader-compile code to the real (browser) build only,
-       so the test-only net8.0 build compiles without the ShadowDusk.Wasm reference. -->
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'net8.0-browser' ">
+       so the test-only net10.0 build compiles without the ShadowDusk.Wasm reference. -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net10.0-browser' ">
     <DefineConstants>$(DefineConstants);SHADOWDUSK</DefineConstants>
   </PropertyGroup>
 
@@ -34,7 +34,7 @@
 
   <!-- Game libraries that XnaFiddle references directly (KNI variants).
        Versions come from the properties above — do NOT hardcode here.
-       Unconditioned: both the net8.0-browser (real) and net8.0 (test-only) builds compile the
+       Unconditioned: both the net10.0-browser (real) and net10.0 (test-only) builds compile the
        same shared classes, which reference these packages. -->
   <ItemGroup>
     <PackageReference Include="Aether.Physics2D.KNI" Version="$(AetherPhysicsVersion)" />
@@ -46,8 +46,8 @@
     <PackageReference Include="KNI.Extended" Version="$(KniExtendedVersion)" />
     <PackageReference Include="MLEM.Ui.KNI" Version="$(MlemVersion)" />
     <PackageReference Include="MLEM.Extended.KNI" Version="$(MlemVersion)" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.17" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.17" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.11" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
@@ -56,7 +56,6 @@
     <PackageReference Include="KernSmith.Rasterizers.StbTrueType" Version="$(KernSmithVersion)" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="4.14.0" />
-    <PackageReference Include="MetadataReferenceService.BlazorWasm" Version="0.0.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -66,10 +65,10 @@
     <!-- In-browser HLSL .fx -> .mgfx compiler (issue #26). The DXC + SPIRV-Cross WASM modules
          ship inside this package as static web assets, served automatically at
          _content/ShadowDusk.Wasm/ — nothing to copy or configure. Browser-only: it targets
-         net8.0-browser, so a plain net8.0 reference fails NU1201, which is why this is
-         conditioned out of the test-only net8.0 build (which #if-s out the shader code). -->
+         net*.0-browser, so a plain net10.0 reference fails NU1201, which is why this is
+         conditioned out of the test-only net10.0 build (which #if-s out the shader code). -->
     <PackageReference Include="ShadowDusk.Wasm" Version="$(ShadowDuskVersion)"
-                      Condition=" '$(TargetFramework)' == 'net8.0-browser' " />
+                      Condition=" '$(TargetFramework)' == 'net10.0-browser' " />
   </ItemGroup>
 
   <ItemGroup>

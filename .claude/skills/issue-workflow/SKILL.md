@@ -31,7 +31,7 @@ Create a branch off `main` first (`feat/…`, `fix/…`).
 **Stale-submodule gotcha:** the build can fail with dozens of
 `CS0579: Duplicate '…AssemblyInfo' attribute` errors, all pathed under `Submodules/KniSB/**`.
 These are leftover `obj`/`bin` from earlier multi-TFM builds (net45 / netstandard2.0) being
-globbed into the net8.0 build — **not** your change. Clear them and rebuild:
+globbed into the net10.0 build — **not** your change. Clear them and rebuild:
 
 ```
 find Submodules/KniSB -type d \( -name obj -o -name bin \) -prune -exec rm -rf {} +

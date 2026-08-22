@@ -58,7 +58,7 @@ Deterministic, no app-code change. The restart loop in `RepeatedRestart_Unchange
 
 A browser treats a navigation that differs **only by `#fragment`** as *in-page* — it does NOT reload the document, so Blazor's `OnAfterRender(firstRender)` never re-runs and the deep-link payload is silently ignored (editor keeps the old code, no compile fires). A brand-new page's *first* `GotoAsync` is a real cross-document load, so cold-boot deep-link tests are fine. But when the page is **already on the served app** (e.g. you booted, opened Share, grabbed the URL), navigating to that `#code=`/`#snippet=` URL needs a forced cross-document load: go to `about:blank` first (`BootFreshAsync` on the base). Symptom if you forget: the round-trip times out at `WaitForWebGlContextAsync` while the editor shows the *original* (not the shared) code and diagnostics are empty.
 
-To build a deep-link payload deterministically in a test, reference `XnaFiddle.Core` (net8.0) and call `UrlCodec.Encode(code)` — same codec the app uses, so it round-trips. The E2E project already has this `ProjectReference`.
+To build a deep-link payload deterministically in a test, reference `XnaFiddle.Core` (net10.0) and call `UrlCodec.Encode(code)` — same codec the app uses, so it round-trips. The E2E project already has this `ProjectReference`.
 
 ## Test hooks available (issue #112)
 

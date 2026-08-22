@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -19,7 +19,7 @@
     <!-- Provides UseBlazorFrameworkFiles (correct content types for Webcil .wasm assemblies
          and _framework files) — the shared framework ships the assembly but not its ref, so
          the PackageReference is needed at compile time. -->
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="8.0.17" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.11" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <!-- Playwright .NET's first-class runner integration is NUnit (and MSTest). -->
     <PackageReference Include="Microsoft.Playwright.NUnit" Version="1.49.0" />

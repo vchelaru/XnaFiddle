@@ -7,7 +7,7 @@ namespace XnaFiddle.Tests;
 //
 // Testability note: the *behavior* (does mouse still work after a 2nd game?) can't be unit-tested
 // here — nkast.Wasm.Dom.Window and KNI's BlazorGameWindow/ConcreteMouse are browser-only and don't
-// load in net8.0, so CleanUp() no-ops in this process. (That's exactly why the issue #95 regression
+// load in net10.0, so CleanUp() no-ops in this process. (That's exactly why the issue #95 regression
 // shipped green.) These tests instead pin the *contract* so the cleared set can't silently drift
 // back into clearing handlers that aren't re-subscribed per game.
 public class GameWindowPluginTests

@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Platform-agnostic logic shared by the XnaFiddle.BlazorGL app (net8.0-browser) and the
-       XnaFiddle.Tests project (net8.0). A net8.0 test project cannot reference a net8.0-browser
+  <!-- Platform-agnostic logic shared by the XnaFiddle.BlazorGL app (net10.0-browser) and the
+       XnaFiddle.Tests project (net10.0). A net10.0 test project cannot reference a net10.0-browser
        project, so the tested, browser-free logic (URL/snippet codecs, Roslyn-based security and
        IntelliSense helpers, library plugins, project exporter) lives here. See issue #26. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>XnaFiddle</RootNamespace>

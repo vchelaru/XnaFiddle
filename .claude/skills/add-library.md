@@ -10,10 +10,10 @@ This skill walks through making a third-party library available to user code in 
 
 ### 1. Add the NuGet package to the .csproj
 
-In `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj`, add a `PackageReference` inside the `net8.0`-conditional `ItemGroup` alongside existing libraries (Apos.Shapes, Gum, KNI.Extended):
+In `XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj`, add a `PackageReference` inside the unconditioned game-libraries `ItemGroup` alongside existing libraries (Apos.Shapes, Gum, KNI.Extended):
 
 ```xml
-<ItemGroup Condition=" '$(TargetFramework)' == 'net8.0' ">
+<ItemGroup>
   ...
   <PackageReference Include="NewLib.KNI" Version="x.y.z" />
 </ItemGroup>

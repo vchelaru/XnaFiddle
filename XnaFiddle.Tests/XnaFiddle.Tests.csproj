@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -15,9 +15,9 @@
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
     <!-- SecurityChecker's JSInterop-blocking tests need the Microsoft.JSInterop types to bind
-         symbols. These came transitively from XnaFiddle.BlazorGL, which a net8.0 test project
-         can no longer reference (it now targets net8.0-browser). See issue #26. -->
-    <PackageReference Include="Microsoft.JSInterop" Version="8.0.17" />
+         symbols. These came transitively from XnaFiddle.BlazorGL, which a net10.0 test project
+         can no longer reference (it now targets net10.0-browser). See issue #26. -->
+    <PackageReference Include="Microsoft.JSInterop" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,8 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The tested, platform-agnostic logic lives in XnaFiddle.Core (net8.0); the app project
-         is net8.0-browser and can't be referenced from a net8.0 test project. See issue #26. -->
+    <!-- The tested, platform-agnostic logic lives in XnaFiddle.Core (net10.0); the app project
+         is net10.0-browser and can't be referenced from a net10.0 test project. See issue #26. -->
     <ProjectReference Include="..\XnaFiddle.Core\XnaFiddle.Core.csproj" />
   </ItemGroup>
 
