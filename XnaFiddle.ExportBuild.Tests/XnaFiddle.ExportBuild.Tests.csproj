@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Exports a fiddle and runs a real `dotnet build` against the output, catching regressions
+       (e.g. SDK/KNI version bumps) that string assertions on generated file content cannot. Kept
+       out of XnaFiddle.Tests because each test spawns a real dotnet restore/build child process
+       (NuGet fetch + compile) — slow, same reasoning as XnaFiddle.E2E.Tests being its own project. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ProjectExporter.Export lives here. No submodule/KNI-source dependency — Core only pulls
+         Microsoft.CodeAnalysis.CSharp from NuGet. -->
+    <ProjectReference Include="..\XnaFiddle.Core\XnaFiddle.Core.csproj" />
+  </ItemGroup>
+
+</Project>

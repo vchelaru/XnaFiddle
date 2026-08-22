@@ -1,0 +1,22 @@
+name: Export Build Verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  export-build:
+    # windows-latest mirrors e2e.yml/deploy.yml — also the app's real build/deploy environment.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        # No submodule needed: XnaFiddle.Core (what this test project references) only pulls
+        # Microsoft.CodeAnalysis.CSharp from NuGet — no dependency on the KniSB submodule sources.
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run export-and-build tests
+        run: dotnet test XnaFiddle.ExportBuild.Tests/XnaFiddle.ExportBuild.Tests.csproj -c Release

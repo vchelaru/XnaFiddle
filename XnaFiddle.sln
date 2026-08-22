@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XnaFiddle.Tests", "XnaFiddl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XnaFiddle.E2E.Tests", "XnaFiddle.E2E.Tests\XnaFiddle.E2E.Tests.csproj", "{46722D94-87CF-46F8-B418-F105B70E3108}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XnaFiddle.ExportBuild.Tests", "XnaFiddle.ExportBuild.Tests\XnaFiddle.ExportBuild.Tests.csproj", "{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{46722D94-87CF-46F8-B418-F105B70E3108}.Release|x64.Build.0 = Release|Any CPU
 		{46722D94-87CF-46F8-B418-F105B70E3108}.Release|x86.ActiveCfg = Release|Any CPU
 		{46722D94-87CF-46F8-B418-F105B70E3108}.Release|x86.Build.0 = Release|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Debug|x64.Build.0 = Debug|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Debug|x86.Build.0 = Debug|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Release|x64.ActiveCfg = Release|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Release|x64.Build.0 = Release|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Release|x86.ActiveCfg = Release|Any CPU
+		{7A3E9B60-1D6C-4B7E-9C2A-6E2F8F1D4A0C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
