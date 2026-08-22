@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using XnaFiddle.Plugins;
 
 namespace XnaFiddle
 {
@@ -26,6 +27,30 @@ namespace XnaFiddle
                 catch (Exception e)
                 {
                     Console.WriteLine($"[XnaFiddle] Cleanup failed ({_plugins[i].Name}): {e}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Calls GameWindowPlugin.ClearCanvasElementCache(), if a GameWindowPlugin is registered.
+        /// NOT part of RunAllCleanups() — call this only when the &lt;canvas&gt; element is
+        /// actually about to be recreated (a Reach&lt;-&gt;HiDef profile switch), never on an
+        /// ordinary restart. See ClearCanvasElementCache's doc comment for why.
+        /// </summary>
+        public void ClearCanvasElementCache()
+        {
+            for (int i = 0; i < _plugins.Count; i++)
+            {
+                if (_plugins[i] is GameWindowPlugin gameWindowPlugin)
+                {
+                    try
+                    {
+                        gameWindowPlugin.ClearCanvasElementCache();
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine($"[XnaFiddle] ClearCanvasElementCache failed: {e}");
+                    }
                 }
             }
         }

@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       # This is the real deploy: the published output is uploaded as the GitHub Pages artifact below.
       # (The E2E workflow also runs `dotnet publish`, but only to serve the app locally to a test

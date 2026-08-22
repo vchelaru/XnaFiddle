@@ -28,7 +28,7 @@ The `SnippetModel` is built field-by-field from `_revertResult` in **two** place
 
 ## Why these classes live in XnaFiddle.Core
 
-The codec is browser-free so the net8.0 test project can exercise it. The test project **cannot** reference net8.0-browser `BlazorGL` (same split as the `shaders` skill / issue #26), so `SnippetReverter`/`SnippetExpander`/`SnippetModel` were moved to `Core` in the #83 fix. Tests: `XnaFiddle.Tests/SnippetRoundTripTests.cs`.
+The codec is browser-free so the net10.0 test project can exercise it. The test project **cannot** reference net10.0-browser `BlazorGL` (same split as the `shaders` skill / issue #26), so `SnippetReverter`/`SnippetExpander`/`SnippetModel` were moved to `Core` in the #83 fix. Tests: `XnaFiddle.Tests/SnippetRoundTripTests.cs`.
 
 ## Shallow pointers (did not cause confusion — leave shallow)
 

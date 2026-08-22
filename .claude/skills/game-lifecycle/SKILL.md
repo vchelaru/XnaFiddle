@@ -38,11 +38,14 @@ Conclusion: `theCanvas` does **not** leak contexts across runs — it reuses one
 A canvas's context **type** (webgl vs webgl2) locks on first `getContext` and can't change in place, so a Reach<->HiDef switch needs a brand-new `<canvas>` element. This is detected in `DoCompileAndRun` (`_canvasProfile` vs `GetGameProfile(newGame)`) and handled **without a page reload**:
 
 1. Drop the just-created (mismatched) game; `LibraryRegistry.RunAllCleanups()`.
-2. Bump `_canvasGen` (the canvas has `@key="_canvasGen"` in `Index.razor`) + `StateHasChanged()` + `await Task.Delay(1)` so **Blazor** recreates the `<canvas>` (Blazor owns the DOM swap — don't do it with raw JS, that desyncs the renderer).
-3. `setupCanvas` (JS) re-wires the fresh element; `window._canvasContextType = null` (it's unbound).
-4. Rebuild the game (`Activator.CreateInstance` again, re-assign `InMemoryContentManager`) so its `BlazorGameWindow` binds the fresh canvas; fall through to `Run()`.
+2. `LibraryRegistry.ClearCanvasElementCache()` — see below.
+3. Bump `_canvasGen` (the canvas has `@key="_canvasGen"` in `Index.razor`) + `StateHasChanged()` + `await Task.Delay(1)` so **Blazor** recreates the `<canvas>` (Blazor owns the DOM swap — don't do it with raw JS, that desyncs the renderer).
+4. `setupCanvas` (JS) re-wires the fresh element; `window._canvasContextType = null` (it's unbound).
+5. Rebuild the game (`Activator.CreateInstance` again, re-assign `InMemoryContentManager`) so its `BlazorGameWindow` binds the fresh canvas; fall through to `Run()`.
 
-The critical enabler: `GameWindowPlugin.CleanUp` (run by `RunAllCleanups`) reflectively clears KNI's `Document._elementsCache`. Without that, `GetElementById("theCanvas")` returns the **stale cached `Canvas` wrapper** pointing at the detached old element -> black screen (this is what broke the earlier per-run canvas-swap attempt). Profile switches are rare (examples are all HiDef), so the double game-construction on a switch is fine.
+The critical enabler: `GameWindowPlugin.ClearCanvasElementCache()` reflectively clears KNI's `Document._elementsCache`. Without that, `GetElementById("theCanvas")` returns the **stale cached `Canvas` wrapper** pointing at the detached old element -> black screen (this is what broke the earlier per-run canvas-swap attempt). Profile switches are rare (examples are all HiDef), so the double game-construction on a switch is fine.
+
+**`ClearCanvasElementCache()` is deliberately NOT part of `CleanUp()`/`RunAllCleanups()`.** KNI's `Document.GetElementById<T>` builds a **brand-new** `Canvas` wrapper on any cache miss (`Document.cs` `CreateInstance<TElement>`), and `Canvas.GetContext<T>()` caches its result **per wrapper instance**. So clearing `_elementsCache` on an ordinary restart (same `<canvas>`) forces a fresh wrapper to re-call the JS `getContext(...)` bridge — which, for an unchanged canvas, hands back the browser's already-registered context object, and `nkJSObject.RegisterObject` (all `nkast.Wasm.JSInterop` versions, 8.0.x through 10.0.x — not a KNI-bump regression) has **no "already registered" guard**, throwing `"object already registered"` inside `Activator.CreateInstance(gameType)`. Only call this on an actual canvas swap.
 
 ## THE per-run leak and the fix
 
@@ -132,9 +135,9 @@ It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced o
 | `XnaFiddle.BlazorGL/Pages/Index.razor.cs` | `DoCompileAndRun`, `CompileAndRun`, `TickDotNet`, swap window, `UseReferenceDevice` fix, `_canvasProfile`/`PromptProfileSwitch` |
 | `XnaFiddle.BlazorGL/wwwroot/index.html` | `tickJS` rAF loop, `_tickInterval` FPS cap (embed only: 20fps mobile / 30fps desktop), `wireTouchToolbar` — generalized touch bypass swallowing all 4 touch phases (issue #90) |
 | `XnaFiddle.BlazorGL/CompilationService.cs` | Roslyn compile, `_referenceCache`, `GetMetadataReferencesAsync`, `LogTiming` |
-| `XnaFiddle.Core/LibraryRegistry.cs` | `RunAllCleanups` — per-run plugin static-state reset |
-| `XnaFiddle.Core/Plugins/GameWindowPlugin.cs` | Reflectively clears KNI's `BlazorGameWindow._instances`, `Document._elementsCache`, **and** every public delegate field on `Window.Current` (issue #90) |
-| `Submodules/KniSB/Submodules/WasmSB/Wasm.Dom/Dom/Window.cs` | `Window.Current` singleton; public multicast input-event delegate fields; `JsWindowOnTouchStart` fans a touch to all subscribers |
+| `XnaFiddle.Core/LibraryRegistry.cs` | `RunAllCleanups` (every run) — per-run plugin static-state reset. `ClearCanvasElementCache` (profile switch only) — see above |
+| `XnaFiddle.Core/Plugins/GameWindowPlugin.cs` | `CleanUp()` (every run): reflectively clears `BlazorGameWindow._instances` and every public delegate field on `Window.Current`. `ClearCanvasElementCache()` (profile switch only, called directly by `Index.razor.cs`, NOT via `RunAllCleanups`): clears `Document._elementsCache` |
 | `Submodules/KniSB/Platforms/Graphics/.BlazorGL/ConcreteGraphicsAdapter.cs` | `Platform_IsProfileSupported` — the leaking HiDef probe + the `UseReferenceDevice` short-circuit |
-| `Submodules/KniSB/.../Wasm.Canvas/Canvas/OffscreenCanvas.cs` | Probe's WebGL2 context creation (no-attribs path leaks) |
 | `Submodules/KniSB/Platforms/Game/.Blazor/BlazorGameWindow.cs` | Resolves `theCanvas`; static `_instances` dictionary; ctor subscribes per-game closures to `Window.Current` events, never unsubscribed (no Dispose) |
+
+**`nkast.Wasm.*` (Window, Document, Canvas, JSObject/`nkJSObject`) are NuGet packages (`nkast.Wasm.Dom`/`.Canvas`/`.JSInterop`, pinned via KniSB's `Kni.Platform.Blazor.GL.csproj`), not the `Submodules/KniSB/Submodules/WasmSB` git submodule** — that submodule was dropped from `.gitmodules` in the KniSB bump and any copy still on disk under `Submodules/KniSB/Submodules/WasmSB` is stale/orphaned, not what actually builds. No `.cs`/`.js` source ships in the NuGet packages either; to inspect real current behavior, decompile the `lib/net10.0/*.dll` under `~/.nuget/packages/nkast.wasm.*/<version>/` (e.g. via `ilspycmd`) and read the `.js` under that package's `staticwebassets/js/`.

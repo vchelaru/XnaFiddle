@@ -678,7 +678,7 @@ technique BasicColorDrawing
         private async Task<string> CompileRegisteredShadersAsync()
         {
 #if !SHADOWDUSK
-            // Test-only net8.0 build: ShadowDusk isn't referenced, so there is no shader
+            // Test-only net10.0 build: ShadowDusk isn't referenced, so there is no shader
             // compiler. This path never runs as an app; return a no-op result.
             await Task.CompletedTask;
             return null;
@@ -1295,6 +1295,10 @@ technique BasicColorDrawing
             {
                 newGame = null;
                 LibraryRegistry.RunAllCleanups();
+                // The <canvas> element itself is about to be recreated (@key="_canvasGen" bump
+                // below), so — unlike an ordinary restart — the stale Canvas wrapper genuinely
+                // must be evicted here (see ClearCanvasElementCache's doc comment).
+                LibraryRegistry.ClearCanvasElementCache();
                 _canvasGen++;
                 StateHasChanged();
                 await Task.Delay(1);

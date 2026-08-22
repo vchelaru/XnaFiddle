@@ -32,7 +32,7 @@ namespace XnaFiddle.Plugins
             try
             {
                 // Resolve KNI's BlazorGameWindow by name rather than a compile-time reference:
-                // this plugin lives in the platform-agnostic XnaFiddle.Core (net8.0), but the type
+                // this plugin lives in the platform-agnostic XnaFiddle.Core (net10.0), but the type
                 // is in the browser-only KNI Blazor platform assembly. Clearing its static
                 // _instances dictionary prevents stale window handles leaking across runs.
                 Type windowType = AppDomain.CurrentDomain.GetAssemblies()
@@ -47,34 +47,6 @@ namespace XnaFiddle.Plugins
             {
                 // Intentionally swallowed. The only realistic failure is a rename of the type or
                 // field, which would surface immediately in development. Nothing actionable at runtime.
-            }
-
-            try
-            {
-                // Clear KNI's Document element-id cache so a swapped/recreated canvas is re-resolved
-                // rather than served the stale Canvas wrapper (which points at the now-detached old
-                // <canvas> -> black screen). A Reach<->HiDef profile switch recreates theCanvas to
-                // get a fresh WebGL context type (see Index.razor.cs DoCompileAndRun). Resolved by
-                // name for the same reason as above: nkast.Wasm.Dom lives in the browser-only
-                // assembly. Clearing this every run is harmless — a same-element run just re-resolves
-                // the same context. Wrapped in its own try/catch with the same swallow rationale.
-                Type windowDomType = AppDomain.CurrentDomain.GetAssemblies()
-                    .Select(a => a.GetType("nkast.Wasm.Dom.Window"))
-                    .FirstOrDefault(t => t != null);
-                var currentProp = windowDomType?.GetProperty("Current",
-                    BindingFlags.Static | BindingFlags.Public);
-                object window = currentProp?.GetValue(null);
-                var documentProp = window?.GetType().GetProperty("Document",
-                    BindingFlags.Instance | BindingFlags.Public);
-                object document = documentProp?.GetValue(window);
-                var cacheField = document?.GetType().GetField("_elementsCache",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-                if (cacheField?.GetValue(document) is IDictionary cache)
-                    cache.Clear();
-            }
-            catch
-            {
-                // Intentionally swallowed — same rationale as the _instances clear above.
             }
 
             try
@@ -106,8 +78,52 @@ namespace XnaFiddle.Plugins
             }
             catch
             {
-                // Intentionally swallowed — same rationale as the clears above. Under net8.0 (tests)
+                // Intentionally swallowed — same rationale as the clears above. Under net10.0 (tests)
                 // nkast.Wasm.Dom is absent so windowDomType is null and this block no-ops.
+            }
+        }
+
+        // Clears KNI's Document element-id cache (nkast.Wasm.Dom.Document._elementsCache) so a
+        // just-recreated <canvas> (a Reach<->HiDef profile switch — see Index.razor.cs
+        // DoCompileAndRun) is re-resolved instead of returning the stale Canvas wrapper pointing
+        // at the now-detached old element (-> black screen).
+        //
+        // Deliberately NOT part of CleanUp() / called on every restart: KNI's Document.GetElementById
+        // does not reuse a cached wrapper by uid, it constructs a BRAND NEW C# Canvas wrapper any
+        // time the id isn't in _elementsCache (Document.cs GetElementById -> CreateInstance<TElement>).
+        // That fresh wrapper's WebGL/WebGL2 context is cached per-*wrapper-instance*
+        // (Canvas.cs GetContext<T>'s _webglRenderingContext/_webgl2RenderingContext fields), so it
+        // calls the JS bridge's getContext(...) again — which, for the SAME underlying <canvas>
+        // element, the browser answers with the SAME already-registered context object. KNI's JS
+        // registry (nkJSObject.RegisterObject) has no "already registered, return existing uid"
+        // guard on that path (unlike e.g. Document.GetElementById's own JS side), so it throws
+        // "object already registered" the moment a second Canvas wrapper asks for a context on an
+        // unchanged canvas. Calling this only when the <canvas> element is ACTUALLY being replaced
+        // keeps ordinary restarts on the cached wrapper (whose GetContext<T>() is already
+        // instance-cached, so it never re-enters the JS bridge at all).
+        public void ClearCanvasElementCache()
+        {
+            try
+            {
+                // Resolved by name — same rationale as CleanUp()'s reflection: this plugin lives in
+                // the platform-agnostic XnaFiddle.Core, nkast.Wasm.Dom is browser-only.
+                Type windowDomType = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(a => a.GetType("nkast.Wasm.Dom.Window"))
+                    .FirstOrDefault(t => t != null);
+                var currentProp = windowDomType?.GetProperty("Current",
+                    BindingFlags.Static | BindingFlags.Public);
+                object window = currentProp?.GetValue(null);
+                var documentProp = window?.GetType().GetProperty("Document",
+                    BindingFlags.Instance | BindingFlags.Public);
+                object document = documentProp?.GetValue(window);
+                var cacheField = document?.GetType().GetField("_elementsCache",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                if (cacheField?.GetValue(document) is IDictionary cache)
+                    cache.Clear();
+            }
+            catch
+            {
+                // Intentionally swallowed — same rationale as CleanUp()'s clears.
             }
         }
     }

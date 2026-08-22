@@ -7,7 +7,7 @@ namespace XnaFiddle.E2E.Tests;
 /// Chromium with software GL (SwiftShader) and prove the default sample compiles (Roslyn),
 /// runs (KNI), and initializes a WebGL context — plus the #90 repeated-restart guard. This is
 /// the class of regression that unit tests cannot reach because the browser-only KNI/WebGL
-/// code no-ops under net8.0. Harness lives in <see cref="E2ETestBase"/>. Broader behavior
+/// code no-ops under net10.0. Harness lives in <see cref="E2ETestBase"/>. Broader behavior
 /// coverage is in <see cref="CoreBehaviorsTest"/> (issue #112).
 /// </summary>
 [TestFixture]

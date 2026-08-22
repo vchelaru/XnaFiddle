@@ -3,22 +3,18 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Components;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
-using MetadataReferenceService.Abstractions.Types;
-using MetadataReferenceService.BlazorWasm;
 
 namespace XnaFiddle
 {
     public class CompilationService
     {
-        private readonly NavigationManager _navigationManager;
         private readonly LibraryRegistry _libraryRegistry;
-        private BlazorWasmMetadataReferenceService _referenceService;
 
         // Persistent success-only cache of resolved metadata references, keyed by assembly
         // name. Parsing each assembly's PE metadata is the dominant cost of a recompile in
@@ -27,9 +23,8 @@ namespace XnaFiddle
         // they are retried (an assembly absent on one compile may be loaded by the next).
         private readonly Dictionary<string, MetadataReference> _referenceCache = [];
 
-        public CompilationService(NavigationManager navigationManager, LibraryRegistry libraryRegistry)
+        public CompilationService(LibraryRegistry libraryRegistry)
         {
-            _navigationManager = navigationManager;
             _libraryRegistry = libraryRegistry;
         }
 
@@ -63,7 +58,9 @@ namespace XnaFiddle
             "nkast.Wasm.Audio",
             "nkast.Wasm.XHR",
             "nkast.Wasm.XR",
-            "nkast.Wasm.Clipboard",
+            // nkast.Wasm.Clipboard is intentionally absent: the KniSB submodule bump to
+            // 10.0.2 dropped it as a KNI dependency (XnaFiddle never referenced it directly —
+            // CopyToClipboard in Index.razor.cs calls navigator.clipboard via JsRuntime).
             "TextCopy",
         ];
 
@@ -79,11 +76,16 @@ namespace XnaFiddle
 
         /// <summary>
         /// Builds and returns the full metadata reference list for the current user
-        /// environment, resolving via BlazorWasmMetadataReferenceService. Used by
-        /// CompileAsync and shared with IntellisenseService so the completion workspace
-        /// sees the same BCL/KNI/plugin surface the compile will see.
+        /// environment, resolving each assembly's MetadataReference from its already-loaded
+        /// in-process Assembly (see TryCreateMetadataReference). Used by CompileAsync and
+        /// shared with IntellisenseService so the completion workspace sees the same
+        /// BCL/KNI/plugin surface the compile will see.
         /// </summary>
-        public async Task<(List<MetadataReference> References, List<string> FailedAssemblies, string VersionInfo)>
+        // Not actually async anymore: every assembly is resolved from the already-loaded
+        // in-process Assembly (see the second-pass loop below), so there is nothing left to
+        // await. Kept Task-returning to avoid touching the CompileAsync/IntellisenseService
+        // call sites, which still `await` this.
+        public Task<(List<MetadataReference> References, List<string> FailedAssemblies, string VersionInfo)>
             GetMetadataReferencesAsync(Action<int, int> onProgress = null, bool includeShadowDusk = false, CancellationToken cancellationToken = default)
         {
             ForceLoadAssemblies();
@@ -163,43 +165,41 @@ namespace XnaFiddle
                 }
             }
 
-            // Second pass: resolve only the misses. Create a fresh service so a stale
-            // failure cached inside the service can't permanently hide an assembly that
-            // is now loaded; the success cache (not the service) is what makes warm
-            // compiles skip resolution entirely.
-            if (missingAssemblies.Count > 0)
+            // Second pass: resolve only the misses. Every assembly XnaFiddle needs a reference
+            // for is, by construction, already loaded into this WASM process (the compiled user
+            // code has to run against those same loaded assemblies), so no HTTP fetch is needed —
+            // Assembly.Load here just gets/triggers-load of the in-process Assembly object
+            // (covers names not in ForceLoadAssemblies's fixed list, e.g. transitively-referenced
+            // BCL assemblies found via AddReferencedAssemblyNames), then its raw PE metadata is
+            // read directly out of the loaded module via TryCreateMetadataReference.
+            for (int i = 0; i < missingAssemblies.Count; i++)
             {
-                _referenceService = new(_navigationManager);
-                for (int i = 0; i < missingAssemblies.Count; i++)
+                cancellationToken.ThrowIfCancellationRequested();
+                string assemblyName = missingAssemblies[i];
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    string assemblyName = missingAssemblies[i];
-                    AssemblyDetails assemblyDetails = new() { Name = assemblyName };
-                    try
+                    Assembly assembly = Assembly.Load(assemblyName);
+                    if (TryCreateMetadataReference(assembly, out MetadataReference metadataReference))
                     {
-                        MetadataReference metadataReference = await _referenceService.CreateAsync(assemblyDetails);
-                        if (metadataReference != null)
-                        {
-                            metadataReferences.Add(metadataReference);
-                            _referenceCache[assemblyName] = metadataReference; // cache successes only
-                        }
-                        else
-                        {
-                            failedAssemblies.Add(assemblyName);
-                        }
+                        metadataReferences.Add(metadataReference);
+                        _referenceCache[assemblyName] = metadataReference; // cache successes only
                     }
-                    catch
+                    else
                     {
                         failedAssemblies.Add(assemblyName);
                     }
-                    onProgress?.Invoke(++resolved, total);
                 }
+                catch
+                {
+                    failedAssemblies.Add(assemblyName);
+                }
+                onProgress?.Invoke(++resolved, total);
             }
 
             if (failedAssemblies.Count > 0)
                 Console.WriteLine($"[XnaFiddle] {failedAssemblies.Count} assembl{(failedAssemblies.Count == 1 ? "y" : "ies")} failed to resolve: {string.Join(", ", failedAssemblies)}");
 
-            return (metadataReferences, failedAssemblies, versionInfo);
+            return Task.FromResult((metadataReferences, failedAssemblies, versionInfo));
         }
 
         private static void AddReferencedAssemblyNames(
@@ -269,6 +269,34 @@ namespace XnaFiddle
             {
                 try { Assembly.Load(BclAssemblyNames[i]); }
                 catch { /* already loaded, or genuinely absent — handled below */ }
+            }
+        }
+
+        // Wraps an already-loaded in-process Assembly as a Roslyn MetadataReference by reading
+        // its raw PE metadata directly out of the loaded module via TryGetRawMetadata, instead
+        // of fetching the assembly's bytes over HTTP. This works because every assembly Roslyn
+        // needs a reference for is, by construction, already loaded into this WASM process — the
+        // compiled user code has to execute against those same loaded assemblies. The returned
+        // blob pointer is stable for the process lifetime (it points into the assembly's own
+        // metadata, not a copy), so no further ownership handling is needed.
+        private static bool TryCreateMetadataReference(Assembly assembly, out MetadataReference reference)
+        {
+            reference = null;
+            try
+            {
+                unsafe
+                {
+                    if (!assembly.TryGetRawMetadata(out byte* blob, out int length))
+                        return false;
+                    ModuleMetadata moduleMetadata = ModuleMetadata.CreateFromMetadata((IntPtr)blob, length);
+                    AssemblyMetadata assemblyMetadata = AssemblyMetadata.Create(moduleMetadata);
+                    reference = assemblyMetadata.GetReference();
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
             }
         }
 

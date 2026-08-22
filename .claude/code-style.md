@@ -9,9 +9,9 @@ aren't obvious from generic C# style. (Workflow — minimal diffs, tests, etc. �
 
 | Project | TargetFramework | `Nullable` | `ImplicitUsings` |
 |---|---|---|---|
-| `XnaFiddle.BlazorGL` | `net8.0-browser` | **disable** | **disable** |
-| `XnaFiddle.Core` | `net8.0` | **disable** | **disable** |
-| `XnaFiddle.Tests` | `net8.0` | **enable** | **enable** |
+| `XnaFiddle.BlazorGL` | `net10.0-browser` | **disable** | **disable** |
+| `XnaFiddle.Core` | `net10.0` | **disable** | **disable** |
+| `XnaFiddle.Tests` | `net10.0` | **enable** | **enable** |
 
 In **BlazorGL** and **Core** (the production code):
 - Write **explicit `using` directives** — there are no implicit/global usings.
@@ -49,9 +49,9 @@ never take a compile-time dependency on a browser-only KNI type from `XnaFiddle.
 
 ## Where code goes (so it stays testable)
 
-- Platform-agnostic logic that should be unit-tested goes in **`XnaFiddle.Core`** (`net8.0`),
+- Platform-agnostic logic that should be unit-tested goes in **`XnaFiddle.Core`** (`net10.0`),
   referenced by `XnaFiddle.Tests`.
 - Browser-only code (anything touching KNI's Blazor platform, WebGL, JS interop, or
-  `ShadowDusk.Wasm`) lives in **`XnaFiddle.BlazorGL`** (`net8.0-browser`). Code that must also
-  compile in the net8.0 test build is gated with `#if` constants (e.g. `SHADOWDUSK`, `BLAZORGL`)
+  `ShadowDusk.Wasm`) lives in **`XnaFiddle.BlazorGL`** (`net10.0-browser`). Code that must also
+  compile in the net10.0 test build is gated with `#if` constants (e.g. `SHADOWDUSK`, `BLAZORGL`)
   and `#if`-ed out (as a no-op) when the browser-only dependency is absent.

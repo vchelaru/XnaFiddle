@@ -7,7 +7,7 @@ namespace XnaFiddle.Tests;
 //
 // Testability note: the *behavior* (does mouse still work after a 2nd game?) can't be unit-tested
 // here — nkast.Wasm.Dom.Window and KNI's BlazorGameWindow/ConcreteMouse are browser-only and don't
-// load in net8.0, so CleanUp() no-ops in this process. (That's exactly why the issue #95 regression
+// load in net10.0, so CleanUp() no-ops in this process. (That's exactly why the issue #95 regression
 // shipped green.) These tests instead pin the *contract* so the cleared set can't silently drift
 // back into clearing handlers that aren't re-subscribed per game.
 public class GameWindowPluginTests
@@ -40,5 +40,19 @@ public class GameWindowPluginTests
     public void ClearedWindowEventFields_never_include_subscribe_once_handlers(string field)
     {
         Assert.DoesNotContain(field, GameWindowPlugin.ClearedWindowEventFields);
+    }
+
+    // ClearCanvasElementCache() clears KNI's Document._elementsCache — see its doc comment for why
+    // this must be called only on an actual canvas swap, never on every restart via CleanUp().
+    // Same testability note as above: nkast.Wasm.Dom.Window is browser-only and absent under
+    // net10.0, so this just pins that the method itself is safe to call (idempotent, swallows the
+    // reflection miss) — not the browser-only behavior it reflects into.
+    [Fact]
+    public void ClearCanvasElementCache_DoesNotThrow()
+    {
+        var plugin = new GameWindowPlugin();
+
+        plugin.ClearCanvasElementCache();
+        plugin.ClearCanvasElementCache();
     }
 }
