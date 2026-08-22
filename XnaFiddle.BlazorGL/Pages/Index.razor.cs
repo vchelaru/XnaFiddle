@@ -1295,6 +1295,10 @@ technique BasicColorDrawing
             {
                 newGame = null;
                 LibraryRegistry.RunAllCleanups();
+                // The <canvas> element itself is about to be recreated (@key="_canvasGen" bump
+                // below), so — unlike an ordinary restart — the stale Canvas wrapper genuinely
+                // must be evicted here (see ClearCanvasElementCache's doc comment).
+                LibraryRegistry.ClearCanvasElementCache();
                 _canvasGen++;
                 StateHasChanged();
                 await Task.Delay(1);

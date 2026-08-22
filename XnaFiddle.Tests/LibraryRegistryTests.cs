@@ -1,3 +1,5 @@
+using XnaFiddle.Plugins;
+
 namespace XnaFiddle.Tests;
 
 public class LibraryRegistryTests
@@ -94,6 +96,49 @@ public class LibraryRegistryTests
 
         // Should not throw even when every plugin fails
         registry.RunAllCleanups();
+    }
+
+    // ── ClearCanvasElementCache ──────────────────────────────────────────────
+    // Deliberately separate from RunAllCleanups (see GameWindowPlugin.ClearCanvasElementCache's
+    // doc comment) — these pin that it targets ONLY a registered GameWindowPlugin, never the
+    // generic ILibraryPlugin.CleanUp() surface.
+
+    [Fact]
+    public void ClearCanvasElementCache_NoGameWindowPlugin_DoesNotTouchOtherPlugins()
+    {
+        var registry = new LibraryRegistry();
+        var plugin = new FakePlugin("A");
+        registry.Register(plugin);
+
+        // Should not throw, and must not fall back to calling CleanUp() on unrelated plugins.
+        registry.ClearCanvasElementCache();
+
+        Assert.Equal(0, plugin.CleanUpCallCount);
+    }
+
+    [Fact]
+    public void ClearCanvasElementCache_EmptyRegistry_IsNoOp()
+    {
+        var registry = new LibraryRegistry();
+
+        // Should not throw
+        registry.ClearCanvasElementCache();
+    }
+
+    [Fact]
+    public void ClearCanvasElementCache_WithGameWindowPlugin_DoesNotThrowOrTouchOtherPlugins()
+    {
+        var registry = new LibraryRegistry();
+        var other = new FakePlugin("Other");
+        registry.Register(other);
+        registry.Register(new GameWindowPlugin());
+
+        // GameWindowPlugin.ClearCanvasElementCache() reflects into browser-only KNI types absent
+        // under net10.0 (this test process), so it no-ops via its own swallowed try/catch —
+        // should not throw here either, and must not call unrelated plugins' CleanUp().
+        registry.ClearCanvasElementCache();
+
+        Assert.Equal(0, other.CleanUpCallCount);
     }
 
     // ── Plugin metadata ──────────────────────────────────────────────────────

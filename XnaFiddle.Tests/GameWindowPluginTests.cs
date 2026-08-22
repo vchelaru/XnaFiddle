@@ -41,4 +41,18 @@ public class GameWindowPluginTests
     {
         Assert.DoesNotContain(field, GameWindowPlugin.ClearedWindowEventFields);
     }
+
+    // ClearCanvasElementCache() clears KNI's Document._elementsCache — see its doc comment for why
+    // this must be called only on an actual canvas swap, never on every restart via CleanUp().
+    // Same testability note as above: nkast.Wasm.Dom.Window is browser-only and absent under
+    // net10.0, so this just pins that the method itself is safe to call (idempotent, swallows the
+    // reflection miss) — not the browser-only behavior it reflects into.
+    [Fact]
+    public void ClearCanvasElementCache_DoesNotThrow()
+    {
+        var plugin = new GameWindowPlugin();
+
+        plugin.ClearCanvasElementCache();
+        plugin.ClearCanvasElementCache();
+    }
 }
