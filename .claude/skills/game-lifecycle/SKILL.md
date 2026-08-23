@@ -128,6 +128,10 @@ It is pre-existing in KNI and independent of any XnaFiddle change. It surfaced o
 4. **FPS throttling to fix the #90 restart crash.** The 10/20fps full-editor cap tried during #90 did **not** fix the crash and was unrelated to frame rate — removed. The toolbar-unresponsive symptom is fixed by the `touchend` bypass, not a frame cap. (Embed-mode 20fps mobile / 30fps desktop is a separate, intentional, pre-existing cap — keep it.)
 5. **Assuming every mobile restart crash is the WebGL context leak.** It was the leading #90 hypothesis but was **disproven** — no `webglcontext*` events fired. The actual #90 crash was the `Window.Current` subscription leak. The context-exhaustion crash is real but is a *different* bug, already covered by the `UseReferenceDevice` fix above.
 
+## KniSB submodule pin: stay on `Work-In-Progress-(Gumknix)`
+
+`.gitmodules` declares `branch = Work-In-Progress-(Gumknix)` for `Submodules/KniSB`, but that field is only a hint — nothing stops the pinned commit from actually sitting on a different branch of `squarebananas/kniSB`. **Landmine:** squarebananas' `main` branch lacks a Gumknix-only fix (commit `b2c25f8c22104aa090483f44cd3455e94b7431b4`, "Fixes updating ClientBounds & mouse/touch positions") that makes `BlazorGameWindow.ClientBounds` track the canvas's real on-page position via `_canvasHolder.GetBoundingClientRect()`. Without it, `ClientBounds` is hardcoded to `(0, 0, canvas.Width, canvas.Height)`, so `ConcreteMouse.cs`/`ConcreteTouchPanel.cs` treat every click/touch as relative to the browser window instead of the canvas — visibly wrong whenever the canvas doesn't fill the window, which XnaFiddle's editor-pane layout always does. Gumknix is ~168 commits behind `main` (unrelated upstream fixes) but builds and runs clean under net10.0. **Do not bump the submodule pin to a commit off Gumknix** without first confirming the target still has this fix (or that squarebananas has merged Gumknix into `main`).
+
 ## Key files
 
 | File | Role |
