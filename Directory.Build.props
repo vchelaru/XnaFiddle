@@ -46,21 +46,24 @@
 
     <!-- Third-party game libraries -->
     <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
-    <!-- Stable release satisfying Gum.Shapes.KNI's Apos.Shapes.KNI >= 0.6.10-alpha floor.
+    <!-- Stable release satisfying Gum.Shapes.KNI's Apos.Shapes.KNI >= 0.8.1 floor.
          Keep in sync with GumShapesVersion's dependency floor when either is bumped. -->
-    <AposShapesVersion>0.7.6</AposShapesVersion>
+    <AposShapesVersion>0.8.1</AposShapesVersion>
     <FlatRedBallAnimationChainVersion>0.5.0-preview.1</FlatRedBallAnimationChainVersion>
     <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
-    <GumVersion>2026.7.22.1</GumVersion>
+    <!-- Preview build, not a stable release: pinned for TextRuntime.UseFontOversampling /
+         RegenerateOversampledFont (font oversampling), which landed after the last stable
+         Gum NuGet release and is only available in this preview (see #127). -->
+    <GumVersion>2026.8.18.1-preview.1</GumVersion>
     <!-- Gum's fill+effects shape support (CircleRuntime / RectangleRuntime). Ships on the
          same release cadence as Gum.KNI, so it tracks GumVersion. Depends on Apos.Shapes.KNI. -->
-    <GumShapesVersion>2026.7.22.1</GumShapesVersion>
+    <GumShapesVersion>2026.8.18.1-preview.1</GumShapesVersion>
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
     <!-- Versions core KernSmith and KernSmith.Rasterizers.StbTrueType only. The Gum-integration
          packages (KernSmith.KniGum / KernSmith.MonoGameGum) switched to date-based versioning
          that tracks GumVersion instead of their own semver — see the GumVersion PackageReference
          usage in XnaFiddle.BlazorGL.csproj and PackageVersions.Gum in KernSmithPlugin. -->
-    <KernSmithVersion>0.17.0</KernSmithVersion>
+    <KernSmithVersion>0.20.0</KernSmithVersion>
     <MlemVersion>8.1.0</MlemVersion>
     <!-- ShadowDusk HLSL .fx compiler. Drives BOTH the in-browser editor (ShadowDusk.Wasm, used by
          XnaFiddle.BlazorGL) AND exported projects, which now compile their shipped .fx at runtime
