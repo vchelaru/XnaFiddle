@@ -98,7 +98,7 @@ public class Game1 : Game
                 {
                     case 0: shapeBatch.FillRectangle(xy, rSize, fill); break;
                     case 1: shapeBatch.BorderRectangle(xy, rSize, border, thickness); break;
-                    case 2: shapeBatch.DrawRectangle(xy, rSize, fillBorder, border, thickness); break;
+                    case 2: shapeBatch.DrawRectangle(xy, rSize, fillBorder, border, thickness, 0f); break;
                     case 3: shapeBatch.FillRectangle(xy, rSize, linearGrad); break;
                     case 4: shapeBatch.FillRectangle(xy, rSize, radialGrad); break;
                 }
