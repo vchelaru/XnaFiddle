@@ -690,6 +690,7 @@
                             }
                             var isActive = category == _selectedCategory;
                             <div @onclick="() => _selectedCategory = category"
+                                 data-testid="example-category" data-category-name="@category"
                                  style="padding: 6px 14px; cursor: pointer; font-size: 13px;
                                         color: @(isActive ? "#fff" : "#aaa");
                                         background: @(isActive ? "#0e639c" : "transparent");

@@ -176,4 +176,54 @@ public abstract class E2ETestBase
             }",
             expected,
             new PageWaitForFunctionOptions { Timeout = RunTimeoutMs, PollingInterval = 250 });
+
+    // Races success (a WebGL context comes up) against failure (the diagnostics panel reports a
+    // compile or runtime error) instead of only waiting for success — used when driving code whose
+    // outcome isn't known ahead of time (e.g. sweeping every built-in example). Without this, a
+    // broken example would spin out the full RunTimeoutMs on WaitForWebGlContextAsync for every
+    // failure instead of failing fast with the actual diagnostics text. Call ResetCanvasContextAsync
+    // before triggering the run, same as the single-outcome helpers.
+    protected async Task<(bool Success, string Diagnostics)> WaitForRunOutcomeAsync()
+    {
+        string outcome;
+        try
+        {
+            // Check failure BEFORE success: window._canvasContextType is set once, right after
+            // Game.Run() returns, and is never cleared by a later per-frame Tick() exception (see
+            // TickDotNet in Index.razor.cs) or a same-profile restart. So once a game crashes on
+            // its first Tick, BOTH conditions end up permanently true — checking ctx first would
+            // misreport a crashed example as a success depending on which poll tick wins the race.
+            IJSHandle handle = await Page.WaitForFunctionAsync(
+                @"() => {
+                    const el = document.querySelector('[data-testid=""diagnostics""]');
+                    const text = el ? el.textContent : '';
+                    if (text.includes('Compilation failed') || text.includes('Runtime error')) return 'failure';
+                    const ctx = window._canvasContextType;
+                    if (ctx === 'webgl' || ctx === 'webgl2') return 'success';
+                    return false;
+                }",
+                null,
+                new PageWaitForFunctionOptions { Timeout = RunTimeoutMs, PollingInterval = 250 });
+            outcome = await handle.JsonValueAsync<string>();
+        }
+        catch (PlaywrightException)
+        {
+            // WaitForFunctionAsync throws PlaywrightException (message "Timeout Xms exceeded")
+            // when neither success nor failure was observed within RunTimeoutMs.
+            outcome = "timeout";
+        }
+        catch (TimeoutException)
+        {
+            // Some Playwright versions/paths surface a plain System.TimeoutException instead of
+            // PlaywrightException for the same condition — treat it the same way.
+            outcome = "timeout";
+        }
+
+        ILocator diagnosticsPanel = Page.Locator("[data-testid=\"diagnostics\"]");
+        string diagnostics = await diagnosticsPanel.CountAsync() > 0
+            ? await diagnosticsPanel.InnerTextAsync()
+            : "";
+
+        return (outcome == "success", diagnostics);
+    }
 }
