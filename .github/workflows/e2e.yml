@@ -32,6 +32,14 @@ jobs:
       - name: Publish WASM app for the local E2E test host (not a deploy)
         run: dotnet publish XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj -c Release -o "${{ env.E2E_PUBLISH_DIR }}"
 
+      # Catches a publish-pipeline regression (missing asset, wrong compressed variant,
+      # non-deterministic fingerprinting) that the E2E test below can't see: it serves the app
+      # through Kestrel, which does its own content negotiation, unlike the plain static file
+      # serving GitHub Pages does for the real deploy. See #132 postmortem.
+      - name: Verify Blazor boot asset integrity
+        shell: pwsh
+        run: .github/scripts/Verify-BlazorAssetIntegrity.ps1 -WwwrootPath "${{ env.E2E_PUBLISH_DIR }}/wwwroot"
+
       - name: Build E2E test project
         run: dotnet build XnaFiddle.E2E.Tests/XnaFiddle.E2E.Tests.csproj -c Release
 

@@ -34,6 +34,15 @@ jobs:
       - name: Publish for GitHub Pages deploy
         run: dotnet publish XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj -c Release -o output
 
+      # Catches a publish-pipeline regression (missing asset, wrong compressed variant,
+      # non-deterministic fingerprinting) before it reaches Pages -- see #132 postmortem,
+      # where a hashed framework .wasm 503'd/failed SRI on first load after a full SDK bump.
+      # This does NOT catch CDN edge-propagation lag after the deploy; that's covered by the
+      # smoke-check step below.
+      - name: Verify Blazor boot asset integrity
+        shell: pwsh
+        run: .github/scripts/Verify-BlazorAssetIntegrity.ps1 -WwwrootPath output/wwwroot
+
       - name: Add .nojekyll
         run: New-Item -Path output/wwwroot/.nojekyll -ItemType File -Force
         shell: pwsh
@@ -48,3 +57,11 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+      # actions/deploy-pages reporting success only means GitHub's backend accepted the
+      # deployment, not that every CDN edge node in front of Pages has picked it up yet (#132
+      # postmortem). Sample a few live boot assets with retries so a lingering propagation
+      # window fails this workflow run instead of silently greeting the first visitor.
+      - name: Smoke-check live deploy
+        shell: pwsh
+        run: .github/scripts/Test-LiveBootAssets.ps1 -BaseUrl "${{ steps.deployment.outputs.page_url }}"
