@@ -327,4 +327,69 @@ public class ExportableLibraryTests
         var pkg = packages.First(p => p.Id == "FlatRedBall.AnimationChain.KNI");
         Assert.Equal(PackageVersions.FlatRedBallAnimationChain, pkg.Version);
     }
+
+    // ── GumThemesPlugin ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void GumThemes_DetectsUsedThemeOnly()
+    {
+        var plugin = new GumThemesPlugin();
+        Assert.True(plugin.IsUsedInSource("using Gum.Themes.Bubblegum;"));
+        Assert.False(plugin.IsUsedInSource("using Gum;"));
+    }
+
+    [Fact]
+    public void GumThemes_UnwiredThemeName_NotDetected()
+    {
+        // Meadow/Hazard/Editor/ForestGlade-lookalikes etc. aren't in the wired subset.
+        var plugin = new GumThemesPlugin();
+        Assert.False(plugin.IsUsedInSource("using Gum.Themes.Meadow;"));
+    }
+
+    [Fact]
+    public void GumThemes_OnlyEmitsPackagesForThemesActuallyUsed()
+    {
+        var plugin = new GumThemesPlugin();
+        string source = "using Gum.Themes.DarkPro;";
+        var ids = PackageIds(plugin, ExportTarget.KniDesktopGL, source);
+        Assert.Contains("Gum.Themes.DarkPro.Kni", ids);
+        Assert.DoesNotContain("Gum.Themes.Bubblegum.Kni", ids);
+        Assert.Single(ids);
+    }
+
+    [Fact]
+    public void GumThemes_MultipleThemesUsed_EmitsAllOfThem()
+    {
+        var plugin = new GumThemesPlugin();
+        string source = "using Gum.Themes.Bubblegum;\nusing Gum.Themes.Neon;";
+        var ids = PackageIds(plugin, ExportTarget.KniDesktopGL, source);
+        Assert.Contains("Gum.Themes.Bubblegum.Kni", ids);
+        Assert.Contains("Gum.Themes.Neon.Kni", ids);
+        Assert.Equal(2, ids.Count);
+    }
+
+    [Fact]
+    public void GumThemes_MonoGamePackageSuffix()
+    {
+        var plugin = new GumThemesPlugin();
+        var ids = PackageIds(plugin, ExportTarget.MonoGameDesktopGL, "using Gum.Themes.Retro95;");
+        Assert.Contains("Gum.Themes.Retro95.MonoGame", ids);
+    }
+
+    [Fact]
+    public void GumThemes_NoThemeUsed_EmitsNoPackages()
+    {
+        var plugin = new GumThemesPlugin();
+        var ids = PackageIds(plugin, ExportTarget.KniDesktopGL, "using Gum.Forms;");
+        Assert.Empty(ids);
+    }
+
+    [Fact]
+    public void GumThemes_CorrectVersion()
+    {
+        var plugin = new GumThemesPlugin();
+        var packages = plugin.GetExportPackages(ExportTarget.KniDesktopGL, "using Gum.Themes.ForestGlade;");
+        var pkg = packages.First(p => p.Id == "Gum.Themes.ForestGlade.Kni");
+        Assert.Equal(PackageVersions.Gum, pkg.Version);
+    }
 }

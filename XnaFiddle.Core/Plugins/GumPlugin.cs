@@ -64,6 +64,17 @@ namespace XnaFiddle.Plugins
                 // Reset IsInitialized so the next game can call GumService.Initialize()
                 var isInitProp = gumServiceType.GetProperty("IsInitialized", BindingFlags.Instance | BindingFlags.Public);
                 isInitProp?.SetValue(gumService, false);
+
+                // Clear the static Forms-control template registry. A Gum.Themes.* theme's
+                // Apply() only ADDS entries here (FormsUtilities.InitializeDefaults uses
+                // TryAdd), so a themed run leaves this dictionary permanently pointed at the
+                // theme's visuals. Without clearing it, every later run — including an
+                // unrelated Gum example that never touches theming — silently renders with
+                // whatever theme a previous run last applied, because the next
+                // FormsUtilities.InitializeDefaults() can no longer overwrite the occupied keys.
+                var frameworkElementType = Type.GetType("Gum.Forms.Controls.FrameworkElement, KniGum");
+                var templatesProp = frameworkElementType?.GetProperty("DefaultFormsTemplates", BindingFlags.Static | BindingFlags.Public);
+                (templatesProp?.GetValue(null) as IDictionary)?.Clear();
             }
             catch (Exception e)
             {
