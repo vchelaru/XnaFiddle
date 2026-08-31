@@ -35,7 +35,7 @@
     <KniContentPipelineVersion>4.2.9001</KniContentPipelineVersion>
     <!-- JS version shipped by the nkast.Wasm.* transitive packages.
          Update when KNI platform NuGet packages bump their Wasm dependency. -->
-    <KniWasmJsVersion>10.0.2</KniWasmJsVersion>
+    <KniWasmJsVersion>8.0.10</KniWasmJsVersion>
 
     <!-- MonoGame framework — not used by XnaFiddle itself, only in exported projects -->
     <MonoGameFrameworkVersion>3.8.5</MonoGameFrameworkVersion>
