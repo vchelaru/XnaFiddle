@@ -2,7 +2,9 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using XnaFiddle;
 
 namespace XnaFiddle.ExportBuild.Tests;
@@ -52,10 +54,48 @@ public class Game1 : Game
 
             Assert.True(exitCode == 0,
                 $"`dotnet build` of the exported {target} project failed with exit code {exitCode}.\n\n--- dotnet build output ---\n{output}");
+
+            // A stale KniWasmJsVersion (Directory.Build.props) doesn't fail this build — it's a
+            // runtime-only 404 in the browser, since the generated index.html's <script> tags are
+            // plain strings, not compiled references. Catch it here by cross-checking those paths
+            // against the resolved static web asset manifest that `dotnet build` just produced.
+            if (target == ExportTarget.KniBlazorGL)
+                AssertIndexHtmlScriptsMatchResolvedAssets(extractDir);
         }
         finally
         {
             TryDeleteDirectory(extractDir);
+        }
+    }
+
+    // Verifies every "_content/..." <script src> in the exported index.html names a file NuGet
+    // actually resolved. index.html hardcodes nkast.Wasm.* JS filenames via KniWasmJsVersion
+    // (ProjectExporter.GenerateBlazorIndexHtml); if that version drifts from what
+    // nkast.Kni.Platform.Blazor.GL's own dependency graph resolves, the paths 404 in the browser
+    // while `dotnet build` stays green (see issue: JSObject.8.0.10.js requested, 8.0.11 restored).
+    static void AssertIndexHtmlScriptsMatchResolvedAssets(string extractDir)
+    {
+        string indexHtmlPath = Path.Combine(extractDir, "MyGame", "wwwroot", "index.html");
+        Assert.True(File.Exists(indexHtmlPath), $"Expected {indexHtmlPath} to exist.");
+        string indexHtml = File.ReadAllText(indexHtmlPath);
+
+        var contentScriptPaths = Regex.Matches(indexHtml, "_content/[^\"]+\\.js")
+            .Select(m => m.Value)
+            .ToList();
+        Assert.NotEmpty(contentScriptPaths);
+
+        string[] manifestCandidates = Directory.GetFiles(
+            Path.Combine(extractDir, "MyGame", "obj"), "staticwebassets.build.json", SearchOption.AllDirectories);
+        Assert.True(manifestCandidates.Length == 1,
+            $"Expected exactly one staticwebassets.build.json under obj/, found {manifestCandidates.Length}.");
+        string manifest = File.ReadAllText(manifestCandidates[0]);
+
+        foreach (string scriptPath in contentScriptPaths)
+        {
+            Assert.True(manifest.Contains(scriptPath, StringComparison.Ordinal),
+                $"index.html references \"{scriptPath}\", but the resolved static web asset manifest " +
+                "does not contain it — KniWasmJsVersion in Directory.Build.props is likely stale " +
+                "relative to what nkast.Kni.Platform.Blazor.GL's NuGet dependency actually resolved.");
         }
     }
 
