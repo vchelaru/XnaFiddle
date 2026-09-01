@@ -127,6 +127,22 @@
         // touch, mirroring _tickSuspended/_uiDragging but scoped to one touch. Issue #107.
         window._uiTouchActive = false;
 
+        // FPS overlay — a dev/harness toggle, not something a fiddle's code opts into. Measures
+        // real per-second throughput of the actual game step (each TickDotNet call below), so it
+        // reflects reality regardless of what the fiddle's own Update/Draw does. Plain DOM text,
+        // updated directly from tickJS — NOT through Blazor/StateHasChanged, which would be a
+        // wasteful per-frame round-trip and could itself perturb the number being measured.
+        window._showFps = false;
+        window._fpsFrameCount = 0;
+        window._fpsWindowStart = 0;
+        window.setShowFps = function (show) {
+            window._showFps = !!show;
+            window._fpsFrameCount = 0;
+            window._fpsWindowStart = 0;
+            var el = document.getElementById('fpsOverlay');
+            if (el) el.style.display = window._showFps ? 'block' : 'none';
+        };
+
         function tickJS(timestamp) {
             // FPS cap: skip this tick if not enough time has elapsed since the last one.
             if (window._tickInterval > 0) {
@@ -176,6 +192,24 @@
             var tickStart = performance.now();
             window.theInstance.invokeMethod('TickDotNet');
             var tickMs = performance.now() - tickStart;
+
+            // Once-per-second counter reset, skipped entirely when the overlay is off so the
+            // feature has no per-frame cost when unused.
+            if (window._showFps) {
+                window._fpsFrameCount++;
+                if (window._fpsWindowStart === 0) {
+                    window._fpsWindowStart = tickStart;
+                } else {
+                    var fpsElapsed = tickStart - window._fpsWindowStart;
+                    if (fpsElapsed >= 1000) {
+                        var fps = Math.round(window._fpsFrameCount * 1000 / fpsElapsed);
+                        var fpsEl = document.getElementById('fpsOverlay');
+                        if (fpsEl) fpsEl.textContent = fps + ' FPS';
+                        window._fpsFrameCount = 0;
+                        window._fpsWindowStart = tickStart;
+                    }
+                }
+            }
 
             if (tickMs > WATCHDOG_FRAME_MS) {
                 window.theInstance.invokeMethod('OnGameTimedOut', tickMs);

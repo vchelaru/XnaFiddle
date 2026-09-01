@@ -73,6 +73,7 @@ namespace XnaFiddle.Pages
         bool _gistCodeCopied;
         bool _layoutVertical;
         bool _editorCollapsed;
+        bool _showFps;
         bool _embedMode;
         bool _shareOpen;
         bool _shareAsSnippet;
@@ -1945,6 +1946,15 @@ technique BasicColorDrawing
         {
             _editorCollapsed = !_editorCollapsed;
             await JsRuntime.InvokeVoidAsync("setEditorCollapsed", _editorCollapsed);
+        }
+
+        // FPS overlay is a dev-tool toggle, not a fiddle feature — index.html's tickJS owns the
+        // actual measurement and DOM update (per-frame, outside Blazor's render cycle) so a
+        // Blazor round-trip never perturbs the number being measured. This just flips the flag.
+        private async Task ToggleFps()
+        {
+            _showFps = !_showFps;
+            await JsRuntime.InvokeVoidAsync("setShowFps", _showFps);
         }
 
         private async Task OpenExampleBrowser()
