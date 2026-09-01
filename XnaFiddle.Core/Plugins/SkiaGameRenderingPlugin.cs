@@ -18,7 +18,11 @@ namespace XnaFiddle.Plugins
     public class SkiaGameRenderingPlugin : ILibraryPlugin, IExportableLibrary
     {
         public string Name => "SkiaGameRendering";
-        public string[] RequiredAssemblies => ["SkiaGameRendering.Kni.WebGL"];
+        // SkiaSharp is a transitive dependency (the actual SKCanvas/SKPaint drawing API a fiddle
+        // uses via SkiaRenderTarget2D.Canvas), not just an implementation detail of the WebGL
+        // backend — Roslyn needs it as a compile reference too, so it's listed here alongside the
+        // primary assembly (see the add-library skill's "transitive assemblies matter" gotcha).
+        public string[] RequiredAssemblies => ["SkiaGameRendering.Kni.WebGL", "SkiaSharp"];
         public string[] VersionAssemblies => ["SkiaGameRendering.Kni.WebGL"];
 
         public bool IsUsedInSource(string source) => source.Contains("SkiaGameRendering");
@@ -46,8 +50,8 @@ namespace XnaFiddle.Plugins
         // to pair a new GraphicsDevice with an already-initialized backend, so the old
         // backend/GraphicsDevice pairing must be torn down between runs. SkiaRenderer.Dispose() only
         // clears that pairing — it does NOT detach the host — so the next game's own
-        // IsReady/Initialize poll in Draw() (see SkiaGameRenderingExample.cs) transparently rebuilds
-        // a fresh backend from the same host. This exact Dispose-then-Initialize sequence is what
+        // IsReady/Initialize poll in Draw() (see Examples/SkiaGameRendering.cs) transparently
+        // rebuilds a fresh backend from the same host. This exact Dispose-then-Initialize sequence is what
         // the upstream sample's RecreateBackend() does, and Dispose() is a documented no-op when
         // nothing is initialized yet (first run), so this is safe every time. Resolved by name:
         // XnaFiddle.Core (net10.0) never takes a compile-time dependency on the browser-only KNI

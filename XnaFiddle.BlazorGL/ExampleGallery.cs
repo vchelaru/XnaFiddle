@@ -69,6 +69,7 @@ namespace XnaFiddle
             new ExampleInfo { Name = "MlemTextFormatting",           Category = "MLEM",               Description = "Text formatting using MLEM, which supports coloring, in-text icons, text animations and more" },
             new ExampleInfo { Name = "MlemUi",                       Category = "MLEM",               Description = "A mouse, keyboard, gamepad and touch ready Ui system that features automatic anchoring, sizing and several ready-to-use element types" },
             new ExampleInfo { Name = "Camera2D (MonoGame.Extended)", Category = "MonoGame.Extended",  Description = "Pan and zoom a 2D camera with keyboard and mouse" },
+            new ExampleInfo { Name = "SkiaGameRendering",            Category = "SkiaGameRendering",  Description = "GPU SkiaSharp rendering into a Texture2D — an anti-aliased, color-cycling circle drawn with SKCanvas" },
         ];
 
         /// <summary>

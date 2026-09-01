@@ -326,7 +326,7 @@ public class PluginTests
     [Fact]
     public void SkiaGameRenderingPlugin_RequiredAssemblies()
     {
-        Assert.Equal(new[] { "SkiaGameRendering.Kni.WebGL" }, new SkiaGameRenderingPlugin().RequiredAssemblies);
+        Assert.Equal(new[] { "SkiaGameRendering.Kni.WebGL", "SkiaSharp" }, new SkiaGameRenderingPlugin().RequiredAssemblies);
     }
 
     [Fact]
