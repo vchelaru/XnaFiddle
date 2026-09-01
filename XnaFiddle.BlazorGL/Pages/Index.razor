@@ -766,6 +766,11 @@
     overflow: hidden;
     left: @(_embedMode ? "0" : "calc(45vw + 2px)");">
     <canvas @key="_canvasGen" id="theCanvas" data-testid="game-canvas" style="touch-action:none;"></canvas>
+    @* SkiaGameRendering's hidden offscreen host canvas — page-lifetime, unrelated to _canvasGen
+       (that key only recreates theCanvas on a Reach<->HiDef profile switch). Attached once in
+       OnAfterRender via SkiaRenderer.AttachHost; a fiddle's Game never references this type. See
+       the SkiaGameRendering skill notes in SkiaGameRenderingPlugin.cs. *@
+    <SkiaGameWebGlHost @ref="_skiaHost" />
     @if (!_embedMode)
     {
         @* Issue #74: single faint overlay toggle, top-right, present in both states —
@@ -877,6 +882,10 @@
                     <a href="https://mlem.ellpeck.de" target="_blank"
                        style="color: #666; text-decoration: none;"
                        onmouseover="this.style.color='#999'" onmouseout="this.style.color='#666'">MLEM (Ui and Extended)</a>
+                    <span style="margin: 0 8px; color: #444;">·</span>
+                    <a href="https://github.com/vchelaru/SkiaGameRendering" target="_blank"
+                       style="color: #666; text-decoration: none;"
+                       onmouseover="this.style.color='#999'" onmouseout="this.style.color='#666'">SkiaGameRendering</a>
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 24px;">
                     <a href="https://github.com/kniEngine/kni" target="_blank"

@@ -392,4 +392,49 @@ public class ExportableLibraryTests
         var pkg = packages.First(p => p.Id == "Gum.Themes.ForestGlade.Kni");
         Assert.Equal(PackageVersions.Gum, pkg.Version);
     }
+
+    // ── SkiaGameRenderingPlugin ──────────────────────────────────────────────
+
+    [Fact]
+    public void SkiaGameRendering_DetectsUsage()
+    {
+        var plugin = new SkiaGameRenderingPlugin();
+        Assert.True(plugin.IsUsedInSource("using SkiaGameRendering;"));
+        Assert.False(plugin.IsUsedInSource("using Gum.Forms;"));
+    }
+
+    [Theory]
+    [InlineData(ExportTarget.KniDesktopGL, "SkiaGameRendering.Kni.DesktopGL")]
+    [InlineData(ExportTarget.KniWindowsDX, "SkiaGameRendering.Kni.WindowsDX")]
+    [InlineData(ExportTarget.KniBlazorGL, "SkiaGameRendering.Kni.WebGL")]
+    [InlineData(ExportTarget.MonoGameDesktopGL, "SkiaGameRendering")]
+    [InlineData(ExportTarget.MonoGameWindowsDX, "SkiaGameRendering.WindowsDX")]
+    public void SkiaGameRendering_SupportedTarget_EmitsMatchingPackage(ExportTarget target, string expectedId)
+    {
+        var ids = PackageIds(new SkiaGameRenderingPlugin(), target);
+        Assert.Equal(new[] { expectedId }, ids);
+    }
+
+    [Theory]
+    [InlineData(ExportTarget.KniAndroid)]
+    [InlineData(ExportTarget.MonoGameAndroid)]
+    [InlineData(ExportTarget.MonoGameWindowsDX12)]
+    [InlineData(ExportTarget.MonoGameDesktopVK)]
+    [InlineData(ExportTarget.FnaDesktop)]
+    public void SkiaGameRendering_UnsupportedTarget_EmitsNoPackage(ExportTarget target)
+    {
+        // Upstream hasn't shipped a backend for these platforms yet (README platform table) —
+        // no package to add, so the exported project simply won't have SkiaRenderer available.
+        var ids = PackageIds(new SkiaGameRenderingPlugin(), target);
+        Assert.Empty(ids);
+    }
+
+    [Fact]
+    public void SkiaGameRendering_CorrectVersion()
+    {
+        var plugin = new SkiaGameRenderingPlugin();
+        var packages = plugin.GetExportPackages(ExportTarget.KniBlazorGL, "");
+        var pkg = packages.First(p => p.Id == "SkiaGameRendering.Kni.WebGL");
+        Assert.Equal(PackageVersions.SkiaGameRendering, pkg.Version);
+    }
 }

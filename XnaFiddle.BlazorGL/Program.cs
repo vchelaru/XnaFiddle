@@ -21,6 +21,7 @@ namespace XnaFiddle
             _ = typeof(Apos.Shapes.ShapeBatch);           // Apos.Shapes.KNI
             _ = typeof(FlatRedBall2.AnimationEditorCommon.AnimationChainList<FlatRedBall.AnimationChain.AnimationFrame>); // FlatRedBall.AnimationChain.KNI + .Common
             _ = typeof(MonoGame.Extended.OrthographicCamera); // KNI.Extended
+            _ = typeof(SkiaGameRendering.SkiaRenderer);        // SkiaGameRendering.Kni.WebGL
 
             // Force-load StbTrueType rasterizer so KernSmith can discover it at runtime.
             // Without this, Blazor WASM won't load the assembly and the backend stays unregistered.
@@ -42,6 +43,7 @@ namespace XnaFiddle
             libraryRegistry.Register(new MonoGameExtendedPlugin());
             libraryRegistry.Register(new AetherPhysicsPlugin());
             libraryRegistry.Register(new KernSmithPlugin());
+            libraryRegistry.Register(new SkiaGameRenderingPlugin());
 
             var builder = WebAssemblyHostBuilder.CreateDefault(args);
             builder.RootComponents.Add<App>("#app");

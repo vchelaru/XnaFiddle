@@ -16,6 +16,8 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
+using SkiaGameRendering;
+using SkiaGameRendering.Kni.WebGL.Components;
 
 namespace XnaFiddle.Pages
 {
@@ -50,6 +52,10 @@ namespace XnaFiddle.Pages
         // leaking references to this component).
         DotNetObjectReference<Index> _pageDotNetRef;
         DotNetObjectReference<IntellisenseService> _intellisenseDotNetRef;
+
+        // SkiaGameRendering's hidden offscreen host, attached once (page-lifetime) in
+        // OnAfterRender below. See SkiaGameRenderingPlugin.cs for the full contract.
+        SkiaGameWebGlHost _skiaHost;
 
         string _diagnosticsOutput = "";
         string _diagnosticsColor = ColorMuted;
@@ -202,6 +208,14 @@ technique BasicColorDrawing
 
             if (firstRender)
             {
+                // Attach SkiaGameRendering's WebGL host once, page-lifetime — never per-Run (see
+                // SkiaGameRenderingPlugin.CleanUp for the per-Run teardown half of this contract).
+                // Deliberately NOT awaiting host.Ready here (it's optional per the library's docs):
+                // a fiddle's own Game polls SkiaRenderer.IsReady/IsInitialized from Draw() instead,
+                // and DoCompileAndRun's game-construction window must stay await-free (see the
+                // game-lifecycle skill), so nothing here may block on it.
+                SkiaRenderer.AttachHost(_skiaHost);
+
                 // Read URL params first so embed mode is known before any setup.
                 // ?example= and ?gist= use query strings — values are short and it's conventional
                 // for named resources to appear as query params rather than fragments.
