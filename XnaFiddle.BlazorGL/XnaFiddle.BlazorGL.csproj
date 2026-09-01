@@ -56,6 +56,7 @@
     <PackageReference Include="MLEM.Extended.KNI" Version="$(MlemVersion)" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.11" PrivateAssets="all" />
+    <PackageReference Include="SkiaGameRendering.Kni.WebGL" Version="$(SkiaGameRenderingVersion)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -75,8 +76,7 @@
          _content/ShadowDusk.Wasm/ — nothing to copy or configure. Browser-only: it targets
          net*.0-browser, so a plain net10.0 reference fails NU1201, which is why this is
          conditioned out of the test-only net10.0 build (which #if-s out the shader code). -->
-    <PackageReference Include="ShadowDusk.Wasm" Version="$(ShadowDuskVersion)"
-                      Condition=" '$(TargetFramework)' == 'net10.0-browser' " />
+    <PackageReference Include="ShadowDusk.Wasm" Version="$(ShadowDuskVersion)" Condition=" '$(TargetFramework)' == 'net10.0-browser' " />
   </ItemGroup>
 
   <ItemGroup>
@@ -126,9 +126,7 @@
         <Dest>wwwroot/examples/$([System.Text.RegularExpressions.Regex]::Replace('%(Filename)%(Extension)', '^([^.]+)\.', '$1/'))</Dest>
       </_ExampleStaticAsset>
     </ItemGroup>
-    <Copy SourceFiles="@(_ExampleStaticAsset)"
-          DestinationFiles="@(_ExampleStaticAsset->'%(Dest)')"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_ExampleStaticAsset)" DestinationFiles="@(_ExampleStaticAsset->'%(Dest)')" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

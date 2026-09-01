@@ -74,6 +74,10 @@
          0.5.0+ is required: it adds InitializeAsync() + a synchronous Compile(), which the exported
          project needs to compile lazily inside the synchronous Content.Load<Effect> call site. -->
     <ShadowDuskVersion>0.14.0</ShadowDuskVersion>
+    <!-- GPU SkiaSharp-to-Texture2D rendering. Kept at its own property (not shared with a
+         desktop-target property) because each platform's package pins a different exact
+         nkast.Xna.Framework.* / SkiaSharp dependency floor; see SkiaGameRenderingPlugin. -->
+    <SkiaGameRenderingVersion>0.14.0</SkiaGameRenderingVersion>
 
     <!-- MonoGame 3.8.5 GA Content Builder (opt-in ContentBuildMode.ContentBuilder) — the new
          code-first content pipeline's own dependencies, pinned to what MonoGame's 3.8.5 GA

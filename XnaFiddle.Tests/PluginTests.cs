@@ -314,4 +314,43 @@ public class PluginTests
         plugin.CleanUp();
         // No exception = pass
     }
+
+    // ── SkiaGameRenderingPlugin ──────────────────────────────────────────────
+
+    [Fact]
+    public void SkiaGameRenderingPlugin_Name()
+    {
+        Assert.Equal("SkiaGameRendering", new SkiaGameRenderingPlugin().Name);
+    }
+
+    [Fact]
+    public void SkiaGameRenderingPlugin_RequiredAssemblies()
+    {
+        Assert.Equal(new[] { "SkiaGameRendering.Kni.WebGL" }, new SkiaGameRenderingPlugin().RequiredAssemblies);
+    }
+
+    [Fact]
+    public void SkiaGameRenderingPlugin_VersionAssemblies()
+    {
+        Assert.Equal(new[] { "SkiaGameRendering.Kni.WebGL" }, new SkiaGameRenderingPlugin().VersionAssemblies);
+    }
+
+    [Fact]
+    public void SkiaGameRenderingPlugin_CleanUp_WhenNotLoaded_IsNoOp()
+    {
+        // The library isn't loaded in the test environment (XnaFiddle.Tests is net10.0, no
+        // browser); CleanUp resolves SkiaRenderer by name and must silently no-op instead of
+        // throwing when the type can't be found.
+        var plugin = new SkiaGameRenderingPlugin();
+        plugin.CleanUp();
+    }
+
+    [Fact]
+    public void SkiaGameRenderingPlugin_CleanUp_IsIdempotent()
+    {
+        var plugin = new SkiaGameRenderingPlugin();
+        plugin.CleanUp();
+        plugin.CleanUp();
+        // No exception = pass
+    }
 }
