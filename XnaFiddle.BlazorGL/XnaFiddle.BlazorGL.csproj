@@ -3,11 +3,12 @@
   <PropertyGroup>
     <!-- net10.0-browser (NOT plain net10.0): required to reference ShadowDusk.Wasm, whose
          [JSImport] shader backends target net*.0-browser (a plain net10.0 reference fails
-         NU1201). Needs the wasm-tools workload installed. See issue #26.
+         NU1201, since ShadowDusk.Wasm's PackageReference is browser-only). Needs the
+         wasm-tools workload installed. See issue #26.
          NOTE: XnaFiddle.Tests (net10.0) cannot reference a browser-targeted project. That test
          reference is handled separately (extract the tested logic into a net10.0 XnaFiddle.Core
-         library), NOT by multi-targeting this app — multi-targeting breaks VS restore because
-         the KNI/ShadowDusk ProjectReferences aren't solution members. -->
+         library), NOT by multi-targeting this app — a net10.0 target here would hit the same
+         NU1201 on ShadowDusk.Wasm. -->
     <TargetFramework>net10.0-browser</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -43,6 +44,13 @@
     <PackageReference Include="FontStashSharp.Kni" Version="$(FontStashSharpVersion)" />
     <PackageReference Include="Gum.KNI" Version="$(GumVersion)" />
     <PackageReference Include="Gum.Shapes.KNI" Version="$(GumShapesVersion)" />
+    <!-- Gum.Themes.* — visual theme packages, wired into the GumUI example's theme picker.
+         Versioned off GumVersion: each theme releases on the same cadence as Gum.KNI itself. -->
+    <PackageReference Include="Gum.Themes.Bubblegum.Kni" Version="$(GumVersion)" />
+    <PackageReference Include="Gum.Themes.DarkPro.Kni" Version="$(GumVersion)" />
+    <PackageReference Include="Gum.Themes.ForestGlade.Kni" Version="$(GumVersion)" />
+    <PackageReference Include="Gum.Themes.Neon.Kni" Version="$(GumVersion)" />
+    <PackageReference Include="Gum.Themes.Retro95.Kni" Version="$(GumVersion)" />
     <PackageReference Include="KNI.Extended" Version="$(KniExtendedVersion)" />
     <PackageReference Include="MLEM.Ui.KNI" Version="$(MlemVersion)" />
     <PackageReference Include="MLEM.Extended.KNI" Version="$(MlemVersion)" />

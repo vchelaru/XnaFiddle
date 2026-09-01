@@ -34,6 +34,7 @@ namespace XnaFiddle
             libraryRegistry.Register(new GameWindowPlugin());
             libraryRegistry.Register(new GumPlugin());
             libraryRegistry.Register(new GumShapesPlugin());
+            libraryRegistry.Register(new GumThemesPlugin());
             libraryRegistry.Register(new MlemPlugin());
             libraryRegistry.Register(new AposShapesPlugin());
             libraryRegistry.Register(new FlatRedBallAnimationChainPlugin());
