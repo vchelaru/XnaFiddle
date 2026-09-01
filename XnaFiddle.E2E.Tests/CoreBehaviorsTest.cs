@@ -15,7 +15,7 @@ namespace XnaFiddle.E2E.Tests;
 ///   - #14 (shader .fx compile): downloads ~17 MB DXC wasm and is slow; excluded to keep the e2e
 ///     job's wall-clock sane, as the issue permits. Shader logic is unit-tested elsewhere.
 ///   - #15 (export .zip download): lowest value (can't validate the zip builds in e2e).
-/// Tests 1-12 are all implemented.
+/// Tests 1-12 are all implemented. Test 13 (FPS overlay toggle) was added later.
 /// </summary>
 [TestFixture]
 public sealed class CoreBehaviorsTest : E2ETestBase
@@ -335,6 +335,39 @@ public class MyGame : Game
         Assert.That(await Page.Locator("[data-testid=\"game-canvas\"]").IsVisibleAsync(), Is.True,
             "the game canvas should be visible in embed mode");
         await AssertNoBlazorErrorAsync("in embed mode");
+    }
+
+    // ---- F. Dev tools ----
+
+    // Test 13: the FPS overlay is a plain-JS DOM element driven by index.html's tickJS, not
+    // Blazor state (see game-lifecycle skill's "Touch UI starvation" for why per-frame state
+    // stays out of Blazor). Assert it's hidden by default, appears with a real number once
+    // toggled on while a game runs, and hides again on toggle-off.
+    [Test]
+    public async Task FpsToggle_ShowsUpdatingOverlayAndHidesAgain()
+    {
+        await BootAsync();
+
+        ILocator overlay = Page.Locator("[data-testid=\"fps-overlay\"]");
+        Assert.That(await overlay.IsVisibleAsync(), Is.False, "FPS overlay should be hidden by default");
+
+        await SetEditorValueAsync(HiDefGameBlue);
+        await ClickRunAsync();
+        await WaitForWebGlContextAsync();
+
+        await Page.ClickAsync("[data-testid=\"fps-toggle-button\"]");
+        await overlay.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = RunTimeoutMs });
+
+        // tickJS updates the overlay text once per second — wait for a real reading to land.
+        await Page.WaitForFunctionAsync(
+            "() => { var el = document.getElementById('fpsOverlay'); return el && /\\d+ FPS/.test(el.textContent); }",
+            null,
+            new PageWaitForFunctionOptions { Timeout = RunTimeoutMs, PollingInterval = 250 });
+
+        await Page.ClickAsync("[data-testid=\"fps-toggle-button\"]");
+        Assert.That(await overlay.IsVisibleAsync(), Is.False, "FPS overlay should hide again after toggling off");
+
+        await AssertNoBlazorErrorAsync("after toggling the FPS overlay");
     }
 
     // ---- helpers ----

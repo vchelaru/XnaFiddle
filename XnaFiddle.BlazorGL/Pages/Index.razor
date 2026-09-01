@@ -81,6 +81,11 @@
                        border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
             <i class="codicon codicon-github"></i>
         </button>
+        <button @onclick="ToggleFps" title="Show FPS" data-testid="fps-toggle-button"
+                style="padding: 4px 8px; background: @(_showFps ? "#0e639c" : "#3c3c3c"); color: #d4d4d4;
+                       border: 1px solid #555; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
+            <i class="codicon codicon-pulse"></i>
+        </button>
         @* Export ships a zip the user builds locally — useless on a phone, so hide it on
            mobile (issue #92). The 768px breakpoint lives in app.css, matching the
            layout-mode switch in Index.razor.cs. *@
@@ -771,6 +776,14 @@
        OnAfterRender via SkiaRenderer.AttachHost; a fiddle's Game never references this type. See
        the SkiaGameRendering skill notes in SkiaGameRenderingPlugin.cs. *@
     <SkiaGameWebGlHost @ref="_skiaHost" />
+    @* FPS overlay — plain DOM text, shown/hidden and updated directly by index.html's tickJS
+       (NOT via Blazor/StateHasChanged, which would round-trip every frame and could itself
+       perturb the number being measured). Toggled from the toolbar via setShowFps(bool); hidden
+       by default so it costs nothing until a user turns it on. *@
+    <div id="fpsOverlay" data-testid="fps-overlay" style="display: none; position: absolute; top: 8px; left: 8px; z-index: 15;
+                padding: 2px 6px; background: rgba(0,0,0,0.5); color: #4ec9b0;
+                font-family: Consolas, monospace; font-size: 12px; pointer-events: none;
+                border: 1px solid rgba(255,255,255,0.12); border-radius: 3px;"></div>
     @if (!_embedMode)
     {
         @* Issue #74: single faint overlay toggle, top-right, present in both states —
