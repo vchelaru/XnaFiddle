@@ -1,5 +1,7 @@
 # XnaFiddle
 
+[![Join the chat](https://img.shields.io/discord/586997072373481494)](https://discord.gg/tG5RBgw)
+
 A browser-based C# game editor and runner powered by [KNI](https://github.com/kniEngine/kni). Write XNA-style game code in a Monaco editor, compile it with Roslyn in the browser, and see it run live on a WebGL canvas.
 
 ---
