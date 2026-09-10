@@ -4,12 +4,16 @@ using NUnit.Framework;
 namespace XnaFiddle.E2E.Tests;
 
 /// <summary>
-/// Coverage for the example browser's HLSL/Slang shader-language toggle (issue #144). The
-/// "Grayscale" example ships the same effect twice — Grayscale.fx and Grayscale.slang — and opens
-/// exactly one as a shader tab, so <see cref="ExampleGalleryComplianceTest"/>'s sweep only ever
-/// exercises the default (HLSL) side. These tests are the only thing that drives the Slang path
-/// end to end: ShadowDusk's Slang frontend converting .slang to .fx text before the usual
-/// WasmShaderCompiler compile (see CompileRegisteredShadersAsync).
+/// Coverage for the example browser's HLSL/Slang shader-language radio (issue #144). Shader
+/// examples ship the same effect twice — <c>{Name}.{Shader}.fx</c> and <c>{Name}.{Shader}.slang</c>
+/// — and open exactly one language as a shader tab, so <see cref="ExampleGalleryComplianceTest"/>'s
+/// sweep only ever exercises the default (HLSL) side. These tests are the only thing that drives
+/// the Slang path end to end: ShadowDusk's Slang frontend converting .slang to .fx text before the
+/// usual WasmShaderCompiler compile (see CompileRegisteredShadersAsync).
+///
+/// One example proves that wiring, so this deliberately does not sweep every ported example. The
+/// per-shader check is the headless <c>ShadowDuskCLI &lt;in&gt; &lt;out&gt; /Profile:OpenGL</c>
+/// gate, which costs seconds instead of a browser boot apiece.
 /// </summary>
 [TestFixture]
 public sealed class ShaderLanguageToggleTest : E2ETestBase
@@ -17,8 +21,9 @@ public sealed class ShaderLanguageToggleTest : E2ETestBase
     private const string ShaderCategory = "2D Shaders";
     private const string SlangExample = "Grayscale";
 
-    // An example in the same category with no .slang port — proves the "HLSL only" card tag.
-    private const string HlslOnlyExample = "Invert";
+    // The radio input itself, not its <label>, so the test can read IsChecked as well as click.
+    private const string SlangRadioSelector =
+        "[data-testid=\"shader-language-toggle\"] [data-language=\"slang\"] input";
 
     [Test]
     public async Task SlangSelected_GrayscaleExample_CompilesAndRuns()
@@ -27,11 +32,11 @@ public sealed class ShaderLanguageToggleTest : E2ETestBase
 
         await Page.ClickAsync("[data-testid=\"examples-button\"]");
         await Page.ClickAsync($"[data-testid=\"example-category\"][data-category-name=\"{ShaderCategory}\"]");
-        await Page.ClickAsync("[data-testid=\"shader-language-toggle\"] [data-language=\"slang\"]");
+        await Page.ClickAsync(SlangRadioSelector);
 
-        // The toggle must not silently lie about what an un-ported example will load.
+        // The radio must not lie about what a card will load. Only the negative half is assertable
+        // today: every shader example ships a .slang, so no card renders the "HLSL only" tag.
         await AssertHlslOnlyTagAsync(SlangExample, expected: false);
-        await AssertHlslOnlyTagAsync(HlslOnlyExample, expected: true);
 
         await ResetCanvasContextAsync();
         await Page.ClickAsync($"[data-testid=\"example-card\"][data-example-name=\"{SlangExample}\"]");
@@ -44,8 +49,13 @@ public sealed class ShaderLanguageToggleTest : E2ETestBase
         await AssertNoBlazorErrorAsync($"after loading '{SlangExample}' as Slang");
     }
 
+    /// <summary>
+    /// The radio is a preference, not an action: it decides what the next card click loads. Picking
+    /// it with an example already open must not touch the running fiddle, because reloading would
+    /// throw away unsaved edits to the open shader tab.
+    /// </summary>
     [Test]
-    public async Task SwitchingLanguage_WithExampleAlreadyLoaded_ReloadsItInTheNewLanguage()
+    public async Task SwitchingLanguage_WithExampleAlreadyLoaded_LeavesTheOpenFiddleAlone()
     {
         await BootAsync();
 
@@ -58,19 +68,21 @@ public sealed class ShaderLanguageToggleTest : E2ETestBase
         Assert.That(hlslSuccess, Is.True,
             $"'{SlangExample}' should compile and run from its .fx source. Diagnostics panel: {hlslDiagnostics}");
         await AssertShaderTabAsync("Grayscale.fx");
+        string codeBeforeSwitch = await GetEditorValueAsync();
 
-        // Flipping the toggle with the example already loaded must reload it right away, not wait
-        // for the card to be picked again — otherwise the running effect is still the old language.
         await Page.ClickAsync("[data-testid=\"examples-button\"]");
-        await ResetCanvasContextAsync();
-        await Page.ClickAsync("[data-testid=\"shader-language-toggle\"] [data-language=\"slang\"]");
+        await Page.ClickAsync($"[data-testid=\"example-category\"][data-category-name=\"{ShaderCategory}\"]");
+        await Page.ClickAsync(SlangRadioSelector);
 
-        (bool slangSuccess, string slangDiagnostics) = await WaitForRunOutcomeAsync();
-        Assert.That(slangSuccess, Is.True,
-            $"Switching to Slang should re-run '{SlangExample}'. Diagnostics panel: {slangDiagnostics}");
+        Assert.That(await Page.Locator(SlangRadioSelector).IsCheckedAsync(), Is.True,
+            "clicking the Slang radio should select it");
+        Assert.That(await Page.Locator("[data-testid=\"shader-language-toggle\"]").CountAsync(), Is.EqualTo(1),
+            "the example browser should stay open — the radio is a preference, not a card pick");
 
-        await AssertShaderTabAsync("Grayscale.slang");
-        await AssertNoBlazorErrorAsync($"after switching '{SlangExample}' to Slang");
+        await AssertShaderTabAsync("Grayscale.fx");
+        Assert.That(await GetEditorValueAsync(), Is.EqualTo(codeBeforeSwitch),
+            "picking a shader language should not touch the C# editor");
+        await AssertNoBlazorErrorAsync($"after switching the preference with '{SlangExample}' loaded");
     }
 
     // Exactly one shader tab, carrying the expected filename: the .fx and the .slang register the

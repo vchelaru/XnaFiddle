@@ -205,19 +205,17 @@ technique BasicColorDrawing
         // HLSL-compatible Slang (fragment-only, the SpriteBatch shape). ShadowDusk's Slang
         // frontend synthesizes the technique block from the [shader("fragment")] attribute, so
         // (unlike DefaultShaderTemplate above) there is no technique/pass to hand-write here.
-        const string DefaultSlangShaderTemplate = @"// This is a SpriteBatch pixel shader written in HLSL-compatible Slang (.slang). It is
-// converted to .fx and compiled in your browser when you press Run -- just edit MainPS
-// below and Run again to see your changes.
+        const string DefaultSlangShaderTemplate = @"// This is a SpriteBatch fragment shader. It compiles in your browser when you press
+// Run -- just edit MainPS below and Run again to see your changes.
 //
 // Use it from your C# game code by loading it with this tab's filename WITHOUT the
 // .slang extension (the content key is the tab name; renaming the tab changes it):
 //     Effect effect = Content.Load<Effect>(""Shader"");
 //     spriteBatch.Begin(effect: effect);
 //
-// Slang has no technique/pass concept -- the [shader(""fragment"")] attribute below is all
-// that's needed; ShadowDusk synthesizes the technique from it. Slang-only features
-// (import/module/extension/generics) are not supported: only the HLSL-compatible subset
-// compiles here.
+// The [shader(""fragment"")] attribute marks the entry point. Slang's module system
+// (import/module/extension) and generics are not available here, so write the shader
+// as a single self-contained file.
 Texture2D SpriteTexture;
 SamplerState SpriteTextureSampler;
 
@@ -1927,6 +1925,26 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
             return list;
         }
 
+        // Slang rides the ShadowDusk runtime path only. No content pipeline compiles .slang, and a
+        // target with no shader compiler wired can't convert it either, so those combinations would
+        // ship a project that cannot build. Returns why the export is blocked, or null to allow it.
+        string SlangExportBlockReason()
+        {
+            if (!_shaderTabs.Any(t => t.EndsWith(".slang", StringComparison.OrdinalIgnoreCase)))
+                return null;
+
+            (ShaderCompileMode mode, _) = EffectiveContentModes();
+            if (mode == ShaderCompileMode.Native)
+                return "ShadowDusk is needed to compile Slang shaders. Switch shader compilation to ShadowDusk, or remove the .slang tabs.";
+
+            List<ExportPlatform> gated = GatedShaderPlatforms();
+            if (gated.Count > 0)
+                return $"ShadowDusk is needed to compile Slang shaders, and it isn't available for {string.Join(", ", gated)}. "
+                     + "Deselect those platforms, or remove the .slang tabs.";
+
+            return null;
+        }
+
         void TogglePlatform(ExportPlatform platform)
         {
             if (_selectedPlatforms.Contains(platform))
@@ -2179,17 +2197,17 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
             return false;
         }
 
-        // Switching language reloads the current example immediately (rather than waiting for the
-        // next card click) so the newly picked shader source is what's actually running.
-        private async Task SelectExampleShaderLanguage(ExampleShaderLanguage language)
+        // Preference only: picks which language a shader example's tab opens in the next time
+        // one is loaded from a card. It deliberately does not reload the example already open --
+        // that would discard unsaved edits to the current shader tab just because someone
+        // flipped the radio while browsing.
+        private void SelectExampleShaderLanguage(ExampleShaderLanguage language)
         {
-            if (_exampleShaderLanguage == language)
-                return;
-
             _exampleShaderLanguage = language;
-            if (!string.IsNullOrEmpty(_selectedExample) && ExampleGallery.HasSlangVariant(_selectedExample))
-                await SelectExample(_selectedExample);
         }
+
+
+
 
 
 

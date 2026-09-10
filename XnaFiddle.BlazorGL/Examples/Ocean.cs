@@ -169,11 +169,16 @@ internal sealed class OceanScene : IDisposable
         {
             pass.Apply();
 
+            // The 6-argument XNA form. MonoGame and KNI also offer a shorter
+            // (type, baseVertex, startIndex, primitiveCount) overload, but FNA does not, so the
+            // long form is the one that compiles against all three from an exported project.
             _graphicsDevice.DrawIndexedPrimitives(
                 PrimitiveType.TriangleList,
-                0,
-                0,
-                2);
+                baseVertex: 0,
+                minVertexIndex: 0,
+                numVertices: 4,
+                startIndex: 0,
+                primitiveCount: 2);
         }
     }
 

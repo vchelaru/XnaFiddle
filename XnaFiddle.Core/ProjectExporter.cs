@@ -276,16 +276,26 @@ namespace XnaFiddle
             return false;
         }
 
-        // Writes each open shader's .fx SOURCE into the export's content folder. The exported project
-        // recompiles it at runtime; the bare name (minus .fx) is the Content.Load<Effect> key.
+        // Writes each open shader's SOURCE into the export's content folder. The exported project
+        // recompiles it at runtime; the bare name (minus the extension) is the Content.Load<Effect>
+        // key. A .slang keeps its extension -- the generated loader converts it before compiling.
         static void WriteShaderSources(ZipArchive archive, string contentDir, IReadOnlyDictionary<string, string> shaders)
         {
             foreach (var kvp in shaders)
             {
-                string fxName = kvp.Key.EndsWith(".fx", StringComparison.OrdinalIgnoreCase) ? kvp.Key : kvp.Key + ".fx";
+                string fxName = HasShaderSourceExtension(kvp.Key) ? kvp.Key : kvp.Key + ".fx";
                 AddTextEntry(archive, $"{contentDir}/{fxName}", kvp.Value ?? "");
             }
         }
+
+        /// <summary>True if <paramref name="name"/> already carries a shader source extension.</summary>
+        public static bool HasShaderSourceExtension(string name) =>
+            name.EndsWith(".fx", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".slang", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>True if any shader in the export is authored in Slang rather than HLSL.</summary>
+        public static bool HasSlangShaders(IReadOnlyDictionary<string, string> shaders) =>
+            shaders != null && shaders.Keys.Any(k => k.EndsWith(".slang", StringComparison.OrdinalIgnoreCase));
 
         // The classic MGCB /platform token for a ClassicMgcb-mode export.
         static string GetMgcbPlatform(ExportTarget target) => target switch
@@ -1838,8 +1848,16 @@ internal class Program
             if (_effectCache.TryGetValue(assetName, out Effect cachedEffect))
                 return (T)(object)cachedEffect;
 
-            string fxName = assetName.EndsWith("".fx"", StringComparison.OrdinalIgnoreCase) ? assetName : assetName + "".fx"";
+            string fxName = assetName.EndsWith("".fx"", StringComparison.OrdinalIgnoreCase)
+                || assetName.EndsWith("".slang"", StringComparison.OrdinalIgnoreCase)
+                    ? assetName : assetName + "".fx"";
             byte[] fxBytes = TryReadAllBytes(Path.Combine(RootDirectory, fxName));
+            if (fxBytes == null)
+            {
+                // Authored in Slang: same bare Content.Load key, different source extension.
+                fxName = assetName + "".slang"";
+                fxBytes = TryReadAllBytes(Path.Combine(RootDirectory, fxName));
+            }
             if (fxBytes != null)
             {
                 if (ShaderCompiler == null)
@@ -1847,6 +1865,17 @@ internal class Program
                         ""Cannot compile shader '"" + fxName + ""': runtime shader compilation is not supported on this platform."");
 
                 string hlsl = System.Text.Encoding.UTF8.GetString(fxBytes);
+                if (fxName.EndsWith("".slang"", StringComparison.OrdinalIgnoreCase))
+                {
+                    var converted = ShadowDusk.Compiler.Slang.SlangFrontend.ConvertToFx(
+                        hlsl, new ShadowDusk.Compiler.Slang.SlangConvertOptions { SourceName = fxName });
+                    if (converted.IsFailure)
+                        throw new InvalidOperationException(
+                            ""Slang conversion failed for '"" + fxName + ""': "" +
+                            string.Join("" | "", Array.ConvertAll(converted.Error, e => e.FxcFormattedMessage)));
+                    hlsl = converted.Value.FxText;
+                }
+
                 var result = ShaderCompiler.Compile(hlsl, new CompilerOptions { Target = ShaderTarget, SourceFileName = fxName });
                 if (result.IsFailure)
                     throw new InvalidOperationException(
