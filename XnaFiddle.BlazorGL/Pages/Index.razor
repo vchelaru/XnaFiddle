@@ -614,11 +614,35 @@
                 }
             </div>
         }
-        <div @onclick="AddShaderTab" title="Add shader (.fx)"
-             style="display: flex; align-items: center; padding: 0 10px; cursor: pointer; color: #969696;
-                    font-size: 14px; user-select: none;"
-             onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#969696'">
-            <i class="codicon codicon-add"></i>
+        <div style="position: relative;">
+            <div @onclick="ToggleAddShaderMenu" title="Add shader (HLSL .fx or Slang .slang)"
+                 style="display: flex; align-items: center; padding: 0 10px; cursor: pointer; color: #969696;
+                        font-size: 14px; user-select: none; height: 30px;"
+                 onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#969696'">
+                <i class="codicon codicon-add"></i>
+            </div>
+            @if (_showAddShaderMenu)
+            {
+                @* Transparent full-page backdrop so clicking outside the popup dismisses it,
+                   same pattern as the example-browser modal overlay above (issue #26 phase 2 follow-up). *@
+                <div @onclick="CloseAddShaderMenu"
+                     style="position: fixed; inset: 0; z-index: 20;"></div>
+                <div @onclick:stopPropagation="true"
+                     style="position: absolute; top: 30px; left: 0; z-index: 21; min-width: 160px;
+                            background: #2d2d2d; border: 1px solid #444; border-radius: 4px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.4); overflow: hidden;">
+                    <div @onclick='() => AddShaderTab(".fx")'
+                         style="padding: 8px 14px; color: #d4d4d4; font-size: 12px; cursor: pointer; white-space: nowrap;"
+                         onmouseover="this.style.background='#37373d'" onmouseout="this.style.background='transparent'">
+                        HLSL (.fx)
+                    </div>
+                    <div @onclick='() => AddShaderTab(".slang")'
+                         style="padding: 8px 14px; color: #d4d4d4; font-size: 12px; cursor: pointer; white-space: nowrap;"
+                         onmouseover="this.style.background='#37373d'" onmouseout="this.style.background='transparent'">
+                        Slang (.slang)
+                    </div>
+                </div>
+            }
         </div>
     </div>
 
