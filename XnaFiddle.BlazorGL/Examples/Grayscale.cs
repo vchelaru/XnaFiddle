@@ -23,8 +23,10 @@ public class Game1 : Game
         spriteBatch = new SpriteBatch(GraphicsDevice);
         logo = Content.Load<Texture2D>("KniIcon");
 
-        // Grayscale.fx is compiled to a runnable Effect in-browser when you press Run.
-        // Load it just like any other content file.
+        // The Grayscale shader tab -- HLSL (Grayscale.fx) or Slang (Grayscale.slang), whichever
+        // the example browser's shader-language toggle picked -- is compiled to a runnable Effect
+        // in-browser when you press Run. Either way the content key is the tab name minus its
+        // extension, so this line is the same for both. Load it like any other content file.
         grayscale = Content.Load<Effect>("Grayscale");
     }
 

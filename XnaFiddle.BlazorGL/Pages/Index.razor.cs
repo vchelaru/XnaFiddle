@@ -103,6 +103,11 @@ namespace XnaFiddle.Pages
         bool _exampleBrowserOpen;
         string _selectedCategory = "";
 
+        // Shader source language the example browser asks for. Only affects examples that ship the
+        // same effect twice (a .fx and a .slang); anything shipping one language loads that one.
+        enum ExampleShaderLanguage { Hlsl, Slang }
+        ExampleShaderLanguage _exampleShaderLanguage = ExampleShaderLanguage.Hlsl;
+
         struct AssetInfo
         {
             public string FileName;
@@ -2129,12 +2134,16 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
             _assets.Clear();
 
             ExampleAsset[] assets = ExampleGallery.LoadAssets(exampleName);
+            bool preferSlang = _exampleShaderLanguage == ExampleShaderLanguage.Slang;
 
             for (int i = 0; i < assets.Length; i++)
             {
                 // Shader sources (.fx or .slang) open in their own editor tab, not the asset panel.
                 if (IsShaderSourceFileName(assets[i].FileName))
                 {
+                    if (IsUnpickedShaderLanguage(assets, i, preferSlang))
+                        continue;
+
                     string shaderSource = Encoding.UTF8.GetString(assets[i].Data);
                     await OpenShaderTabFromSourceAsync(assets[i].FileName, shaderSource, select: false);
                     continue;
@@ -2148,6 +2157,38 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
                 _assets.Add(new AssetInfo { FileName = assets[i].FileName, Size = assets[i].Data.Length, SourceUrl = sourceUrl });
             }
             if (_assets.Count > 0) _assetsOpen = true;
+        }
+
+        // True when this shader asset is in the language the user did NOT pick AND the same effect
+        // is also shipped in the language they did (same bare name, other extension). Both would
+        // register their compiled .mgfx under that one bare content key, so exactly one may open.
+        // An effect shipped in a single language ignores the toggle — there's nothing to pick.
+        private static bool IsUnpickedShaderLanguage(ExampleAsset[] assets, int index, bool preferSlang)
+        {
+            bool isSlang = assets[index].FileName.EndsWith(".slang", StringComparison.OrdinalIgnoreCase);
+            if (isSlang == preferSlang)
+                return false;
+
+            string bareName = System.IO.Path.GetFileNameWithoutExtension(assets[index].FileName);
+            string pickedFileName = bareName + (preferSlang ? ".slang" : ".fx");
+            for (int i = 0; i < assets.Length; i++)
+            {
+                if (string.Equals(assets[i].FileName, pickedFileName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        // Switching language reloads the current example immediately (rather than waiting for the
+        // next card click) so the newly picked shader source is what's actually running.
+        private async Task SelectExampleShaderLanguage(ExampleShaderLanguage language)
+        {
+            if (_exampleShaderLanguage == language)
+                return;
+
+            _exampleShaderLanguage = language;
+            if (!string.IsNullOrEmpty(_selectedExample) && ExampleGallery.HasSlangVariant(_selectedExample))
+                await SelectExample(_selectedExample);
         }
 
 

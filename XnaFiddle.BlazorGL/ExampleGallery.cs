@@ -44,8 +44,7 @@ namespace XnaFiddle
             new ExampleInfo { Name = "BlurPostProcess", Category = "2D Shaders", Description = "Full-screen post-processing blur: the same Blur.fx applied to the whole scene via a screen-sized render target (Space toggles, Up/Down adjust)" },
             new ExampleInfo { Name = "Dots",            Category = "2D Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
             new ExampleInfo { Name = "Fading",          Category = "2D Shaders", Description = "Vertical fade driven by texture coordinates" },
-            new ExampleInfo { Name = "Grayscale",       Category = "2D Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
-            new ExampleInfo { Name = "GrayscaleSlang",  Category = "2D Shaders", Description = "The same grayscale pixel shader written in HLSL-compatible Slang (.slang), converted to .fx and compiled in-browser" },
+            new ExampleInfo { Name = "Grayscale",       Category = "2D Shaders", Description = "Grayscale pixel shader compiled in-browser — ships the same effect as HLSL (.fx) and as Slang (.slang); the shader-language toggle picks which one loads" },
             new ExampleInfo { Name = "Invert",          Category = "2D Shaders", Description = "Invert an image's colors" },
             new ExampleInfo { Name = "Masking",         Category = "2D Shaders", Description = "Mask a sprite with a second texture: draw one image through a separate black-and-white mask .png, sampling both in one shader pass" },
             new ExampleInfo { Name = "Pixelated",       Category = "2D Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
@@ -95,6 +94,26 @@ namespace XnaFiddle
             .Where(c => !System.Array.Exists(BuiltInCategories, b => b == c))
             .ToArray();
 
+        /// <summary>
+        /// Examples that ship a Slang (.slang) port of their shader, so the example browser can
+        /// offer the HLSL/Slang toggle for them. Probed from the embedded resources instead of
+        /// declared on <see cref="Catalog"/>: a hand-maintained flag drifts the moment a .slang
+        /// file is added or removed, this can't.
+        /// </summary>
+        public static readonly HashSet<string> SlangExamples = GetExamplesWithAssetExtension(".slang");
+
+        /// <summary>
+        /// Categories whose examples ship shader source, derived rather than named so a renamed or
+        /// added shader category keeps the toggle. The example browser shows the shader-language
+        /// toggle only for these.
+        /// </summary>
+        public static readonly string[] ShaderCategories = GetShaderCategories();
+
+        public static bool HasSlangVariant(string name) => SlangExamples.Contains(name);
+
+        public static bool IsShaderCategory(string category) =>
+            System.Array.Exists(ShaderCategories, c => c == category);
+
         private static string[] GetExampleNames()
         {
             Assembly assembly = typeof(ExampleGallery).Assembly;
@@ -113,6 +132,43 @@ namespace XnaFiddle
             }
             names.Sort();
             return names.ToArray();
+        }
+
+        // Example names that ship at least one asset with the given extension. Matches on the
+        // "XnaFiddle.Examples.{ExampleName}.{AssetFile}" convention LoadAssets uses, and tests the
+        // known example names rather than splitting the resource name on its first dot — an example
+        // name may itself contain a dot (e.g. "Camera2D (MonoGame.Extended)").
+        private static HashSet<string> GetExamplesWithAssetExtension(string extension)
+        {
+            Assembly assembly = typeof(ExampleGallery).Assembly;
+            string[] resources = assembly.GetManifestResourceNames();
+
+            var names = new HashSet<string>();
+            for (int i = 0; i < Names.Length; i++)
+            {
+                string assetPrefix = "XnaFiddle.Examples." + Names[i] + ".";
+                for (int r = 0; r < resources.Length; r++)
+                {
+                    if (resources[r].StartsWith(assetPrefix) && resources[r].EndsWith(extension))
+                    {
+                        names.Add(Names[i]);
+                        break;
+                    }
+                }
+            }
+            return names;
+        }
+
+        private static string[] GetShaderCategories()
+        {
+            HashSet<string> shaderExamples = GetExamplesWithAssetExtension(".fx");
+            shaderExamples.UnionWith(GetExamplesWithAssetExtension(".slang"));
+
+            return Catalog
+                .Where(e => shaderExamples.Contains(e.Name))
+                .Select(e => e.Category)
+                .Distinct()
+                .ToArray();
         }
 
         public static string Load(string name)

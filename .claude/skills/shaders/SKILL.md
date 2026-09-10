@@ -33,6 +33,7 @@ For each tab in `_shaderTabs`:
 ## Headless compile-checking & HLSL gotchas
 
 - **Compile-gate `.fx` without the browser** with the official `ShadowDusk.Cli` dotnet tool: `ShadowDuskCLI <in.fx> <out.mgfx> /Profile:OpenGL`. Its output is byte-identical to the editor's `ShadowDusk.Wasm`, so a green run is an authoritative check for a shader edit (gate edits without launching the app). `/Profile:OpenGL` is **mandatory** — the default is `DirectX_11`, which is not what the editor targets. Pin the tool to `$(ShadowDuskVersion)`.
+- **Install the CLI to a short `--tool-path`.** From a deeply nested path its native DXC load fails with `DllNotFoundException: dxcompiler.dll ... The filename or extension is too long (0x800700CE)`, which reads like a missing dependency but is only path length.
 - **Legacy LOD/sampling intrinsics are rejected on the OpenGL target.** `tex2Dlod` (and friends) won't compile; use the modern texture-object form `Texture.SampleLevel(sampler, uv, lod)`. The compiler error names the rewrite.
 
 ## Effect resolution (`InMemoryContentManager`)
@@ -56,7 +57,9 @@ Tab switching goes through `monacoInterop.switchToModel` (`monaco-interop.js`), 
 
 ## Examples
 
-Shader examples live in `Examples/Shader*.{cs,fx}` plus a `KniIcon.png` (HiDef triples, registered in `ExampleGallery.Catalog` under category `"Shaders"`). The example `.cs` files set `GraphicsProfile.HiDef` like every other example — shaders run HiDef. (The `ExampleGallery.cs` line-37 comment "run as Reach/WebGL1" is **stale**; the profile-agnostic `.mgfx` runs under whatever profile the game selects.)
+Shader examples are `Examples/{Name}.cs` plus flat-named assets (`Examples/{Name}.{Shader}.fx`, usually a `KniIcon.png`), registered in `ExampleGallery.Catalog` under `"2D Shaders"` / `"3D Shaders"`. The example `.cs` files set `GraphicsProfile.HiDef` like every other example — shaders run HiDef. (The `ExampleGallery.cs` line-37 comment "run as Reach/WebGL1" is **stale**; the profile-agnostic `.mgfx` runs under whatever profile the game selects.)
+
+An example may ship the same effect in both languages (`{Name}.{Shader}.fx` **and** `{Name}.{Shader}.slang`); the example browser's HLSL/Slang segmented control picks which one opens as a tab. Exactly one may open — both compile to the same bare content key — see `ExampleGallery.SlangExamples` (probed from the embedded resources, never a `Catalog` flag) and `LoadExampleAssetsAsync`/`IsUnpickedShaderLanguage` in `Index.razor.cs`.
 
 User-facing pattern: `Content.Load<Effect>("Name")` in `LoadContent`, optionally `effect.Parameters["X"]?.SetValue(...)`, then `spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, ..., effect)`. The examples draw an un-shaded pass first to prime SpriteBatch's vertex shader, which the pixel-only effects rely on.
 

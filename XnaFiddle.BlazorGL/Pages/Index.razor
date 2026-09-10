@@ -592,6 +592,7 @@
             var t = tab;
             var active = _activeTab == t;
             <div @onclick="() => SelectTab(t)" @ondblclick="() => BeginRename(t)" title="Double-click to rename"
+                 data-testid="shader-tab" data-shader-name="@t"
                  style="display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; cursor: pointer;
                         font-size: 12px; white-space: nowrap; user-select: none;
                         color: @(active ? "#fff" : "#969696"); background: @(active ? "#1e1e1e" : "transparent");
@@ -733,10 +734,49 @@
                     </div>
                     @* Example cards *@
                     <div style="flex: 1; overflow-y: auto; padding: 10px;">
+                        @{ var isShaderCategory = ExampleGallery.IsShaderCategory(_selectedCategory); }
+                        @if (isShaderCategory)
+                        {
+                            @* One toggle for the whole category, not per card: it picks which source
+                               language an example's shader tab opens in for examples that ship both.
+                               Sticky so it stays reachable while scrolling a long shader list; the
+                               negative margins + matching padding make it sit flush against the
+                               scrollport top instead of leaving the pane's 10px padding showing. *@
+                            var slangSelected = _exampleShaderLanguage == ExampleShaderLanguage.Slang;
+                            <div data-testid="shader-language-toggle"
+                                 style="position: sticky; top: -10px; z-index: 1;
+                                        margin: -10px -10px 8px -10px; padding: 10px;
+                                        background: #252526; border-bottom: 1px solid #333;
+                                        display: flex; align-items: center; gap: 8px;">
+                                <span style="color: #888; font-size: 12px;">Shader language:</span>
+                                <div style="display: flex; border: 1px solid #3c3c3c; border-radius: 4px; overflow: hidden;">
+                                    <div @onclick="() => SelectExampleShaderLanguage(ExampleShaderLanguage.Hlsl)"
+                                         data-language="fx"
+                                         style="padding: 3px 12px; font-size: 12px; cursor: pointer; user-select: none;
+                                                color: @(slangSelected ? "#aaa" : "#fff");
+                                                background: @(slangSelected ? "transparent" : "#0e639c");">
+                                        HLSL
+                                    </div>
+                                    <div @onclick="() => SelectExampleShaderLanguage(ExampleShaderLanguage.Slang)"
+                                         data-language="slang"
+                                         style="padding: 3px 12px; font-size: 12px; cursor: pointer; user-select: none;
+                                                border-left: 1px solid #3c3c3c;
+                                                color: @(slangSelected ? "#fff" : "#aaa");
+                                                background: @(slangSelected ? "#0e639c" : "transparent");">
+                                        Slang
+                                    </div>
+                                </div>
+                            </div>
+                        }
                         @foreach (var example in ExampleGallery.Catalog)
                         {
                             if (example.Category != _selectedCategory) continue;
                             var isSelected = example.Name == _selectedExample;
+                            // Slang is picked but this example has no Slang port, so it will load its
+                            // .fx — say so on the card rather than letting the toggle silently lie.
+                            var hlslOnly = isShaderCategory
+                                && _exampleShaderLanguage == ExampleShaderLanguage.Slang
+                                && !ExampleGallery.HasSlangVariant(example.Name);
                             <div @onclick="() => SelectExample(example.Name)"
                                  data-testid="example-card" data-example-name="@example.Name"
                                  style="padding: 10px 14px; margin-bottom: 6px; cursor: pointer;
@@ -745,7 +785,17 @@
                                         border-radius: 4px; transition: border-color 0.1s, background 0.1s;"
                                  onmouseover="this.style.borderColor='#007acc'"
                                  onmouseout="this.style.borderColor='@(isSelected ? "#0e639c" : "#3c3c3c")'">
-                                <div style="color: #d4d4d4; font-size: 13px; font-weight: 500;">@example.Name</div>
+                                <div style="color: #d4d4d4; font-size: 13px; font-weight: 500;
+                                            display: flex; align-items: center; gap: 6px;">
+                                    <span>@example.Name</span>
+                                    @if (hlslOnly)
+                                    {
+                                        <span data-testid="hlsl-only-tag"
+                                              style="color: #888; background: #333; border: 1px solid #444;
+                                                     border-radius: 3px; padding: 0 5px;
+                                                     font-size: 10px; font-weight: 400;">HLSL only</span>
+                                    }
+                                </div>
                                 <div style="color: #888; font-size: 12px; margin-top: 3px;">@example.Description</div>
                             </div>
                         }
