@@ -36,38 +36,37 @@ public class MyExampleGame : Game
 - No file I/O or disk access — use `InMemoryContentManager` for assets (they are stored in `InMemoryContentManager.Files`)
 - Keep `using` statements minimal; Roslyn resolves from the hardcoded `KniAssemblyNames` list
 
-### 2. Mark it as an embedded resource
+### 2. No csproj edit needed — it's a wildcard glob
 
-In `XnaFiddle.BlazorGL.csproj`, examples are included as `EmbeddedResource` with `ExcludeFromCompile`:
+`XnaFiddle.BlazorGL.csproj` embeds every file under `Examples/` via wildcards, not a per-file
+entry (there is no `ExcludeFromCompile` metadata anywhere in the project):
 
 ```xml
-<EmbeddedResource Include="Examples\MyExample.cs">
-  <ExcludeFromCompile>true</ExcludeFromCompile>
-</EmbeddedResource>
+<Compile Remove="Examples\**" />
+<EmbeddedResource Include="Examples\*.cs" />
+<EmbeddedResource Include="Examples\*.*" Exclude="Examples\*.cs" />
 ```
 
-Check the existing pattern in the `.csproj` and follow it exactly.
+Dropping a new file directly under `Examples/` (not a subdirectory — the glob is `Examples\*.*`,
+non-recursive) is enough; nothing to add to the `.csproj`.
 
 ### 3. Verify the gallery picks it up
 
 `ExampleGallery.cs` reads embedded resources matching `*.Examples.*.cs` and exposes them by filename stem. The new example will automatically appear in the dropdown on the page — no code change needed in `ExampleGallery.cs` or `Index.razor`.
 
-### 4. Copy assets to wwwroot (if the example has assets)
+### 4. Asset files (if the example has assets) — no manual wwwroot copy needed
 
-If the example has non-code asset files (`.png`, `.fnt`, `.ttf`), they must exist in **two** places:
+Non-code asset files (`.png`, `.fnt`, `.ttf`, `.fx`, `.slang`, ...) follow the same flat naming
+convention: `Examples/{ExampleName}.{AssetFile}`. That's the only file you add — the
+`CopyExampleStaticAssets` MSBuild target (`BeforeBuild`) automatically mirrors it to
+`wwwroot/examples/{ExampleName}/{AssetFile}` (split on the *first* dot) so share links can
+re-fetch it over HTTP; there is nothing to `mkdir`/`cp` by hand (issue #56). Keep example names
+themselves dot-free, since the split assumes exactly one dot boundary between the example name
+and the asset filename.
 
-1. `Examples/{ExampleName}.{AssetFile}` — embedded resource, loaded at runtime by `ExampleGallery.LoadAssets()`
-2. `wwwroot/examples/{ExampleName}/{AssetFile}` — static web asset, served over HTTP so share links can re-fetch them
+`LoadExampleAssets()` sets `AssetInfo.SourceUrl` to `{baseUri}examples/{ExampleName}/{file}`, which `GetAssetUrlsFragment()` includes in share URLs.
 
-```bash
-mkdir -p XnaFiddle.BlazorGL/wwwroot/examples/MyExample
-cp XnaFiddle.BlazorGL/Examples/MyExample.MyAsset.png \
-   XnaFiddle.BlazorGL/wwwroot/examples/MyExample/MyAsset.png
-```
-
-`LoadExampleAssets()` automatically sets `AssetInfo.SourceUrl` to `{baseUri}examples/{ExampleName}/{file}`, which `GetAssetUrlsFragment()` includes in share URLs. Without the wwwroot copy, the share link will have the URL but fetching it will 404.
-
-### 6. Update third-party notices (if bundling external assets)
+### 5. Update third-party notices (if bundling external assets)
 
 If the example bundles third-party assets (fonts, images, etc.) from external projects, check whether their license requires attribution (e.g. Apache 2.0, CC-BY). If so, add a row to the table in `THIRD-PARTY-NOTICES.md` at the repo root:
 
@@ -77,7 +76,7 @@ If the example bundles third-party assets (fonts, images, etc.) from external pr
 
 Assets under licenses that don't require attribution (MIT, CC0, Unlicense, public domain) are covered by the file's general intro paragraph and don't need an explicit entry.
 
-### 7. Test
+### 6. Test
 
 ```bash
 dotnet build XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj

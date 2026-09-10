@@ -585,10 +585,10 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
         [JSInvokable]
         public async Task OnFileDropped(string fileName, string base64Data)
         {
-            // A dropped .fx is shader source, not a content asset: open it in its own editor
-            // tab (HLSL highlighting, compiled on Run) instead of routing it to the asset list.
-            // Mirrors how example .fx files load (see LoadExampleAssetsAsync). Issue #26.
-            if (fileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+            // A dropped .fx or .slang is shader source, not a content asset: open it in its own
+            // editor tab (HLSL highlighting, compiled on Run) instead of routing it to the asset
+            // list. Mirrors how example shader files load (see LoadExampleAssetsAsync). Issue #26.
+            if (IsShaderSourceFileName(fileName))
             {
                 if (!_monacoReady)
                     return;
@@ -847,6 +847,14 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
         private bool TabNameExists(string fileName) =>
             string.Equals(fileName, CSharpTabName, StringComparison.OrdinalIgnoreCase)
             || _shaderTabs.Any(t => string.Equals(t, fileName, StringComparison.OrdinalIgnoreCase));
+
+        // True for any shader source filename that should route to a shader editor tab rather
+        // than the generic asset panel (example loading, drag-drop, gist import). Both .fx (HLSL)
+        // and .slang (Slang, converted to .fx before compiling — see CompileRegisteredShadersAsync)
+        // qualify.
+        private static bool IsShaderSourceFileName(string fileName) =>
+            fileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".slang", StringComparison.OrdinalIgnoreCase);
 
         // Creates (or replaces) a shader tab's Monaco model and tracks it, optionally activating
         // it. Used by the [+] button, example loading, and (later) drag-and-drop of a .fx.
@@ -1732,8 +1740,8 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
                 using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                 var files = doc.RootElement.GetProperty("files");
 
-                // First .cs file (fall back to first .txt) is the program; every .fx file is a
-                // shader tab (issue #26 phase 2b). Don't break early — we must see all files.
+                // First .cs file (fall back to first .txt) is the program; every .fx/.slang file
+                // is a shader tab (issue #26 phase 2b). Don't break early — we must see all files.
                 string code = null;
                 JsonProperty? txtFallback = null; // first .txt: program if no .cs, else a data asset (issue #115)
                 var shaderFiles = new List<ShaderFile>();
@@ -1743,7 +1751,7 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
                 var assetFiles = new List<JsonProperty>();
                 foreach (var file in files.EnumerateObject())
                 {
-                    if (file.Name.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+                    if (IsShaderSourceFileName(file.Name))
                         shaderFiles.Add(new ShaderFile { Name = file.Name, Source = file.Value.GetProperty("content").GetString() });
                     else if (code == null && file.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                         code = file.Value.GetProperty("content").GetString();
@@ -2124,11 +2132,11 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
 
             for (int i = 0; i < assets.Length; i++)
             {
-                // Shader sources open in their own editor tab, not the asset panel.
-                if (assets[i].FileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+                // Shader sources (.fx or .slang) open in their own editor tab, not the asset panel.
+                if (IsShaderSourceFileName(assets[i].FileName))
                 {
-                    string fxSource = Encoding.UTF8.GetString(assets[i].Data);
-                    await OpenShaderTabFromSourceAsync(assets[i].FileName, fxSource, select: false);
+                    string shaderSource = Encoding.UTF8.GetString(assets[i].Data);
+                    await OpenShaderTabFromSourceAsync(assets[i].FileName, shaderSource, select: false);
                     continue;
                 }
 

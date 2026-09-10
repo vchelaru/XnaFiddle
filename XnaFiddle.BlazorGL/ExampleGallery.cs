@@ -45,6 +45,7 @@ namespace XnaFiddle
             new ExampleInfo { Name = "Dots",            Category = "2D Shaders", Description = "Halftone dot pattern with angle and scale parameters" },
             new ExampleInfo { Name = "Fading",          Category = "2D Shaders", Description = "Vertical fade driven by texture coordinates" },
             new ExampleInfo { Name = "Grayscale",       Category = "2D Shaders", Description = "Grayscale pixel shader (.fx) compiled in-browser" },
+            new ExampleInfo { Name = "GrayscaleSlang",  Category = "2D Shaders", Description = "The same grayscale pixel shader written in HLSL-compatible Slang (.slang), converted to .fx and compiled in-browser" },
             new ExampleInfo { Name = "Invert",          Category = "2D Shaders", Description = "Invert an image's colors" },
             new ExampleInfo { Name = "Masking",         Category = "2D Shaders", Description = "Mask a sprite with a second texture: draw one image through a separate black-and-white mask .png, sampling both in one shader pass" },
             new ExampleInfo { Name = "Pixelated",       Category = "2D Shaders", Description = "Pixelate an image by snapping UVs to a grid" },
