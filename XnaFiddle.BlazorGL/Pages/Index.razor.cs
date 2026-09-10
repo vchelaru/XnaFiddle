@@ -103,6 +103,11 @@ namespace XnaFiddle.Pages
         bool _exampleBrowserOpen;
         string _selectedCategory = "";
 
+        // Shader source language the example browser asks for. Only affects examples that ship the
+        // same effect twice (a .fx and a .slang); anything shipping one language loads that one.
+        enum ExampleShaderLanguage { Hlsl, Slang }
+        ExampleShaderLanguage _exampleShaderLanguage = ExampleShaderLanguage.Hlsl;
+
         struct AssetInfo
         {
             public string FileName;
@@ -129,15 +134,16 @@ namespace XnaFiddle.Pages
         bool _isFetchingAssetUrl;
 
         // ---- Tabbed editor (issue #26 phase 2) ----
-        // The C# program is always the first tab; shader (.fx) tabs follow. A tab's filename is
-        // the Content.Load<Effect>("Name") key. Shader sources live in their Monaco models and
-        // are pulled + compiled on Run (see CompileRegisteredShadersAsync). Must match
+        // The C# program is always the first tab; shader (.fx or .slang) tabs follow. A tab's
+        // filename is the Content.Load<Effect>("Name") key. Shader sources live in their Monaco
+        // models and are pulled + compiled on Run (see CompileRegisteredShadersAsync). Must match
         // monacoInterop.CSHARP_TAB in monaco-interop.js.
         const string CSharpTabName = "Game.cs";
         readonly List<string> _shaderTabs = new();              // shader filenames, e.g. "Grayscale.fx"
         string _activeTab = CSharpTabName;
         string _renamingTab;                                    // shader tab being inline-renamed, or null
         string _renameValue = "";
+        bool _showAddShaderMenu;                                // [+] popup: choose HLSL vs Slang
         // Bare shader names registered as compiled effects on the previous Run, so the next Run
         // can drop ones whose tab was removed/renamed (stale Content.Load<Effect> entries).
         HashSet<string> _lastCompiledShaders = new(StringComparer.OrdinalIgnoreCase);
@@ -193,6 +199,33 @@ technique BasicColorDrawing
 		PixelShader = compile PS_SHADERMODEL MainPS();
 	}
 };
+";
+
+        // Starter content for a new Slang shader tab: a pass-through SpriteBatch pixel shader in
+        // HLSL-compatible Slang (fragment-only, the SpriteBatch shape). ShadowDusk's Slang
+        // frontend synthesizes the technique block from the [shader("fragment")] attribute, so
+        // (unlike DefaultShaderTemplate above) there is no technique/pass to hand-write here.
+        const string DefaultSlangShaderTemplate = @"// This is a SpriteBatch fragment shader. It compiles in your browser when you press
+// Run -- just edit MainPS below and Run again to see your changes.
+//
+// Use it from your C# game code by loading it with this tab's filename WITHOUT the
+// .slang extension (the content key is the tab name; renaming the tab changes it):
+//     Effect effect = Content.Load<Effect>(""Shader"");
+//     spriteBatch.Begin(effect: effect);
+//
+// The [shader(""fragment"")] attribute marks the entry point. Slang's module system
+// (import/module/extension) and generics are not available here, so write the shader
+// as a single self-contained file.
+Texture2D SpriteTexture;
+SamplerState SpriteTextureSampler;
+
+[shader(""fragment"")]
+float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : TEXCOORD0) : SV_Target
+{
+    float4 col = SpriteTexture.Sample(SpriteTextureSampler, uv) * color;
+    // TODO: transform col.rgb here (e.g. col.rgb = 1.0 - col.rgb; to invert).
+    return col;
+}
 ";
 
         protected override void OnInitialized()
@@ -555,10 +588,10 @@ technique BasicColorDrawing
         [JSInvokable]
         public async Task OnFileDropped(string fileName, string base64Data)
         {
-            // A dropped .fx is shader source, not a content asset: open it in its own editor
-            // tab (HLSL highlighting, compiled on Run) instead of routing it to the asset list.
-            // Mirrors how example .fx files load (see LoadExampleAssetsAsync). Issue #26.
-            if (fileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+            // A dropped .fx or .slang is shader source, not a content asset: open it in its own
+            // editor tab (HLSL highlighting, compiled on Run) instead of routing it to the asset
+            // list. Mirrors how example shader files load (see LoadExampleAssetsAsync). Issue #26.
+            if (IsShaderSourceFileName(fileName))
             {
                 if (!_monacoReady)
                     return;
@@ -684,12 +717,14 @@ technique BasicColorDrawing
             ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.unregister", fileName);
         }
 
-        // Compiles every registered HLSL .fx file to .mgfx via the in-browser ShadowDusk
-        // compiler and re-registers the result under the bare shader name, so user code can
-        // load it idiomatically with Content.Load<Effect>("Name"). Returns null on success, or
-        // an already-formatted error describing the first failing shader. When no .fx files are
-        // registered it returns immediately without touching the WASM compiler (so the heavy DXC
-        // module is never downloaded for non-shader runs). See issue #26.
+        // Compiles every registered shader tab (.fx or .slang) to .mgfx via the in-browser
+        // ShadowDusk compiler and re-registers the result under the bare shader name, so user
+        // code can load it idiomatically with Content.Load<Effect>("Name"). A .slang tab is
+        // first converted to .fx text by ShadowDusk's Slang frontend (see below), then compiled
+        // exactly like a .fx tab. Returns null on success, or an already-formatted error
+        // describing the first failing shader. When no shader tabs are registered it returns
+        // immediately without touching the WASM compiler (so the heavy DXC module is never
+        // downloaded for non-shader runs). See issue #26.
         private async Task<string> CompileRegisteredShadersAsync()
         {
 #if !SHADOWDUSK
@@ -712,6 +747,31 @@ technique BasicColorDrawing
                     string bareName = System.IO.Path.GetFileNameWithoutExtension(fileName);
                     current.Add(bareName);
                     string source = await JsRuntime.InvokeAsync<string>("monacoInterop.getModelValue", fileName);
+
+                    // .slang tabs go through Slang's HLSL-compatible-subset frontend first. It's a
+                    // pure managed text transform (no new WASM module) that strips the
+                    // [shader("vertex")]/[shader("fragment")] attributes and synthesizes a technique
+                    // block from them, yielding ordinary .fx text that then compiles through the
+                    // SAME WasmShaderCompiler call every .fx tab uses below. Slang-only features
+                    // (import/module/extension/generics) fail loudly here with a named SD0600
+                    // ShaderError rather than being silently approximated.
+                    if (fileName.EndsWith(".slang", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var slangResult = ShadowDusk.Compiler.Slang.SlangFrontend.ConvertToFx(
+                            source,
+                            new ShadowDusk.Compiler.Slang.SlangConvertOptions { SourceName = fileName });
+                        if (slangResult.IsFailure)
+                        {
+                            var slangMarkers = MapShaderErrors(slangResult.Error);
+                            await JsRuntime.InvokeVoidAsync("monacoInterop.setShaderDiagnostics", fileName, slangMarkers);
+                            await SelectTab(fileName);
+                            string slangDetail = string.Join("\n",
+                                System.Linq.Enumerable.Select(slangResult.Error, e => e.FxcFormattedMessage));
+                            return $"{fileName}:\n{slangDetail}";
+                        }
+                        source = slangResult.Value.FxText;
+                    }
+
                     var options = new ShadowDusk.Core.CompilerOptions
                     {
                         // ShadowDusk's OpenGL target emits a profile-agnostic .mgfx that loads under
@@ -791,8 +851,20 @@ technique BasicColorDrawing
             string.Equals(fileName, CSharpTabName, StringComparison.OrdinalIgnoreCase)
             || _shaderTabs.Any(t => string.Equals(t, fileName, StringComparison.OrdinalIgnoreCase));
 
+        // True for any shader source filename that should route to a shader editor tab rather
+        // than the generic asset panel (example loading, drag-drop, gist import). Both .fx (HLSL)
+        // and .slang (Slang, converted to .fx before compiling — see CompileRegisteredShadersAsync)
+        // qualify.
+        private static bool IsShaderSourceFileName(string fileName) =>
+            fileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith(".slang", StringComparison.OrdinalIgnoreCase);
+
         // Creates (or replaces) a shader tab's Monaco model and tracks it, optionally activating
         // it. Used by the [+] button, example loading, and (later) drag-and-drop of a .fx.
+        // Always uses the "hlsl" Monaco language, even for a .slang tab: Monaco has no Slang
+        // grammar, and HLSL-compatible Slang is close enough that "hlsl" highlighting is a
+        // reasonable approximation (compilation, not highlighting, is what actually understands
+        // Slang — see CompileRegisteredShadersAsync's SlangFrontend.ConvertToFx call).
         private async Task OpenShaderTabFromSourceAsync(string fileName, string source, bool select)
         {
             await JsRuntime.InvokeVoidAsync("monacoInterop.createModel", fileName, source, "hlsl");
@@ -823,13 +895,30 @@ technique BasicColorDrawing
             await JsRuntime.InvokeVoidAsync("monacoInterop.switchToModel", name);
         }
 
-        private async Task AddShaderTab()
+        private void ToggleAddShaderMenu()
+        {
+            _showAddShaderMenu = !_showAddShaderMenu;
+            StateHasChanged();
+        }
+
+        private void CloseAddShaderMenu()
+        {
+            _showAddShaderMenu = false;
+            StateHasChanged();
+        }
+
+        // Adds a new shader tab in the given language. extension is ".fx" (HLSL, compiled as-is)
+        // or ".slang" (HLSL-compatible Slang, converted to .fx by ShadowDusk's Slang frontend
+        // before compiling — see CompileRegisteredShadersAsync).
+        private async Task AddShaderTab(string extension)
         {
             if (!_monacoReady) return;
-            string fileName = "Shader.fx";
+            _showAddShaderMenu = false;
+            string template = extension == ".slang" ? DefaultSlangShaderTemplate : DefaultShaderTemplate;
+            string fileName = "Shader" + extension;
             int n = 1;
-            while (TabNameExists(fileName)) fileName = $"Shader{n++}.fx";
-            await OpenShaderTabFromSourceAsync(fileName, DefaultShaderTemplate, select: true);
+            while (TabNameExists(fileName)) fileName = $"Shader{n++}{extension}";
+            await OpenShaderTabFromSourceAsync(fileName, template, select: true);
             StateHasChanged();
         }
 
@@ -870,8 +959,8 @@ technique BasicColorDrawing
             else if (e.Key == "Escape") CancelRename();
         }
 
-        // Applies an inline tab rename. The filename (minus .fx) is the Content.Load<Effect> key,
-        // so renaming changes how user code references the shader.
+        // Applies an inline tab rename. The filename (minus its extension) is the
+        // Content.Load<Effect> key, so renaming changes how user code references the shader.
         private async Task CommitRenameAsync()
         {
             string oldName = _renamingTab;
@@ -884,8 +973,15 @@ technique BasicColorDrawing
                 StateHasChanged();
                 return;
             }
-            if (!newName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
-                newName += ".fx";
+            // A typed name with no recognized shader extension keeps the tab's existing one
+            // (.fx or .slang) rather than always forcing .fx, so renaming a Slang tab doesn't
+            // silently turn it into an (uncompilable-as-Slang) .fx tab.
+            if (!newName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase) &&
+                !newName.EndsWith(".slang", StringComparison.OrdinalIgnoreCase))
+            {
+                string oldExtension = oldName.EndsWith(".slang", StringComparison.OrdinalIgnoreCase) ? ".slang" : ".fx";
+                newName += oldExtension;
+            }
             if (TabNameExists(newName))
             {
                 SetError("Rename failed.", $"A tab named \"{newName}\" already exists.");
@@ -1647,8 +1743,8 @@ technique BasicColorDrawing
                 using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                 var files = doc.RootElement.GetProperty("files");
 
-                // First .cs file (fall back to first .txt) is the program; every .fx file is a
-                // shader tab (issue #26 phase 2b). Don't break early — we must see all files.
+                // First .cs file (fall back to first .txt) is the program; every .fx/.slang file
+                // is a shader tab (issue #26 phase 2b). Don't break early — we must see all files.
                 string code = null;
                 JsonProperty? txtFallback = null; // first .txt: program if no .cs, else a data asset (issue #115)
                 var shaderFiles = new List<ShaderFile>();
@@ -1658,7 +1754,7 @@ technique BasicColorDrawing
                 var assetFiles = new List<JsonProperty>();
                 foreach (var file in files.EnumerateObject())
                 {
-                    if (file.Name.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+                    if (IsShaderSourceFileName(file.Name))
                         shaderFiles.Add(new ShaderFile { Name = file.Name, Source = file.Value.GetProperty("content").GetString() });
                     else if (code == null && file.Name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                         code = file.Value.GetProperty("content").GetString();
@@ -1827,6 +1923,26 @@ technique BasicColorDrawing
                 if (!ProjectExporter.CompilesShippedShaders(GetExportTarget(p), mode, contentMode))
                     list.Add(p);
             return list;
+        }
+
+        // Slang rides the ShadowDusk runtime path only. No content pipeline compiles .slang, and a
+        // target with no shader compiler wired can't convert it either, so those combinations would
+        // ship a project that cannot build. Returns why the export is blocked, or null to allow it.
+        string SlangExportBlockReason()
+        {
+            if (!_shaderTabs.Any(t => t.EndsWith(".slang", StringComparison.OrdinalIgnoreCase)))
+                return null;
+
+            (ShaderCompileMode mode, _) = EffectiveContentModes();
+            if (mode == ShaderCompileMode.Native)
+                return "ShadowDusk is needed to compile Slang shaders. Switch shader compilation to ShadowDusk, or remove the .slang tabs.";
+
+            List<ExportPlatform> gated = GatedShaderPlatforms();
+            if (gated.Count > 0)
+                return $"ShadowDusk is needed to compile Slang shaders, and it isn't available for {string.Join(", ", gated)}. "
+                     + "Deselect those platforms, or remove the .slang tabs.";
+
+            return null;
         }
 
         void TogglePlatform(ExportPlatform platform)
@@ -2036,14 +2152,18 @@ technique BasicColorDrawing
             _assets.Clear();
 
             ExampleAsset[] assets = ExampleGallery.LoadAssets(exampleName);
+            bool preferSlang = _exampleShaderLanguage == ExampleShaderLanguage.Slang;
 
             for (int i = 0; i < assets.Length; i++)
             {
-                // Shader sources open in their own editor tab, not the asset panel.
-                if (assets[i].FileName.EndsWith(".fx", StringComparison.OrdinalIgnoreCase))
+                // Shader sources (.fx or .slang) open in their own editor tab, not the asset panel.
+                if (IsShaderSourceFileName(assets[i].FileName))
                 {
-                    string fxSource = Encoding.UTF8.GetString(assets[i].Data);
-                    await OpenShaderTabFromSourceAsync(assets[i].FileName, fxSource, select: false);
+                    if (IsUnpickedShaderLanguage(assets, i, preferSlang))
+                        continue;
+
+                    string shaderSource = Encoding.UTF8.GetString(assets[i].Data);
+                    await OpenShaderTabFromSourceAsync(assets[i].FileName, shaderSource, select: false);
                     continue;
                 }
 
@@ -2056,6 +2176,38 @@ technique BasicColorDrawing
             }
             if (_assets.Count > 0) _assetsOpen = true;
         }
+
+        // True when this shader asset is in the language the user did NOT pick AND the same effect
+        // is also shipped in the language they did (same bare name, other extension). Both would
+        // register their compiled .mgfx under that one bare content key, so exactly one may open.
+        // An effect shipped in a single language ignores the toggle — there's nothing to pick.
+        private static bool IsUnpickedShaderLanguage(ExampleAsset[] assets, int index, bool preferSlang)
+        {
+            bool isSlang = assets[index].FileName.EndsWith(".slang", StringComparison.OrdinalIgnoreCase);
+            if (isSlang == preferSlang)
+                return false;
+
+            string bareName = System.IO.Path.GetFileNameWithoutExtension(assets[index].FileName);
+            string pickedFileName = bareName + (preferSlang ? ".slang" : ".fx");
+            for (int i = 0; i < assets.Length; i++)
+            {
+                if (string.Equals(assets[i].FileName, pickedFileName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        // Preference only: picks which language a shader example's tab opens in the next time
+        // one is loaded from a card. It deliberately does not reload the example already open --
+        // that would discard unsaved edits to the current shader tab just because someone
+        // flipped the radio while browsing.
+        private void SelectExampleShaderLanguage(ExampleShaderLanguage language)
+        {
+            _exampleShaderLanguage = language;
+        }
+
+
+
 
 
 

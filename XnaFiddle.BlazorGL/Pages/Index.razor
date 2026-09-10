@@ -309,23 +309,23 @@
                 <div style="color: #9cdcaa; font-size: 12px; line-height: 1.5; background: #1e2d20; border: 1px solid #2d5c34; border-radius: 3px; padding: 6px 8px;">
                     @if (effContentMode == ContentBuildMode.ContentBuilder && effShaderMode == ShaderCompileMode.Native)
                     {
-                        <text>&#10003; Assets@(_shaderTabs.Count > 0 ? $" and your {_shaderTabs.Count} .fx shader file(s)" : "") will be compiled at build time by the MonoGame Content Builder (3.8.5) in a separate <b>@(_exportProjectName).Content</b> project.</text>
+                        <text>&#10003; Assets@(_shaderTabs.Count > 0 ? $" and your {_shaderTabs.Count} shader file(s)" : "") will be compiled at build time by the MonoGame Content Builder (3.8.5) in a separate <b>@(_exportProjectName).Content</b> project.</text>
                     }
                     else if (effContentMode == ContentBuildMode.ContentBuilder)
                     {
-                        <text>&#10003; Assets will be compiled at build time by the MonoGame Content Builder (3.8.5) in a separate <b>@(_exportProjectName).Content</b> project.@(_shaderTabs.Count > 0 ? $" Your {_shaderTabs.Count} .fx shader file(s) will still be compiled at runtime via ShadowDusk." : "")</text>
+                        <text>&#10003; Assets will be compiled at build time by the MonoGame Content Builder (3.8.5) in a separate <b>@(_exportProjectName).Content</b> project.@(_shaderTabs.Count > 0 ? $" Your {_shaderTabs.Count} shader file(s) will still be compiled at runtime via ShadowDusk." : "")</text>
                     }
                     else if (effContentMode == ContentBuildMode.ClassicMgcb && effShaderMode == ShaderCompileMode.Native)
                     {
-                        <text>&#10003; Assets@(_shaderTabs.Count > 0 ? $" and your {_shaderTabs.Count} .fx shader file(s)" : "") will be compiled to <b>.xnb</b> at build time by the classic MonoGame Content Pipeline (MGCB) in the exported project.</text>
+                        <text>&#10003; Assets@(_shaderTabs.Count > 0 ? $" and your {_shaderTabs.Count} shader file(s)" : "") will be compiled to <b>.xnb</b> at build time by the classic MonoGame Content Pipeline (MGCB) in the exported project.</text>
                     }
                     else if (effContentMode == ContentBuildMode.ClassicMgcb)
                     {
-                        <text>&#10003; Assets will be compiled to <b>.xnb</b> at build time by the classic MonoGame Content Pipeline (MGCB).@(_shaderTabs.Count > 0 ? $" Your {_shaderTabs.Count} .fx shader file(s) will still be compiled at runtime via ShadowDusk in the exported project." : "")</text>
+                        <text>&#10003; Assets will be compiled to <b>.xnb</b> at build time by the classic MonoGame Content Pipeline (MGCB).@(_shaderTabs.Count > 0 ? $" Your {_shaderTabs.Count} shader file(s) will still be compiled at runtime via ShadowDusk in the exported project." : "")</text>
                     }
                     else
                     {
-                        <text>&#10003; Your @_shaderTabs.Count <b>.fx</b> shader file(s) will be compiled at runtime via ShadowDusk in the exported project.</text>
+                        <text>&#10003; Your @_shaderTabs.Count shader file(s) will be compiled at runtime via ShadowDusk in the exported project.</text>
                     }
                     @if (gatedShaderPlatforms.Count > 0)
                     {
@@ -459,7 +459,16 @@
                        @onkeydown="OnExportNameKeyDown"
                        style="background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px;
                               font-size: 12px; font-family: inherit; width: 150px;" />
-                <button @onclick="ExportProject" disabled="@(_isExporting || string.IsNullOrWhiteSpace(_exportProjectName) || _selectedPlatforms.Count == 0)"
+                @{ string slangBlock = SlangExportBlockReason(); }
+                @if (slangBlock != null)
+                {
+                    <div data-testid="slang-export-blocked"
+                         style="flex-basis: 100%; color: #f48771; background: #3a1d1d; border: 1px solid #5a2d2d;
+                                border-radius: 3px; padding: 6px 8px; font-size: 12px; line-height: 1.5;">
+                        @slangBlock
+                    </div>
+                }
+                <button @onclick="ExportProject" disabled="@(_isExporting || string.IsNullOrWhiteSpace(_exportProjectName) || _selectedPlatforms.Count == 0 || slangBlock != null)"
                         style="margin-left: auto; padding: 5px 20px; background: #0e639c; color: white; border: none; cursor: pointer;
                                font-size: 13px; border-radius: 3px; display: flex; align-items: center; gap: 5px;">
                     <i class="codicon codicon-package"></i>
@@ -592,6 +601,7 @@
             var t = tab;
             var active = _activeTab == t;
             <div @onclick="() => SelectTab(t)" @ondblclick="() => BeginRename(t)" title="Double-click to rename"
+                 data-testid="shader-tab" data-shader-name="@t"
                  style="display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; cursor: pointer;
                         font-size: 12px; white-space: nowrap; user-select: none;
                         color: @(active ? "#fff" : "#969696"); background: @(active ? "#1e1e1e" : "transparent");
@@ -614,13 +624,50 @@
                 }
             </div>
         }
-        <div @onclick="AddShaderTab" title="Add shader (.fx)"
-             style="display: flex; align-items: center; padding: 0 10px; cursor: pointer; color: #969696;
-                    font-size: 14px; user-select: none;"
-             onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#969696'">
-            <i class="codicon codicon-add"></i>
+        <div style="position: relative;">
+            <div @onclick="ToggleAddShaderMenu" title="Add shader (HLSL .fx or Slang .slang)"
+                 style="display: flex; align-items: center; padding: 0 10px; cursor: pointer; color: #969696;
+                        font-size: 14px; user-select: none; height: 30px;"
+                 onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#969696'">
+                <i class="codicon codicon-add"></i>
+            </div>
+            @if (_showAddShaderMenu)
+            {
+                @* Transparent full-page backdrop so clicking outside the popup dismisses it,
+                   same pattern as the example-browser modal overlay above (issue #26 phase 2 follow-up). *@
+                <div @onclick="CloseAddShaderMenu"
+                     style="position: fixed; inset: 0; z-index: 20;"></div>
+                <div @onclick:stopPropagation="true"
+                     style="position: absolute; top: 30px; left: 0; z-index: 21; min-width: 160px;
+                            background: #2d2d2d; border: 1px solid #444; border-radius: 4px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.4); overflow: hidden;">
+                    <div @onclick='() => AddShaderTab(".fx")'
+                         style="padding: 8px 14px; color: #d4d4d4; font-size: 12px; cursor: pointer; white-space: nowrap;"
+                         onmouseover="this.style.background='#37373d'" onmouseout="this.style.background='transparent'">
+                        HLSL (.fx)
+                    </div>
+                    <div @onclick='() => AddShaderTab(".slang")'
+                         style="padding: 8px 14px; color: #d4d4d4; font-size: 12px; cursor: pointer; white-space: nowrap;"
+                         onmouseover="this.style.background='#37373d'" onmouseout="this.style.background='transparent'">
+                        Slang (.slang)
+                    </div>
+                </div>
+            }
         </div>
     </div>
+
+    @* Slang is the one thing in a fiddle that does not travel to a plain XNA-family project:
+       no content pipeline compiles .slang, so it needs ShadowDusk wherever the source lands.
+       Shown only while a .slang tab is active, so HLSL users never see it. *@
+    @if (_activeTab.EndsWith(".slang", StringComparison.OrdinalIgnoreCase))
+    {
+        <div data-testid="slang-shadowdusk-notice"
+             style="flex-shrink: 0; padding: 5px 10px; background: #3a3018; border-bottom: 1px solid #5a4a20;
+                    color: #d7ba7d; font-size: 11px; display: flex; align-items: center; gap: 6px;">
+            <i class="codicon codicon-warning" style="font-size: 12px;"></i>
+            <span>ShadowDusk is needed to compile Slang shaders.</span>
+        </div>
+    }
 
     <div style="flex: 1; min-height: 0; position: relative; overflow: hidden;">
         <div id="monacoContainer" style="width: 100%; height: 100%;"></div>
@@ -709,10 +756,50 @@
                     </div>
                     @* Example cards *@
                     <div style="flex: 1; overflow-y: auto; padding: 10px;">
+                        @{ var isShaderCategory = ExampleGallery.IsShaderCategory(_selectedCategory); }
+                        @if (isShaderCategory)
+                        {
+                            @* One toggle for the whole category, not per card: it picks which source
+                               language an example's shader tab opens in for examples that ship both.
+                               Sticky so it stays reachable while scrolling a long shader list; the
+                               negative margins + matching padding make it sit flush against the
+                               scrollport top instead of leaving the pane's 10px padding showing. *@
+                            var slangSelected = _exampleShaderLanguage == ExampleShaderLanguage.Slang;
+                            <div data-testid="shader-language-toggle"
+                                 style="position: sticky; top: -10px; z-index: 1;
+                                        margin: -10px -10px 8px -10px; padding: 10px;
+                                        background: #252526; border-bottom: 1px solid #333;
+                                        display: flex; align-items: center; gap: 14px;">
+                                <span style="color: #888; font-size: 12px;">Shader language:</span>
+                                <label data-language="fx"
+                                       style="display: flex; align-items: center; gap: 5px; cursor: pointer;
+                                              user-select: none; font-size: 12px;
+                                              color: @(slangSelected ? "#aaa" : "#d4d4d4");">
+                                    <input type="radio" name="shaderLanguage" checked="@(!slangSelected)"
+                                           @onchange="() => SelectExampleShaderLanguage(ExampleShaderLanguage.Hlsl)"
+                                           style="accent-color: #0e639c; margin: 0; cursor: pointer;" />
+                                    HLSL
+                                </label>
+                                <label data-language="slang"
+                                       style="display: flex; align-items: center; gap: 5px; cursor: pointer;
+                                              user-select: none; font-size: 12px;
+                                              color: @(slangSelected ? "#d4d4d4" : "#aaa");">
+                                    <input type="radio" name="shaderLanguage" checked="@slangSelected"
+                                           @onchange="() => SelectExampleShaderLanguage(ExampleShaderLanguage.Slang)"
+                                           style="accent-color: #0e639c; margin: 0; cursor: pointer;" />
+                                    Slang
+                                </label>
+                            </div>
+                        }
                         @foreach (var example in ExampleGallery.Catalog)
                         {
                             if (example.Category != _selectedCategory) continue;
                             var isSelected = example.Name == _selectedExample;
+                            // Slang is picked but this example has no Slang port, so it will load its
+                            // .fx — say so on the card rather than letting the toggle silently lie.
+                            var hlslOnly = isShaderCategory
+                                && _exampleShaderLanguage == ExampleShaderLanguage.Slang
+                                && !ExampleGallery.HasSlangVariant(example.Name);
                             <div @onclick="() => SelectExample(example.Name)"
                                  data-testid="example-card" data-example-name="@example.Name"
                                  style="padding: 10px 14px; margin-bottom: 6px; cursor: pointer;
@@ -721,7 +808,17 @@
                                         border-radius: 4px; transition: border-color 0.1s, background 0.1s;"
                                  onmouseover="this.style.borderColor='#007acc'"
                                  onmouseout="this.style.borderColor='@(isSelected ? "#0e639c" : "#3c3c3c")'">
-                                <div style="color: #d4d4d4; font-size: 13px; font-weight: 500;">@example.Name</div>
+                                <div style="color: #d4d4d4; font-size: 13px; font-weight: 500;
+                                            display: flex; align-items: center; gap: 6px;">
+                                    <span>@example.Name</span>
+                                    @if (hlslOnly)
+                                    {
+                                        <span data-testid="hlsl-only-tag"
+                                              style="color: #888; background: #333; border: 1px solid #444;
+                                                     border-radius: 3px; padding: 0 5px;
+                                                     font-size: 10px; font-weight: 400;">HLSL only</span>
+                                    }
+                                </div>
                                 <div style="color: #888; font-size: 12px; margin-top: 3px;">@example.Description</div>
                             </div>
                         }
