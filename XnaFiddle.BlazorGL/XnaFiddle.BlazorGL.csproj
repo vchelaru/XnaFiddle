@@ -21,6 +21,14 @@
     <!-- Disable trimming: user code is compiled by Roslyn at runtime and
          needs the full public API surface of all assemblies (BCL + KNI). -->
     <PublishTrimmed>false</PublishTrimmed>
+    <!-- SkiaGameRendering.Kni.WebGL's native SkiaSharp interop (libSkiaSharp) needs this true to
+         get linked into dotnet.native.wasm. SkiaSharp.NativeAssets.WebAssembly's own buildTransitive
+         targets try to set this automatically, but something later in the SDK's import order resets
+         it back to empty before the link-time check runs, so without this explicit override the
+         NativeFileReference is silently dropped and any P/Invoke into libSkiaSharp throws
+         DllNotFoundException at runtime (confirmed via the MSBuild warning this masks: "neither
+         $(WasmBuildNative), nor $(RunAOTCompilation) are 'true'"). -->
+    <WasmBuildNative>true</WasmBuildNative>
   </PropertyGroup>
 
   <!-- SHADOWDUSK gates the in-browser shader-compile code to the real (browser) build only,
