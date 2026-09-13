@@ -708,13 +708,15 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
         private void RegisterContentFile(string fileName, byte[] data)
         {
             InMemoryContentManager.AddFile(fileName, data);
-            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.register", fileName, Convert.ToBase64String(data));
+            // Keyed under "Content/" (matching Content.RootDirectory) so TitleContainer.OpenStream
+            // only resolves a "Content/"-prefixed path, same as an exported project would require.
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.register", "Content/" + fileName, Convert.ToBase64String(data));
         }
 
         private void UnregisterContentFile(string fileName)
         {
             InMemoryContentManager.RemoveFile(fileName);
-            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.unregister", fileName);
+            ((IJSInProcessRuntime)JsRuntime).InvokeVoid("contentFileCache.unregister", "Content/" + fileName);
         }
 
         // Compiles every registered shader tab (.fx or .slang) to .mgfx via the in-browser
@@ -1395,7 +1397,10 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
             GraphicsAdapter.UseReferenceDevice = true;
 
             Game newGame = (Game)Activator.CreateInstance(gameType);
-            newGame.Content = new InMemoryContentManager(newGame.Services);
+            // RootDirectory matches the "Content" folder exported projects use, so
+            // TitleContainer.OpenStream(Path.Combine(Content.RootDirectory, ...)) behaves
+            // the same in the fiddle as after export (see RegisterContentFile below).
+            newGame.Content = new InMemoryContentManager(newGame.Services) { RootDirectory = "Content" };
 
             // The game's GraphicsProfile (set in its constructor, which has now run)
             // decides the canvas's WebGL context type. If a previous game this session
@@ -1416,7 +1421,7 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
                 await JsRuntime.InvokeVoidAsync("setupCanvas");
                 await JsRuntime.InvokeVoidAsync("eval", "window._canvasContextType=null");
                 newGame = (Game)Activator.CreateInstance(gameType);
-                newGame.Content = new InMemoryContentManager(newGame.Services);
+                newGame.Content = new InMemoryContentManager(newGame.Services) { RootDirectory = "Content" };
             }
 
             try
