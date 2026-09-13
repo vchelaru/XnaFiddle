@@ -24,18 +24,25 @@
   <PropertyGroup>
     <!-- KNI framework — 10 core packages all share this version.
          Update when the KniSB submodule is updated (XnaFiddle builds KNI from source,
-         but exported projects reference these NuGet packages). -->
-    <KniFrameworkVersion>4.2.9001</KniFrameworkVersion>
+         but exported projects reference these NuGet packages).
+         Bumped to 4.3.9001 for KniBlazorGL's net10.0-browser target (nkast.Kni.Platform.Blazor.GL
+         4.3.9001 is the first release with a net10.0 asset). Shared with the other KNI targets
+         below, which stay on net8.0 and are unaffected since 4.3.9001 still supports them. -->
+    <KniFrameworkVersion>4.3.9001</KniFrameworkVersion>
 
     <!-- KNI platform packages — each platform may ship on its own release cadence -->
     <KniPlatformDesktopGLVersion>4.2.9001.1</KniPlatformDesktopGLVersion>
     <KniPlatformWindowsDXVersion>4.2.9001</KniPlatformWindowsDXVersion>
     <KniPlatformAndroidVersion>4.2.9001.1</KniPlatformAndroidVersion>
-    <KniPlatformBlazorGLVersion>4.2.9001.2</KniPlatformBlazorGLVersion>
-    <KniContentPipelineVersion>4.2.9001</KniContentPipelineVersion>
+    <!-- 4.3.9001 is the first release targeting net10.0 (in addition to net8.0), needed for the
+         KniBlazorGL export's net10.0(-browser) TargetFramework. -->
+    <KniPlatformBlazorGLVersion>4.3.9001</KniPlatformBlazorGLVersion>
+    <KniContentPipelineVersion>4.3.9001</KniContentPipelineVersion>
     <!-- JS version shipped by the nkast.Wasm.* transitive packages.
-         Update when KNI platform NuGet packages bump their Wasm dependency. -->
-    <KniWasmJsVersion>8.0.11</KniWasmJsVersion>
+         Update when KNI platform NuGet packages bump their Wasm dependency. Tracks
+         KniPlatformBlazorGLVersion's net10.0 dependency graph — 10.0.3 pairs with 4.3.9001,
+         per KNI's own 4.2->4.3 migration guide. -->
+    <KniWasmJsVersion>10.0.3</KniWasmJsVersion>
 
     <!-- MonoGame framework — not used by XnaFiddle itself, only in exported projects -->
     <MonoGameFrameworkVersion>3.8.5</MonoGameFrameworkVersion>
