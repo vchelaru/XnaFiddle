@@ -143,7 +143,7 @@ namespace XnaFiddle
             // runtime compile — same EffectCompiler + OpenGL path as DesktopGL (issue #88).
             ExportTarget.KniAndroid        => DesktopShaderInfo("OpenGL"),
             ExportTarget.MonoGameAndroid   => DesktopShaderInfo("OpenGL"),
-            // Browser: ShadowDusk.Wasm (net8.0-browser, [JSImport] WASM modules). GL only.
+            // Browser: ShadowDusk.Wasm (net10.0-browser, [JSImport] WASM modules). GL only.
             ExportTarget.KniBlazorGL => new ShaderExportInfo
             {
                 Supported = true,
@@ -947,8 +947,8 @@ public class Builder : ContentBuilder
                 // BlazorGL requires the Blazor WebAssembly hosting packages
                 if (target == ExportTarget.KniBlazorGL)
                 {
-                    packages.Add(new NuGetPackage { Id = "Microsoft.AspNetCore.Components.WebAssembly", Version = "8.0.17" });
-                    packages.Add(new NuGetPackage { Id = "Microsoft.AspNetCore.Components.WebAssembly.DevServer", Version = "8.0.17" });
+                    packages.Add(new NuGetPackage { Id = "Microsoft.AspNetCore.Components.WebAssembly", Version = "10.0.10" });
+                    packages.Add(new NuGetPackage { Id = "Microsoft.AspNetCore.Components.WebAssembly.DevServer", Version = "10.0.10" });
                 }
             }
             else if (target == ExportTarget.MonoGameWindowsDX12 || target == ExportTarget.MonoGameDesktopVK)
@@ -1056,15 +1056,15 @@ public class Builder : ContentBuilder
             sb.AppendLine();
             sb.AppendLine("  <PropertyGroup>");
 
-            // A project must target net8.0-browser (instead of net8.0) when it references a
+            // A project must target net10.0-browser (instead of net10.0) when it references a
             // browser-only package — i.e. one doing native [JSImport]/wasm interop, which is
-            // NU1201-incompatible with a plain net8.0 reference. Today the only such dependency is the
+            // NU1201-incompatible with a plain net10.0 reference. Today the only such dependency is the
             // runtime shader compiler (ShadowDusk.Wasm), but this is kept as a general "needs the
             // browser TFM" flag: future browser-native references should OR into it rather than adding
             // another feature check to the per-target TFM logic. It is conditional (not always
-            // net8.0-browser) on purpose — net8.0-browser + [JSImport] pulls in the wasm-tools
+            // net10.0-browser) on purpose — net10.0-browser + [JSImport] pulls in the wasm-tools
             // workload, whereas a project without such a dependency builds with just `dotnet restore`
-            // on net8.0 (the export contract). Only the Blazor target can honor this; the desktop/
+            // on net10.0 (the export contract). Only the Blazor target can honor this; the desktop/
             // Android targets pin their own TFM regardless.
             bool needsBrowserTarget = includeShaders;
 
@@ -1101,11 +1101,11 @@ public class Builder : ContentBuilder
                     break;
 
                 case ExportTarget.KniBlazorGL:
-                    // net8.0-browser only when a browser-only dependency requires it (see
-                    // needsBrowserTarget above); otherwise plain net8.0 keeps the restore-only path.
+                    // net10.0-browser only when a browser-only dependency requires it (see
+                    // needsBrowserTarget above); otherwise plain net10.0 keeps the restore-only path.
                     sb.AppendLine(needsBrowserTarget
-                        ? "    <TargetFramework>net8.0-browser</TargetFramework>"
-                        : "    <TargetFramework>net8.0</TargetFramework>");
+                        ? "    <TargetFramework>net10.0-browser</TargetFramework>"
+                        : "    <TargetFramework>net10.0</TargetFramework>");
                     sb.AppendLine("    <Nullable>disable</Nullable>");
                     sb.AppendLine("    <ImplicitUsings>disable</ImplicitUsings>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
@@ -1183,7 +1183,7 @@ public class Builder : ContentBuilder
                 sb.AppendLine($@"    <PackageReference Include=""{pkg.Id}"" Version=""{pkg.Version}"" />");
 
             // Concrete ShadowDusk compiler for runtime shader compilation (issue #39): ShadowDusk.Compiler
-            // (net8.0) on desktop, ShadowDusk.Wasm (net8.0-browser) for Blazor. Platform-specific, so it
+            // (net8.0) on desktop, ShadowDusk.Wasm (net10.0-browser) for Blazor. Platform-specific, so it
             // belongs in the per-platform project, not the common library. Only emitted for supported targets.
             if (includeShaders)
             {

@@ -931,12 +931,12 @@ public class Game1 : Game
         // Blazor serves content from wwwroot/.
         Assert.Contains("MyGame/wwwroot/Content/Grayscale.fx", files.Keys);
 
-        // Browser uses the WASM compiler package, which targets net8.0-browser — so the project
+        // Browser uses the WASM compiler package, which targets net10.0-browser — so the project
         // must too, or the ShadowDusk.Wasm reference is NU1201-incompatible and its namespace won't
         // resolve (the CS0234 a real multi-project export hit). Regression guard for that.
         string csproj = files["MyGame/MyGame.csproj"];
         Assert.Contains("ShadowDusk.Wasm", csproj);
-        Assert.Contains("<TargetFramework>net8.0-browser</TargetFramework>", csproj);
+        Assert.Contains("<TargetFramework>net10.0-browser</TargetFramework>", csproj);
 
         // The synchronous Compile inside Content.Load<Effect> needs the WASM modules loaded first,
         // so InitializeAsync must be awaited before the render loop starts.
@@ -960,18 +960,18 @@ public class Game1 : Game
         var files = ExtractTextFiles(zip);
 
         // Common project references only the interface package; never the concrete (browser-only Wasm
-        // would break the net8.0 common lib, and desktop Compiler belongs per-platform).
+        // would break the net10.0 common lib, and desktop Compiler belongs per-platform).
         string common = files["MyGameCommon/MyGameCommon.csproj"];
         Assert.Contains("ShadowDusk.Core", common);
         Assert.DoesNotContain("ShadowDusk.Compiler", common);
         Assert.DoesNotContain("ShadowDusk.Wasm", common);
 
         // Each supported platform brings its concrete compiler. The Blazor project must move to
-        // net8.0-browser alongside its ShadowDusk.Wasm reference (NU1201 / CS0234 otherwise).
+        // net10.0-browser alongside its ShadowDusk.Wasm reference (NU1201 / CS0234 otherwise).
         Assert.Contains("ShadowDusk.Compiler", files["MyGame.DesktopGL/MyGame.DesktopGL.csproj"]);
         string blazor = files["MyGame.BlazorGL/MyGame.BlazorGL.csproj"];
         Assert.Contains("ShadowDusk.Wasm", blazor);
-        Assert.Contains("<TargetFramework>net8.0-browser</TargetFramework>", blazor);
+        Assert.Contains("<TargetFramework>net10.0-browser</TargetFramework>", blazor);
 
         // Android gets the desktop native compiler package and entry-point injection (issue #88).
         Assert.Contains("ShadowDusk.Compiler", files["MyGame.Android/MyGame.Android.csproj"]);
@@ -999,17 +999,17 @@ public class Game1 : Game
     }
 
     [Fact]
-    public void BlazorGL_WithoutShaders_StaysNet80_NoWasmToolsRequirement()
+    public void BlazorGL_WithoutShaders_StaysNet100_NoWasmToolsRequirement()
     {
-        // A shader-free KNI Blazor export must keep building with just `dotnet restore` on net8.0;
-        // it must NOT be forced to net8.0-browser (which would drag in the wasm-tools workload).
+        // A shader-free KNI Blazor export must keep building with just `dotnet restore` on net10.0;
+        // it must NOT be forced to net10.0-browser (which would drag in the wasm-tools workload).
         byte[] single = ProjectExporter.Export(MinimalCode, ExportTarget.KniBlazorGL, "MyGame");
-        Assert.Contains("<TargetFramework>net8.0</TargetFramework>",
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>",
             ExtractTextFiles(single)["MyGame/MyGame.csproj"]);
 
         var multi = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniBlazorGL };
         byte[] zip = ProjectExporter.Export(MinimalCode, multi, "MyGame");
-        Assert.Contains("<TargetFramework>net8.0</TargetFramework>",
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>",
             ExtractTextFiles(zip)["MyGame.BlazorGL/MyGame.BlazorGL.csproj"]);
     }
 

@@ -17,8 +17,8 @@ namespace XnaFiddle.ExportBuild.Tests;
 // Scope: KniDesktopGL and KniBlazorGL only. MonoGame/Android/FNA/WindowsDX are deliberately not
 // covered yet — a follow-up, not an oversight. Both covered targets need no extra SDK workload:
 // KniDesktopGL references nkast.Kni.Platform.SDL2.GL (a plain cross-platform NuGet package), and
-// KniBlazorGL (without shaders) builds against plain net8.0 with the Blazor WebAssembly SDK, not
-// net8.0-browser — see ProjectExporter.GenerateCsproj's `needsBrowserTarget` — so no
+// KniBlazorGL (without shaders) builds against plain net10.0 with the Blazor WebAssembly SDK, not
+// net10.0-browser — see ProjectExporter.GenerateCsproj's `needsBrowserTarget` — so no
 // wasm-tools workload is required either.
 public class ExportBuildTests
 {

@@ -57,10 +57,10 @@ The asset list (`Index.razor`, the `_assetsOpen` block) shows a **128×128 hover
 - `RegisterContentFile(fileName, data)` calls both `InMemoryContentManager.AddFile()` and `contentFileCache.register()` via `IJSInProcessRuntime`
 - `UnregisterContentFile(fileName)` does the reverse with `RemoveFile()` and `unregister()`
 
-**Path gotcha — `Content.RootDirectory` differences:**
-- In XnaFiddle, `Content.RootDirectory` is `""` (empty), so `TitleContainer.OpenStream("DroidSans.ttf")` requests `"DroidSans.ttf"` — files are registered under bare filenames
-- In exported projects, `Content.RootDirectory` is `"Content"`, so the path becomes `"Content/DroidSans.ttf"` and the file is served from disk/wwwroot
-- Export-compatible user code should use `Path.Combine(Content.RootDirectory, "file.ext")` to work in both environments
+**Path gotcha — `Content.RootDirectory` matches export:**
+- `Content.RootDirectory` is `"Content"` in both the fiddle and exported projects (set on the `InMemoryContentManager` right after the user's `Game1` constructor runs, in `Index.razor.cs`). `RegisterContentFile`/`UnregisterContentFile` register/unregister the JS XHR cache entry under `"Content/" + fileName`, so `TitleContainer.OpenStream("DroidSans.ttf")` (bare filename, no prefix) does **not** resolve — it must be `TitleContainer.OpenStream(Path.Combine(Content.RootDirectory, "DroidSans.ttf"))`, same as export requires
+- `InMemoryContentManager.AddFile`/`RemoveFile` still key on the bare `fileName` (unaffected) — `Content.Load<T>()` resolution goes through `NormalizeAssetPath`, which strips any leading `"Content/"` before the dictionary lookup, so `Content.Load<Texture2D>("DroidSans")` keeps working with or without a prefix
+- Export-compatible user code should use `Path.Combine(Content.RootDirectory, "file.ext")` for `TitleContainer.OpenStream` calls — this now fails the same way locally as it would after export if the prefix is missing
 
 ## Embedded example assets
 
