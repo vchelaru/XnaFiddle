@@ -155,6 +155,37 @@ public class SnippetRoundTripTests
         AssertNoSyntaxErrors(expanded);
     }
 
+    [Fact]
+    public void AliasAndStaticUsings_SurviveRoundTrip()
+    {
+        const string code = """
+            using System;
+            using Microsoft.Xna.Framework;
+            using Vector2 = System.Numerics.Vector2;
+            using static System.Math;
+
+            public class FiddleGame : Game
+            {
+                protected override void Draw(GameTime gameTime)
+                {
+                    base.Draw(gameTime);
+                }
+            }
+            """;
+
+        var revert = SnippetReverter.Revert(code);
+
+        Assert.True(revert.Success, revert.ErrorMessage);
+        Assert.Contains("Vector2 = System.Numerics.Vector2", revert.ExtraUsings);
+        Assert.Contains("static System.Math", revert.ExtraUsings);
+
+        string expanded = SnippetExpander.Expand(ToModel(revert));
+
+        Assert.Contains("using Vector2 = System.Numerics.Vector2;", expanded);
+        Assert.Contains("using static System.Math;", expanded);
+        AssertNoSyntaxErrors(expanded);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     // Mirrors how Index.razor.cs builds the SnippetModel from a revert result (Constructor is
