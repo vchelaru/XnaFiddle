@@ -47,6 +47,16 @@ namespace XnaFiddle
             "SpriteBatch _spriteBatch;",
         };
 
+        // `global` is dropped: in a single-file fiddle it is equivalent to a plain using.
+        static string FormatUsing(UsingDirectiveSyntax u)
+        {
+            var sb = new StringBuilder();
+            if (!u.StaticKeyword.IsKind(SyntaxKind.None)) sb.Append("static ");
+            if (u.Alias != null) sb.Append(u.Alias.Name).Append(" = ");
+            sb.Append(u.Name);
+            return sb.ToString();
+        }
+
         public static SnippetRevertResult Revert(string code)
         {
             var result = new SnippetRevertResult();
@@ -56,10 +66,14 @@ namespace XnaFiddle
                 var root = tree.GetCompilationUnitRoot();
 
                 // ── Detect preset flags from using directives ────────────────────
-                var allUsings = root.Usings
+                // Only plain `using X;` directives count toward preset/default detection; an alias
+                // (`using V = Gum;`) or `using static` names a namespace/type without importing it.
+                var plainUsings = root.Usings
+                    .Where(u => u.Alias == null && u.StaticKeyword.IsKind(SyntaxKind.None))
                     .Select(u => u.Name?.ToString())
                     .Where(n => n != null)
-                    .ToHashSet(StringComparer.Ordinal);
+                    .ToList();
+                var allUsings = plainUsings.ToHashSet(StringComparer.Ordinal);
 
                 result.IsGum              = GumUsings.Any(allUsings.Contains);
                 result.IsAposShapes       = AposShapesUsings.Any(allUsings.Contains);
@@ -69,7 +83,15 @@ namespace XnaFiddle
                 foreach (var u in GumUsings)         knownUsings.Add(u);
                 foreach (var u in AposShapesUsings)  knownUsings.Add(u);
                 foreach (var u in MonoGameExtUsings) knownUsings.Add(u);
-                result.ExtraUsings = allUsings.Where(u => !knownUsings.Contains(u)).ToList();
+                // Extras keep the directive text after `using` (`static X`, `Alias = X`) so the
+                // expander's `using {u};` reproduces them. Source order is preserved.
+                result.ExtraUsings = root.Usings
+                    .Where(u => u.Name != null)
+                    .Select(u => (Directive: FormatUsing(u), Plain: u.Alias == null && u.StaticKeyword.IsKind(SyntaxKind.None)))
+                    .Where(x => !x.Plain || !knownUsings.Contains(x.Directive))
+                    .Select(x => x.Directive)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
 
                 // ── Find the Game subclass ───────────────────────────────────────
                 var classDecl = root.DescendantNodes()
