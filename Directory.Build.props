@@ -60,17 +60,19 @@
     <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
     <!-- Preview build, not a stable release: pinned for TextRuntime.UseFontOversampling /
          RegenerateOversampledFont (font oversampling), which landed after the last stable
-         Gum NuGet release and is only available in this preview (see #127). -->
-    <GumVersion>2026.8.18.1-preview.1</GumVersion>
+         Gum NuGet release and is only available in this preview (see #127). Must be >= 2026.9.x:
+         older Gum fails theme fonts on browser-wasm, so every theme switch fires hundreds of blocking
+         404s against /Content/FontCache (Gum #4565, #5914). -->
+    <GumVersion>2026.10.9.1-preview.2</GumVersion>
     <!-- Gum's fill+effects shape support (CircleRuntime / RectangleRuntime). Ships on the
          same release cadence as Gum.KNI, so it tracks GumVersion. Depends on Apos.Shapes.KNI. -->
-    <GumShapesVersion>2026.8.18.1-preview.1</GumShapesVersion>
+    <GumShapesVersion>2026.10.9.1-preview.2</GumShapesVersion>
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
     <!-- Versions core KernSmith and KernSmith.Rasterizers.StbTrueType only. The Gum-integration
          packages (KernSmith.KniGum / KernSmith.MonoGameGum) switched to date-based versioning
          that tracks GumVersion instead of their own semver — see the GumVersion PackageReference
          usage in XnaFiddle.BlazorGL.csproj and PackageVersions.Gum in KernSmithPlugin. -->
-    <KernSmithVersion>0.20.0</KernSmithVersion>
+    <KernSmithVersion>0.21.0</KernSmithVersion>
     <MlemVersion>8.1.0</MlemVersion>
     <!-- ShadowDusk HLSL .fx compiler. Drives BOTH the in-browser editor (ShadowDusk.Wasm, used by
          XnaFiddle.BlazorGL) AND exported projects, which now compile their shipped .fx at runtime
