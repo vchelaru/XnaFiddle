@@ -97,7 +97,8 @@ namespace XnaFiddle
                     assemblyName: "IntellisenseProject",
                     language: LanguageNames.CSharp,
                     compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
-                        concurrentBuild: false),
+                        concurrentBuild: false,
+                        nullableContextOptions: NullableContextOptions.Annotations),  // must match CompilationService
                     parseOptions: CSharpParseOptions.Default
                         .WithLanguageVersion(LanguageVersion.LatestMajor)
                         .WithPreprocessorSymbols("BLAZORGL"),

@@ -827,6 +827,7 @@ public class Builder : ContentBuilder
             sb.AppendLine("  <PropertyGroup>");
             sb.AppendLine("    <OutputType>Library</OutputType>");
             sb.AppendLine("    <TargetFramework>net8.0</TargetFramework>");
+            sb.AppendLine("    <Nullable>annotations</Nullable>");
             sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
             sb.AppendLine($"    <AssemblyName>{commonName}</AssemblyName>");
             sb.AppendLine("  </PropertyGroup>");
@@ -1055,6 +1056,8 @@ public class Builder : ContentBuilder
             sb.AppendLine($@"<Project Sdk=""{sdk}"">");
             sb.AppendLine();
             sb.AppendLine("  <PropertyGroup>");
+            // Matches the in-browser compiler's NullableContextOptions.Annotations.
+            sb.AppendLine("    <Nullable>annotations</Nullable>");
 
             // A project must target net10.0-browser (instead of net10.0) when it references a
             // browser-only package — i.e. one doing native [JSImport]/wasm interop, which is
@@ -1106,7 +1109,6 @@ public class Builder : ContentBuilder
                     sb.AppendLine(needsBrowserTarget
                         ? "    <TargetFramework>net10.0-browser</TargetFramework>"
                         : "    <TargetFramework>net10.0</TargetFramework>");
-                    sb.AppendLine("    <Nullable>disable</Nullable>");
                     sb.AppendLine("    <ImplicitUsings>disable</ImplicitUsings>");
                     sb.AppendLine($"    <RootNamespace>{projectName}</RootNamespace>");
                     sb.AppendLine($"    <AssemblyName>{projectName}</AssemblyName>");
