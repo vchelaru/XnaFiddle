@@ -332,6 +332,30 @@ public class Game1 : Game
         Assert.DoesNotContain("MonoGame.Framework.DesktopGL", common);
     }
 
+    public static IEnumerable<object[]> AllTargets() =>
+        System.Enum.GetValues<ExportTarget>().Select(t => new object[] { t });
+
+    // Fiddles compile with NullableContextOptions.Annotations, so `string?` must not warn after export either.
+    [Theory]
+    [MemberData(nameof(AllTargets))]
+    public void SinglePlatformCsproj_EnablesNullableAnnotations(ExportTarget target)
+    {
+        byte[] zip = ProjectExporter.Export(MinimalCode, [target], "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("<Nullable>annotations</Nullable>", files["MyGame/MyGame.csproj"]);
+    }
+
+    [Fact]
+    public void CommonCsproj_EnablesNullableAnnotations()
+    {
+        var targets = new List<ExportTarget> { ExportTarget.KniDesktopGL, ExportTarget.KniAndroid };
+        byte[] zip = ProjectExporter.Export(MinimalCode, targets, "MyGame");
+        var files = ExtractTextFiles(zip);
+
+        Assert.Contains("<Nullable>annotations</Nullable>", files["MyGameCommon/MyGameCommon.csproj"]);
+    }
+
     [Fact]
     public void CommonCsproj_IsLibrary()
     {

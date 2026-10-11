@@ -322,7 +322,10 @@ namespace XnaFiddle
                 metadataImportOptions: MetadataImportOptions.Public,
                 allowUnsafe: false,
                 optimizationLevel: OptimizationLevel.Release,
-                concurrentBuild: false  // WASM is single-threaded; parallel workers deadlock on Monitor.Wait
+                concurrentBuild: false,  // WASM is single-threaded; parallel workers deadlock on Monitor.Wait
+                // Annotations, not Enable: accepts `string?` without CS8632, but skips flow analysis so
+                // idiomatic XNA fields assigned in LoadContent don't all warn CS8618.
+                nullableContextOptions: NullableContextOptions.Annotations
             );
 
             CSharpCompilation compilation = CSharpCompilation.Create(
