@@ -19,8 +19,14 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SkipAposShapeContent>true</SkipAposShapeContent>
     <!-- Disable trimming: user code is compiled by Roslyn at runtime and
-         needs the full public API surface of all assemblies (BCL + KNI). -->
+         needs the full public API surface of all assemblies (BCL + KNI).
+         AOT (deploy only) refuses to run without PublishTrimmed=true, so it turns trimming
+         on and RootAllAssembliesForAot below keeps every assembly whole. -->
     <PublishTrimmed>false</PublishTrimmed>
+    <PublishTrimmed Condition="'$(RunAOTCompilation)' == 'true'">true</PublishTrimmed>
+    <!-- Setting this skips the AOT step that sizes the heap by running llvm-size over every
+         compiled assembly in one command, which exceeds Windows' command-line limit. -->
+    <WasmInitialHeapSize Condition="'$(RunAOTCompilation)' == 'true' and '$(WasmInitialHeapSize)' == ''">268435456</WasmInitialHeapSize>
     <!-- SkiaGameRendering.Kni.WebGL's native SkiaSharp interop (libSkiaSharp) needs this true to
          get linked into dotnet.native.wasm. SkiaSharp.NativeAssets.WebAssembly's own buildTransitive
          targets try to set this automatically, but something later in the SDK's import order resets
@@ -135,6 +141,14 @@
       </_ExampleStaticAsset>
     </ItemGroup>
     <Copy SourceFiles="@(_ExampleStaticAsset)" DestinationFiles="@(_ExampleStaticAsset->'%(Dest)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Roots every assembly so AOT's required trimming removes nothing, keeping the full API
+       surface Roslyn compiles fiddles against. -->
+  <Target Name="RootAllAssembliesForAot" AfterTargets="_ComputeManagedAssemblyToLink" Condition="'$(RunAOTCompilation)' == 'true'">
+    <ItemGroup>
+      <TrimmerRootAssembly Include="@(ManagedAssemblyToLink->'%(Filename)')" />
+    </ItemGroup>
   </Target>
 
 </Project>

@@ -28,11 +28,16 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
+
       # This is the real deploy: the published output is uploaded as the GitHub Pages artifact below.
-      # (The E2E workflow also runs `dotnet publish`, but only to serve the app locally to a test
-      # browser — see e2e.yml. Same command, different purpose.)
+      # Only the deploy is AOT-compiled: it runs Gum/KNI several times faster but takes about an
+      # hour to publish, so PR checks and local dev stay on the plain build. (The E2E workflow
+      # also runs `dotnet publish`, but only to serve the app locally to a test browser — see
+      # e2e.yml.)
       - name: Publish for GitHub Pages deploy
-        run: dotnet publish XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj -c Release -o output
+        run: dotnet publish XnaFiddle.BlazorGL/XnaFiddle.BlazorGL.csproj -c Release -o output -p:RunAOTCompilation=true
 
       # Catches a publish-pipeline regression (missing asset, wrong compressed variant,
       # non-deterministic fingerprinting) before it reaches Pages -- see #132 postmortem,
