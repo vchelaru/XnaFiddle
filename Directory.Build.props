@@ -53,9 +53,9 @@
 
     <!-- Third-party game libraries -->
     <AetherPhysicsVersion>2.2.0</AetherPhysicsVersion>
-    <!-- Stable release satisfying Gum.Shapes.KNI's Apos.Shapes.KNI >= 0.8.1 floor.
-         Keep in sync with GumShapesVersion's dependency floor when either is bumped. -->
-    <AposShapesVersion>0.8.1</AposShapesVersion>
+    <!-- Stable release at or above Gum.Shapes.KNI's Apos.Shapes.KNI dependency floor.
+         Recheck that floor whenever GumShapesVersion is bumped. -->
+    <AposShapesVersion>0.9.1</AposShapesVersion>
     <FlatRedBallAnimationChainVersion>0.5.0-preview.1</FlatRedBallAnimationChainVersion>
     <FontStashSharpVersion>1.5.4</FontStashSharpVersion>
     <!-- Preview build, not a stable release: pinned for TextRuntime.UseFontOversampling /
@@ -63,16 +63,18 @@
          Gum NuGet release and is only available in this preview (see #127). Must be >= 2026.9.x:
          older Gum fails theme fonts on browser-wasm, so every theme switch fires hundreds of blocking
          404s against /Content/FontCache (Gum #4565, #5914). -->
-    <GumVersion>2026.10.9.1-preview.2</GumVersion>
+    <GumVersion>2026.10.25.3-preview.8</GumVersion>
     <!-- Gum's fill+effects shape support (CircleRuntime / RectangleRuntime). Ships on the
          same release cadence as Gum.KNI, so it tracks GumVersion. Depends on Apos.Shapes.KNI. -->
-    <GumShapesVersion>2026.10.9.1-preview.2</GumShapesVersion>
+    <GumShapesVersion>2026.10.25.3-preview.8</GumShapesVersion>
     <KniExtendedVersion>5.5.0</KniExtendedVersion>
     <!-- Versions core KernSmith and KernSmith.Rasterizers.StbTrueType only. The Gum-integration
          packages (KernSmith.KniGum / KernSmith.MonoGameGum) switched to date-based versioning
          that tracks GumVersion instead of their own semver — see the GumVersion PackageReference
-         usage in XnaFiddle.BlazorGL.csproj and PackageVersions.Gum in KernSmithPlugin. -->
-    <KernSmithVersion>0.21.0</KernSmithVersion>
+         usage in XnaFiddle.BlazorGL.csproj and PackageVersions.Gum in KernSmithPlugin.
+         Must stay at or above KernSmith.GumCommon's KernSmith floor for GumVersion, or restore
+         fails with NU1605 (package downgrade). -->
+    <KernSmithVersion>0.24.0</KernSmithVersion>
     <MlemVersion>8.1.0</MlemVersion>
     <!-- ShadowDusk HLSL .fx compiler. Drives BOTH the in-browser editor (ShadowDusk.Wasm, used by
          XnaFiddle.BlazorGL) AND exported projects, which now compile their shipped .fx at runtime

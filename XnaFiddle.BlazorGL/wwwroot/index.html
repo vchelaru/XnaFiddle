@@ -138,6 +138,8 @@
         window.setShowFps = function (show) {
             window._showFps = !!show;
             window._fpsFrameCount = 0;
+            window._fpsWorkMsTotal = 0;
+            window._fpsWorkSamples = 0;
             window._fpsWindowStart = 0;
             var el = document.getElementById('fpsOverlay');
             if (el) el.style.display = window._showFps ? 'block' : 'none';
@@ -190,22 +192,34 @@
             }
 
             var tickStart = performance.now();
-            window.theInstance.invokeMethod('TickDotNet');
+            // Update + Draw ms with KNI's fixed-timestep wait removed, or -1 for no sample.
+            var workMs = window.theInstance.invokeMethod('TickDotNet');
             var tickMs = performance.now() - tickStart;
 
             // Once-per-second counter reset, skipped entirely when the overlay is off so the
             // feature has no per-frame cost when unused.
             if (window._showFps) {
                 window._fpsFrameCount++;
+                if (workMs >= 0) {
+                    window._fpsWorkMsTotal = (window._fpsWorkMsTotal || 0) + workMs;
+                    window._fpsWorkSamples = (window._fpsWorkSamples || 0) + 1;
+                }
                 if (window._fpsWindowStart === 0) {
                     window._fpsWindowStart = tickStart;
                 } else {
                     var fpsElapsed = tickStart - window._fpsWindowStart;
                     if (fpsElapsed >= 1000) {
-                        var fps = Math.round(window._fpsFrameCount * 1000 / fpsElapsed);
+                        // Average Update + Draw time shows headroom even while rAF caps FPS at
+                        // the display refresh rate.
+                        var fps = window._fpsFrameCount * 1000 / fpsElapsed;
+                        var msText = window._fpsWorkSamples > 0
+                            ? (window._fpsWorkMsTotal / window._fpsWorkSamples).toFixed(1) + ' ms'
+                            : '-- ms';
                         var fpsEl = document.getElementById('fpsOverlay');
-                        if (fpsEl) fpsEl.textContent = fps + ' FPS';
+                        if (fpsEl) fpsEl.textContent = fps.toFixed(1) + ' FPS · ' + msText;
                         window._fpsFrameCount = 0;
+                        window._fpsWorkMsTotal = 0;
+                        window._fpsWorkSamples = 0;
                         window._fpsWindowStart = tickStart;
                     }
                 }
