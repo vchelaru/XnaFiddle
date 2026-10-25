@@ -1165,8 +1165,23 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
             }
         }
 
+        // KNI's fixed-timestep Tick() busy-waits until TargetElapsedTime has passed, and sleeps
+        // InactiveSleepTime when the window isn't focused. Timing the whole Tick() therefore
+        // measures the wait, not the game. These private GameStrategy fields let TickDotNet
+        // predict the wait before calling Tick() and subtract it, so the FPS overlay's ms shows
+        // only Update + Draw.
+        static readonly FieldInfo s_gameStrategyField = typeof(Game).GetField("_strategy", BindingFlags.Instance | BindingFlags.NonPublic);
+        static readonly FieldInfo s_timerField = typeof(Microsoft.Xna.Platform.GameStrategy).GetField("Timer", BindingFlags.Instance | BindingFlags.NonPublic);
+        static readonly FieldInfo s_currElapsedField = typeof(Microsoft.Xna.Platform.GameStrategy).GetField("_currElapsedTime", BindingFlags.Instance | BindingFlags.NonPublic);
+        static readonly FieldInfo s_prevElapsedField = typeof(Microsoft.Xna.Platform.GameStrategy).GetField("_prevElapsedTime", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        /// <summary>
+        /// Runs one game tick. Returns the Update + Draw time in ms with KNI's fixed-timestep
+        /// wait removed, or -1 when there is no meaningful sample (no game, throttled, window
+        /// inactive, or KNI internals not found).
+        /// </summary>
         [JSInvokable]
-        public void TickDotNet()
+        public double TickDotNet()
         {
             // Pick up pending compile request (runs in requestAnimationFrame context,
             // same as Gumknix, to avoid Blazor sync context Monitor issues)
@@ -1181,15 +1196,21 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
             // interleaving points are await boundaries, and DoCompileAndRun() has none
             // between _game = null and _game = newGame, so this null check is sufficient.
             if (_game == null)
-                return;
+                return -1;
 
             // Throttle to ~4 fps while compiling so the compiler gets most of the CPU.
             if (_isCompiling && ++_compileThrottleFrame % 15 != 0)
-                return;
+                return -1;
 
+            double waitMs = PredictTickWaitMs(_game);
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 _game.Tick();
+                if (waitMs < 0)
+                    return -1;
+                double tickMs = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                return Math.Max(0, tickMs - waitMs);
             }
             catch (Exception e)
             {
@@ -1197,7 +1218,27 @@ float4 MainPS(float4 position : SV_Position, float4 color : COLOR0, float2 uv : 
                 _diagnosticsColor = ColorError;
                 _game = null;
                 StateHasChanged();
+                return -1;
             }
+        }
+
+        // Mirrors the wait at the top of KNI's GameStrategy.Tick(): it spins until the
+        // accumulated elapsed time reaches TargetElapsedTime. Returns -1 when the sample
+        // would include InactiveSleepTime or the fields can't be read.
+        static double PredictTickWaitMs(Game game)
+        {
+            if (!game.IsActive)
+                return -1;
+            if (!game.IsFixedTimeStep)
+                return 0;
+            if (s_gameStrategyField?.GetValue(game) is not Microsoft.Xna.Platform.GameStrategy strategy
+                || s_timerField?.GetValue(strategy) is not System.Diagnostics.Stopwatch timer
+                || s_currElapsedField?.GetValue(strategy) is not TimeSpan curr
+                || s_prevElapsedField?.GetValue(strategy) is not TimeSpan prev)
+                return -1;
+
+            TimeSpan accumulated = curr + (timer.Elapsed - prev);
+            return Math.Max(0, (game.TargetElapsedTime - accumulated).TotalMilliseconds);
         }
 
         private void CompileAndRun()
