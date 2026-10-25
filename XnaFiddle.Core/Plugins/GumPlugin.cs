@@ -29,41 +29,12 @@ namespace XnaFiddle.Plugins
                 var gumService = defaultProp?.GetValue(null);
                 if (gumService == null) return;
 
-                // Clear Root, PopupRoot, and ModalRoot children.
-                // These are persistent statics — old controls accumulate across runs without this.
-                foreach (var rootPropName in new[] { "Root", "PopupRoot", "ModalRoot" })
-                {
-                    var rootProp = gumServiceType.GetProperty(rootPropName, BindingFlags.Instance | BindingFlags.Public);
-                    var root = rootProp?.GetValue(gumService);
-                    if (root == null) continue;
-                    var childrenProp = root.GetType().GetProperty("Children", BindingFlags.Instance | BindingFlags.Public);
-                    (childrenProp?.GetValue(root) as IList)?.Clear();
-                }
-
-                // Reset SystemManagers.Default so GumService.Initialize creates a fresh one
-                var systemManagersType = Type.GetType("RenderingLibrary.SystemManagers, GumCommon");
-                if (systemManagersType != null)
-                {
-                    var defaultPropSM = systemManagersType.GetProperty("Default", BindingFlags.Static | BindingFlags.Public);
-                    defaultPropSM?.SetValue(null, null);
-                }
-
-                // Clear LoaderManager cache WITHOUT disposing textures
-                var loaderManagerType = Type.GetType("RenderingLibrary.Content.LoaderManager, GumCommon");
-                if (loaderManagerType != null)
-                {
-                    var selfProp = loaderManagerType.GetProperty("Self", BindingFlags.Static | BindingFlags.Public);
-                    var loaderInstance = selfProp?.GetValue(null);
-                    if (loaderInstance != null)
-                    {
-                        var cacheField = loaderManagerType.GetField("mCachedDisposables", BindingFlags.Instance | BindingFlags.NonPublic);
-                        (cacheField?.GetValue(loaderInstance) as IDictionary)?.Clear();
-                    }
-                }
-
-                // Reset IsInitialized so the next game can call GumService.Initialize()
-                var isInitProp = gumServiceType.GetProperty("IsInitialized", BindingFlags.Instance | BindingFlags.Public);
-                isInitProp?.SetValue(gumService, false);
+                // Gum's own teardown: clears roots, registrations, and static state so the next
+                // run's GumService.Initialize() starts clean. Hand-resetting individual statics
+                // here instead leaves Gum's per-service element tracking inconsistent, and the
+                // next run throws "built under GumService #2 but is being added under #1".
+                gumServiceType.GetMethod("Uninitialize", BindingFlags.Instance | BindingFlags.Public, Type.EmptyTypes)
+                    ?.Invoke(gumService, null);
 
                 // Clear the static Forms-control template registry. A Gum.Themes.* theme's
                 // Apply() only ADDS entries here (FormsUtilities.InitializeDefaults uses
